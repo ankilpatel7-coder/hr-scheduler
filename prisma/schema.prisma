@@ -1,0 +1,179 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  MANAGER
+  EMPLOYEE
+}
+
+enum RequestStatus {
+  PENDING
+  APPROVED
+  DENIED
+  CANCELED
+}
+
+enum SwapStatus {
+  OFFERED
+  CLAIMED
+  APPROVED
+  DENIED
+  CANCELED
+}
+
+model User {
+  id           String       @id @default(cuid())
+  email        String       @unique
+  name         String
+  passwordHash String
+  role         Role         @default(EMPLOYEE)
+  department   String?
+  active       Boolean      @default(true)
+  hourlyWage   Float        @default(0)
+  isTipped     Boolean      @default(false)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  shifts        Shift[]      @relation("EmployeeShifts")
+  createdShifts Shift[]      @relation("ManagerShifts")
+  clockEntries  ClockEntry[]
+  locations     EmployeeLocation[]
+  availability  Availability[]
+  timeOff       TimeOffRequest[] @relation("EmployeeTimeOff")
+  decidedTimeOff TimeOffRequest[] @relation("ManagerTimeOff")
+  offeredSwaps  ShiftSwap[] @relation("OfferedSwaps")
+  claimedSwaps  ShiftSwap[] @relation("ClaimedSwaps")
+  decidedSwaps  ShiftSwap[] @relation("DecidedSwaps")
+  resetTokens   PasswordReset[]
+}
+
+model Location {
+  id        String   @id @default(cuid())
+  name      String
+  address   String?
+  timezone  String   @default("America/New_York")
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  shifts    Shift[]
+  employees EmployeeLocation[]
+}
+
+model EmployeeLocation {
+  userId     String
+  locationId String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  location   Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@id([userId, locationId])
+}
+
+model Shift {
+  id          String   @id @default(cuid())
+  employeeId  String
+  employee    User     @relation("EmployeeShifts", fields: [employeeId], references: [id], onDelete: Cascade)
+  managerId   String
+  manager     User     @relation("ManagerShifts", fields: [managerId], references: [id])
+  locationId  String?
+  location    Location? @relation(fields: [locationId], references: [id])
+  startTime   DateTime
+  endTime     DateTime
+  role        String?
+  notes       String?
+  published   Boolean  @default(false)
+  publishedAt DateTime?
+  reminderSent Boolean @default(false)
+  createdAt   DateTime @default(now())
+
+  swap        ShiftSwap?
+
+  @@index([employeeId, startTime])
+  @@index([locationId, startTime])
+  @@index([published, startTime])
+}
+
+model ClockEntry {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clockIn     DateTime
+  clockOut    DateTime?
+  selfieIn    String?   @db.Text
+  selfieOut   String?   @db.Text
+  latIn       Float?
+  lngIn       Float?
+  latOut      Float?
+  lngOut      Float?
+  editedBy    String?   // userId of manager who edited
+  editNote    String?
+  createdAt   DateTime  @default(now())
+
+  @@index([userId, clockIn])
+}
+
+model Availability {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dayOfWeek Int      // 0 = Sunday ... 6 = Saturday
+  startMinute Int    // minutes from midnight, e.g. 540 = 9:00 AM
+  endMinute   Int    // e.g. 1020 = 5:00 PM
+  available Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@index([userId, dayOfWeek])
+}
+
+model TimeOffRequest {
+  id          String         @id @default(cuid())
+  userId      String
+  user        User           @relation("EmployeeTimeOff", fields: [userId], references: [id], onDelete: Cascade)
+  startDate   DateTime
+  endDate     DateTime
+  reason      String?
+  status      RequestStatus  @default(PENDING)
+  decidedBy   String?
+  decider     User?          @relation("ManagerTimeOff", fields: [decidedBy], references: [id])
+  decidedAt   DateTime?
+  decisionNote String?
+  createdAt   DateTime       @default(now())
+
+  @@index([userId, startDate])
+  @@index([status])
+}
+
+model ShiftSwap {
+  id           String     @id @default(cuid())
+  shiftId      String     @unique
+  shift        Shift      @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  offeredById  String
+  offeredBy    User       @relation("OfferedSwaps", fields: [offeredById], references: [id])
+  claimedById  String?
+  claimedBy    User?      @relation("ClaimedSwaps", fields: [claimedById], references: [id])
+  status       SwapStatus @default(OFFERED)
+  decidedById  String?
+  decidedBy    User?      @relation("DecidedSwaps", fields: [decidedById], references: [id])
+  decidedAt    DateTime?
+  note         String?
+  createdAt    DateTime   @default(now())
+}
+
+model PasswordReset {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([token])
+}

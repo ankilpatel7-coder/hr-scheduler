@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/shift-reminders",
+      "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/cron/overtime-alerts",
+      "schedule": "0 14 * * 4"
+    }
+  ]
+}

@@ -1,0 +1,159 @@
+@import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bone: #f5f2ec;
+  --ink: #1a1816;
+  --paper: #fbf9f4;
+  --rust: #b4553a;
+  --moss: #5a6b4a;
+  --dust: #ddd6c7;
+}
+
+html,
+body {
+  background-color: var(--bone);
+  color: var(--ink);
+  font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  font-weight: 400;
+  letter-spacing: -0.005em;
+}
+
+h1,
+h2,
+h3,
+.display {
+  font-family: "Fraunces", ui-serif, Georgia, serif;
+  font-optical-sizing: auto;
+  letter-spacing: -0.02em;
+}
+
+/* Subtle paper texture across the whole app */
+body {
+  background-image: radial-gradient(
+      circle at 1px 1px,
+      rgba(26, 24, 22, 0.025) 1px,
+      transparent 0
+    );
+  background-size: 24px 24px;
+}
+
+/* Form elements */
+input,
+select,
+textarea {
+  background-color: var(--paper);
+  border: 1px solid var(--dust);
+  padding: 0.625rem 0.875rem;
+  border-radius: 4px;
+  color: var(--ink);
+  font-size: 0.9375rem;
+  transition: border-color 0.15s ease;
+  width: 100%;
+}
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--ink);
+}
+
+label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--smoke, #4a4742);
+  margin-bottom: 0.375rem;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1.125rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+.btn-primary {
+  background-color: var(--ink);
+  color: var(--paper);
+}
+.btn-primary:hover {
+  background-color: #000;
+}
+.btn-secondary {
+  background-color: var(--paper);
+  color: var(--ink);
+  border-color: var(--dust);
+}
+.btn-secondary:hover {
+  border-color: var(--ink);
+}
+.btn-rust {
+  background-color: var(--rust);
+  color: var(--paper);
+}
+.btn-rust:hover {
+  background-color: #9c4730;
+}
+.btn-ghost {
+  background-color: transparent;
+  color: var(--ink);
+}
+.btn-ghost:hover {
+  background-color: rgba(26, 24, 22, 0.05);
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.card {
+  background-color: var(--paper);
+  border: 1px solid var(--dust);
+  border-radius: 6px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.125rem 0.5rem;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  border-radius: 3px;
+  border: 1px solid var(--dust);
+  background: var(--bone);
+}
+.chip-rust {
+  color: var(--rust);
+  border-color: var(--rust);
+}
+.chip-moss {
+  color: var(--moss);
+  border-color: var(--moss);
+}
+
+/* Thin divider */
+.rule {
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    transparent,
+    var(--dust) 20%,
+    var(--dust) 80%,
+    transparent
+  );
+}
