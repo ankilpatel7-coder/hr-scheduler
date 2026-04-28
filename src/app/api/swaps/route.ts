@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { requireAuth } from "@/lib/guards";
+import { requireAuth, isStaff } from "@/lib/guards";
 import { sendEmail, baseEmailTemplate } from "@/lib/email";
 import { format } from "date-fns";
 
@@ -15,7 +15,16 @@ export async function GET(req: Request) {
   const auth = await requireAuth();
   if ("error" in auth) return auth.error;
 
+  const { searchParams } = new URL(req.url);
+  const locationId = searchParams.get("locationId");
+
+  const where: any = {};
+  if (locationId && (auth.role === "ADMIN" || auth.role === "MANAGER")) {
+    where.shift = { locationId };
+  }
+
   const swaps = await prisma.shiftSwap.findMany({
+    where,
     orderBy: { createdAt: "desc" },
     include: {
       shift: {
@@ -81,7 +90,7 @@ export async function DELETE(req: Request) {
 
   const swap = await prisma.shiftSwap.findUnique({ where: { id } });
   if (!swap) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  if (swap.offeredById !== auth.userId && auth.role === "EMPLOYEE") {
+  if (swap.offeredById !== auth.userId && isStaff(auth.role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   if (swap.status === "APPROVED") {

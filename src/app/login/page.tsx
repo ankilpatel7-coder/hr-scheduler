@@ -16,11 +16,7 @@ function LoginForm() {
     e.preventDefault();
     setErr(null);
     setLoading(true);
-    const res = await signIn("credentials", {
-      email,
-      password,
-      redirect: false,
-    });
+    const res = await signIn("credentials", { email, password, redirect: false });
     setLoading(false);
     if (res?.error) {
       setErr("Invalid email or password.");
@@ -32,46 +28,55 @@ function LoginForm() {
 
   return (
     <div className="min-h-screen grid md:grid-cols-2">
-      <div className="hidden md:flex flex-col justify-between p-12 bg-ink text-paper relative overflow-hidden">
-        <div className="absolute inset-0 opacity-[0.06]"
-             style={{
-               backgroundImage:
-                 "radial-gradient(circle at 1px 1px, #fbf9f4 1px, transparent 0)",
-               backgroundSize: "18px 18px",
-             }}
-        />
-        <div className="relative">
-          <div className="text-[10px] tracking-[0.3em] uppercase text-paper/60">
-            Shiftwork
-          </div>
-          <div className="display text-paper text-xl mt-1">Est. {new Date().getFullYear()}</div>
+      {/* Left hero */}
+      <div className="hidden md:flex flex-col justify-between p-12 relative overflow-hidden border-r border-dust">
+        <div className="absolute inset-0">
+          <div className="absolute inset-0 opacity-[0.06]" style={{
+            backgroundImage: "radial-gradient(circle at 1px 1px, var(--text-secondary) 1px, transparent 0)",
+            backgroundSize: "24px 24px",
+          }}/>
+          <div className="absolute -top-32 -right-32 w-[400px] h-[400px] rounded-full bg-rust/[0.06] blur-[100px]"></div>
         </div>
-        <div className="relative">
-          <h1 className="display text-6xl lg:text-7xl leading-[0.95] font-light">
+
+        <div className="relative z-10">
+          <div className="flex items-center gap-3">
+            <div className="relative w-10 h-10 rounded-md bg-rust flex items-center justify-center">
+              <span className="font-display text-white font-bold text-lg leading-none">S</span>
+            </div>
+            <div>
+              <div className="display text-xl text-ink">Shiftwork</div>
+              <div className="font-mono text-[10px] uppercase tracking-[0.25em] text-smoke">Operations console</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="relative z-10">
+          <div className="font-mono text-[10px] uppercase tracking-[0.3em] text-moss mb-4 flex items-center gap-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-moss"></span>
+            System online
+          </div>
+          <h1 className="display text-6xl lg:text-7xl leading-[0.95] font-light text-ink">
             The shift<br />
-            <span className="italic text-rust">runs itself.</span>
+            <span className="text-rust italic">runs itself.</span>
           </h1>
-          <p className="mt-6 max-w-sm text-paper/70 text-[15px] leading-relaxed">
-            Scheduling, clock-in, timesheets, swaps, and time-off — for teams that would
-            rather serve customers than wrangle spreadsheets.
+          <p className="mt-6 max-w-sm text-smoke text-[15px] leading-relaxed">
+            Real-time scheduling, selfie-verified clock-in, automated payroll — built for teams that ship.
           </p>
         </div>
-        <div className="relative flex items-center gap-4 text-[11px] uppercase tracking-[0.2em] text-paper/50 flex-wrap">
-          <span>Selfie verified</span>
-          <span className="w-1 h-1 rounded-full bg-paper/30" />
-          <span>Multi-location</span>
-          <span className="w-1 h-1 rounded-full bg-paper/30" />
-          <span>Export ready</span>
+
+        <div className="relative z-10 flex items-center gap-4 font-mono text-[11px] uppercase tracking-[0.2em] text-smoke flex-wrap">
+          <span className="flex items-center gap-1.5"><span className="w-1 h-1 rounded-full bg-moss"></span> Multi-location</span>
+          <span className="flex items-center gap-1.5"><span className="w-1 h-1 rounded-full bg-moss"></span> Selfie verified</span>
+          <span className="flex items-center gap-1.5"><span className="w-1 h-1 rounded-full bg-moss"></span> Export ready</span>
         </div>
       </div>
 
-      <div className="flex items-center justify-center p-8 md:p-12">
-        <div className="w-full max-w-sm">
+      {/* Right form */}
+      <div className="flex items-center justify-center p-8 md:p-12 relative">
+        <div className="w-full max-w-sm relative z-10 animate-slide-up">
           <div className="mb-10">
-            <div className="text-[10px] tracking-[0.3em] uppercase text-smoke mb-2">
-              Sign in
-            </div>
-            <h2 className="display text-4xl">Welcome back.</h2>
+            <div className="label-eyebrow mb-3">Sign in</div>
+            <h2 className="display text-4xl text-ink">Welcome back.</h2>
           </div>
 
           <form onSubmit={onSubmit} className="space-y-4">
@@ -96,18 +101,15 @@ function LoginForm() {
               />
             </div>
             {err && (
-              <div className="text-sm text-rust bg-rust/10 px-3 py-2 rounded border border-rust/20">
+              <div className="text-sm text-rose px-3 py-2 rounded border border-rose/30" style={{ background: "rgba(244,63,94,0.1)" }}>
                 {err}
               </div>
             )}
             <button type="submit" disabled={loading} className="btn btn-primary w-full">
-              {loading ? "Signing in…" : "Sign in"}
+              {loading ? "Authenticating…" : "Sign in →"}
             </button>
             <div className="text-right">
-              <Link
-                href="/forgot-password"
-                className="text-xs text-smoke hover:text-ink underline underline-offset-4"
-              >
+              <Link href="/forgot-password" className="text-xs text-smoke hover:text-rust transition-colors">
                 Forgot password?
               </Link>
             </div>
@@ -116,7 +118,7 @@ function LoginForm() {
           <div className="mt-8 pt-6 border-t border-dust">
             <div className="text-xs text-smoke">
               First-time setup?{" "}
-              <Link href="/signup" className="text-ink underline underline-offset-4">
+              <Link href="/signup" className="text-rust hover:text-glow transition-colors">
                 Create an admin account
               </Link>
             </div>
@@ -129,13 +131,7 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="min-h-screen flex items-center justify-center text-smoke">
-          Loading…
-        </div>
-      }
-    >
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-smoke">Loading…</div>}>
       <LoginForm />
     </Suspense>
   );

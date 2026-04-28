@@ -3,7 +3,9 @@ import Link from "next/link";
 import { getServerAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import Navbar from "@/components/navbar";
+import DashboardAnalytics from "@/components/dashboard-analytics";
 import { fmtDate, fmtTime, durationHours } from "@/lib/utils";
+import { isStaff } from "@/lib/guards";
 import {
   Clock,
   Users,
@@ -13,7 +15,11 @@ import {
   Inbox,
   Repeat,
   MapPin,
+  TrendingUp,
+  Activity,
+  ArrowUpRight,
 } from "lucide-react";
+import AnimatedNumber from "@/components/animated-number";
 
 export default async function Dashboard() {
   const session = await getServerAuth();
@@ -29,16 +35,13 @@ export default async function Dashboard() {
   const weekStart = new Date(startOfDay.getTime() - ((startOfDay.getDay() + 6) % 7) * 86_400_000);
   const weekEnd = new Date(weekStart.getTime() + dayMs);
 
-  // Employee-specific stats
   const openEntry =
-    role === "EMPLOYEE"
-      ? await prisma.clockEntry.findFirst({
-          where: { userId, clockOut: null },
-        })
+    isStaff(role)
+      ? await prisma.clockEntry.findFirst({ where: { userId, clockOut: null } })
       : null;
 
   const myUpcomingShifts =
-    role === "EMPLOYEE"
+    isStaff(role)
       ? await prisma.shift.findMany({
           where: { employeeId: userId, startTime: { gte: now }, published: true },
           orderBy: { startTime: "asc" },
@@ -48,10 +51,8 @@ export default async function Dashboard() {
       : [];
 
   const myWeekEntries =
-    role === "EMPLOYEE"
-      ? await prisma.clockEntry.findMany({
-          where: { userId, clockIn: { gte: weekAgo } },
-        })
+    isStaff(role)
+      ? await prisma.clockEntry.findMany({ where: { userId, clockIn: { gte: weekAgo } } })
       : [];
 
   const myWeekHours = myWeekEntries.reduce(
@@ -60,70 +61,65 @@ export default async function Dashboard() {
   );
 
   const myPendingTimeOff =
-    role === "EMPLOYEE"
-      ? await prisma.timeOffRequest.count({
-          where: { userId, status: "PENDING" },
-        })
+    isStaff(role)
+      ? await prisma.timeOffRequest.count({ where: { userId, status: "PENDING" } })
       : 0;
 
-  // Manager/Admin stats
   const totalEmployees =
-    role !== "EMPLOYEE"
+    !isStaff(role)
       ? await prisma.user.count({ where: { active: true } })
       : 0;
 
   const todayShifts =
-    role !== "EMPLOYEE"
+    !isStaff(role)
       ? await prisma.shift.count({
           where: { startTime: { gte: startOfDay, lt: endOfDay } },
         })
       : 0;
 
   const currentlyClockedIn =
-    role !== "EMPLOYEE"
+    !isStaff(role)
       ? await prisma.clockEntry.count({ where: { clockOut: null } })
       : 0;
 
   const pendingTimeOff =
-    role !== "EMPLOYEE"
+    !isStaff(role)
       ? await prisma.timeOffRequest.count({ where: { status: "PENDING" } })
       : 0;
 
   const pendingSwaps =
-    role !== "EMPLOYEE"
+    !isStaff(role)
       ? await prisma.shiftSwap.count({ where: { status: "CLAIMED" } })
       : 0;
 
   const draftShifts =
-    role !== "EMPLOYEE"
+    !isStaff(role)
       ? await prisma.shift.count({
           where: { published: false, startTime: { gte: startOfDay } },
         })
       : 0;
 
-  // OT projection: any employee with 36+ hours actual+scheduled this week
   let otAtRisk = 0;
-  if (role !== "EMPLOYEE") {
+  let weekLaborHours = 0;
+  let weekLaborCost = 0;
+  if (!isStaff(role)) {
     const entries = await prisma.clockEntry.findMany({
       where: { clockIn: { gte: weekStart, lt: weekEnd } },
-      select: { userId: true, clockIn: true, clockOut: true },
+      include: { user: { select: { hourlyWage: true } } },
     });
     const scheduled = await prisma.shift.findMany({
       where: { startTime: { gte: now, lt: weekEnd }, published: true },
-      select: { employeeId: true, startTime: true, endTime: true },
+      include: { employee: { select: { hourlyWage: true } } },
     });
     const tot = new Map<string, number>();
     for (const e of entries) {
-      tot.set(
-        e.userId,
-        (tot.get(e.userId) ?? 0) + durationHours(e.clockIn, e.clockOut)
-      );
+      const h = durationHours(e.clockIn, e.clockOut);
+      tot.set(e.userId, (tot.get(e.userId) ?? 0) + h);
+      weekLaborHours += h;
+      weekLaborCost += h * (e.user.hourlyWage ?? 0);
     }
     for (const s of scheduled) {
-      tot.set(
-        s.employeeId,
-        (tot.get(s.employeeId) ?? 0) + durationHours(s.startTime, s.endTime)
-      );
+      tot.set(s.employeeId, (tot.get(s.employeeId) ?? 0) + durationHours(s.startTime, s.endTime));
     }
     for (const v of tot.values()) {
       if (v >= 36) otAtRisk++;
@@ -133,92 +129,103 @@ export default async function Dashboard() {
   return (
     <div className="min-h-screen">
       <Navbar />
-      <main className="max-w-7xl mx-auto px-6 py-10">
-        <div className="mb-10">
-          <div className="text-[10px] tracking-[0.3em] uppercase text-smoke mb-2">
-            {role === "EMPLOYEE" ? "Your shift" : "Today at a glance"}
+      <main className="max-w-[1500px] mx-auto px-6 py-10 animate-fade-in">
+        {/* Hero */}
+        <div className="mb-10 animate-slide-up">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-2 h-2 rounded-full bg-moss animate-pulse-glow"></div>
+            <div className="label-eyebrow">
+              {isStaff(role) ? "Live · Your Shift" : "Live · Operations Console"}
+            </div>
           </div>
-          <h1 className="display text-5xl md:text-6xl">
-            Hello, <span className="italic">{session.user?.name?.split(" ")[0]}</span>.
+          <h1 className="display text-5xl md:text-6xl text-ink leading-[1.05]">
+            Hello, <span className="text-rust italic">{session.user?.name?.split(" ")[0]}</span>.
           </h1>
           <p className="text-smoke mt-3 max-w-xl">
-            {role === "EMPLOYEE"
+            {isStaff(role)
               ? openEntry
-                ? "You're currently clocked in. Clock out when you're done."
-                : "You're not clocked in. Head to the clock-in page when your shift starts."
-              : "A snapshot of the team today. Drill into any section below."}
+                ? "You're currently clocked in. Tap the clock card to clock out."
+                : "Not on the clock. Head to clock-in when your shift begins."
+              : "Real-time operations across your team. Drill into any panel."}
           </p>
         </div>
 
-        {role === "EMPLOYEE" ? (
-          <div className="grid md:grid-cols-2 gap-6">
+        {isStaff(role) ? (
+          <div className="grid md:grid-cols-2 gap-6 stagger">
             <Link
               href="/clock"
-              className="card p-8 hover:border-ink transition-colors group"
+              className="card p-8 hover:border-rust transition-all group animate-slide-up relative overflow-hidden"
             >
-              <div className="flex items-start justify-between mb-6">
-                <Clock size={28} className="text-rust" />
-                <span className={`chip ${openEntry ? "chip-moss" : "chip-rust"}`}>
-                  {openEntry ? "Clocked in" : "Clocked out"}
-                </span>
-              </div>
-              <div className="display text-3xl mb-1">
-                {openEntry ? "Clock out" : "Clock in"}
-              </div>
-              <div className="text-sm text-smoke">
-                {openEntry
-                  ? `Started at ${fmtTime(openEntry.clockIn)}`
-                  : "Snap a selfie and you're on the clock"}
+              {openEntry && (
+                <div className="absolute top-4 right-4 w-2 h-2 rounded-full bg-moss animate-pulse-glow"></div>
+              )}
+              <div className="absolute inset-0 bg-rust/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+              <div className="relative">
+                <div className="flex items-start justify-between mb-6">
+                  <div className="w-12 h-12 rounded-lg bg-rust/15 border border-rust/30 flex items-center justify-center">
+                    <Clock size={22} className="text-rust" />
+                  </div>
+                  <span className={`chip ${openEntry ? "chip-moss" : ""}`}>
+                    {openEntry ? "On clock" : "Off clock"}
+                  </span>
+                </div>
+                <div className="display text-3xl mb-1 text-ink">
+                  {openEntry ? "Clock out" : "Clock in"}
+                </div>
+                <div className="text-sm text-smoke">
+                  {openEntry ? `Started ${fmtTime(openEntry.clockIn)}` : "Snap a selfie to start"}
+                </div>
               </div>
             </Link>
 
-            <div className="card p-8">
+            <div className="card p-8 animate-slide-up">
               <div className="flex items-start justify-between mb-6">
-                <CalendarDays size={28} className="text-ink" />
+                <div className="w-12 h-12 rounded-lg bg-rust/15 border border-rust/30 flex items-center justify-center">
+                  <CalendarDays size={22} className="text-glow" />
+                </div>
                 <span className="chip">This week</span>
               </div>
-              <div className="display text-3xl mb-1">
-                {myWeekHours.toFixed(1)}{" "}
-                <span className="text-base font-normal text-smoke">hours</span>
+              <div className="display text-4xl mb-1 text-ink tabular-nums">
+                <AnimatedNumber value={myWeekHours} decimals={1} />{" "}
+                <span className="text-base font-normal text-smoke font-sans">hrs</span>
               </div>
               <div className="text-sm text-smoke">
-                Across {myWeekEntries.length} shift
-                {myWeekEntries.length !== 1 ? "s" : ""}
+                {myWeekEntries.length} shift{myWeekEntries.length !== 1 ? "s" : ""}
               </div>
             </div>
 
             {myPendingTimeOff > 0 && (
               <Link
                 href="/time-off"
-                className="md:col-span-2 card p-5 bg-rust/5 border-rust/30 hover:border-rust transition-colors flex items-center gap-3"
+                className="md:col-span-2 card p-5 hover:border-amber transition-colors flex items-center gap-4 animate-slide-up"
+                style={{ borderColor: "rgba(251, 146, 60, 0.4)", background: "linear-gradient(180deg, rgba(251,146,60,0.08) 0%, rgba(15,22,38,0.7) 100%)" }}
               >
-                <Inbox size={20} className="text-rust" />
+                <div className="w-10 h-10 rounded-lg bg-amber/20 border border-amber/40 flex items-center justify-center">
+                  <Inbox size={18} className="text-amber" />
+                </div>
                 <div className="flex-1">
-                  <div className="font-medium text-sm">
-                    {myPendingTimeOff} pending time-off request
-                    {myPendingTimeOff > 1 ? "s" : ""}
+                  <div className="font-medium text-ink">
+                    {myPendingTimeOff} pending time-off request{myPendingTimeOff > 1 ? "s" : ""}
                   </div>
                   <div className="text-xs text-smoke">Awaiting manager decision</div>
                 </div>
-                <span className="text-xs uppercase tracking-widest text-smoke">
-                  View →
-                </span>
+                <ArrowUpRight size={18} className="text-smoke" />
               </Link>
             )}
 
-            <div className="md:col-span-2 card p-8">
+            <div className="md:col-span-2 card p-8 animate-slide-up">
               <div className="flex items-baseline justify-between mb-6">
-                <h2 className="display text-2xl">Upcoming shifts</h2>
+                <h2 className="display text-2xl text-ink">Upcoming shifts</h2>
                 <Link
                   href="/my-shifts"
-                  className="text-xs uppercase tracking-widest text-smoke hover:text-ink"
+                  className="label-eyebrow hover:text-rust transition-colors flex items-center gap-1"
                 >
-                  View all →
+                  View all <ArrowUpRight size={12} />
                 </Link>
               </div>
               {myUpcomingShifts.length === 0 ? (
                 <div className="text-sm text-smoke italic">
-                  No published shifts. Your manager will publish them when ready.
+                  No published shifts yet. Your manager will publish them soon.
                 </div>
               ) : (
                 <ul className="divide-y divide-dust">
@@ -228,14 +235,14 @@ export default async function Dashboard() {
                       className="py-3 flex items-baseline justify-between flex-wrap gap-2"
                     >
                       <div>
-                        <div className="font-medium">{fmtDate(s.startTime)}</div>
+                        <div className="font-medium text-ink">{fmtDate(s.startTime)}</div>
                         <div className="text-sm text-smoke">
-                          {fmtTime(s.startTime)} — {fmtTime(s.endTime)}
+                          <span className="font-mono">{fmtTime(s.startTime)} — {fmtTime(s.endTime)}</span>
                           {s.role && ` · ${s.role}`}
-                          {s.location && ` · @ ${s.location.name}`}
+                          {s.location && ` · ${s.location.name}`}
                         </div>
                       </div>
-                      <div className="text-sm font-mono text-smoke">
+                      <div className="font-mono text-sm text-glow">
                         {durationHours(s.startTime, s.endTime).toFixed(1)}h
                       </div>
                     </li>
@@ -245,13 +252,10 @@ export default async function Dashboard() {
             </div>
           </div>
         ) : (
-          <div className="space-y-6">
+          <div className="space-y-6 animate-fade-in">
             {/* Alert row */}
-            {(pendingTimeOff > 0 ||
-              pendingSwaps > 0 ||
-              draftShifts > 0 ||
-              otAtRisk > 0) && (
-              <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-3">
+            {(pendingTimeOff > 0 || pendingSwaps > 0 || draftShifts > 0 || otAtRisk > 0) && (
+              <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-3 stagger">
                 {pendingTimeOff > 0 && (
                   <AlertCard
                     icon={<Inbox size={16} />}
@@ -289,91 +293,105 @@ export default async function Dashboard() {
             )}
 
             {/* Stats grid */}
-            <div className="grid md:grid-cols-3 gap-6">
+            <div className="grid md:grid-cols-3 gap-6 stagger">
               <StatCard
-                icon={<Users size={24} />}
+                icon={<Users size={22} />}
                 label="Active employees"
-                value={totalEmployees.toString()}
+                value={totalEmployees}
                 href="/employees"
               />
               <StatCard
-                icon={<CalendarDays size={24} />}
+                icon={<CalendarDays size={22} />}
                 label="Shifts today"
-                value={todayShifts.toString()}
+                value={todayShifts}
                 href="/schedule"
               />
               <StatCard
-                icon={<Clock size={24} />}
+                icon={<Activity size={22} />}
                 label="Clocked in now"
-                value={currentlyClockedIn.toString()}
+                value={currentlyClockedIn}
                 href="/timesheets"
+                live={currentlyClockedIn > 0}
               />
             </div>
 
-            {/* Action cards */}
-            <div className="grid md:grid-cols-3 gap-6">
-              <Link
-                href="/schedule"
-                className="card p-8 hover:border-ink transition-colors"
-              >
-                <CalendarDays size={24} className="mb-4 text-rust" />
-                <div className="display text-2xl mb-1">Build schedule</div>
-                <div className="text-sm text-smoke">
-                  Draft shifts, then publish to notify the team.
-                </div>
-              </Link>
-              <Link
-                href="/employees"
-                className="card p-8 hover:border-ink transition-colors"
-              >
-                <Users size={24} className="mb-4 text-rust" />
-                <div className="display text-2xl mb-1">Manage team</div>
-                <div className="text-sm text-smoke">
-                  Wages, locations, roles, deactivation.
-                </div>
-              </Link>
-              <Link
-                href="/timesheets"
-                className="card p-8 hover:border-ink transition-colors"
-              >
-                <FileBarChart size={24} className="mb-4 text-rust" />
-                <div className="display text-2xl mb-1">Run payroll</div>
-                <div className="text-sm text-smoke">
-                  Export CSV, Excel, or PDF.
-                </div>
-              </Link>
-              {role === "ADMIN" && (
-                <Link
-                  href="/locations"
-                  className="card p-8 hover:border-ink transition-colors"
-                >
-                  <MapPin size={24} className="mb-4 text-rust" />
-                  <div className="display text-2xl mb-1">Locations</div>
-                  <div className="text-sm text-smoke">
-                    Add stores, restaurants, or branches.
+            {/* Analytics: today's roster, charts */}
+            <DashboardAnalytics />
+
+            {/* Labor cost panel */}
+            {weekLaborCost > 0 && (
+              <div className="card p-6 animate-slide-up">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-rust/15 border border-rust/30 flex items-center justify-center">
+                      <TrendingUp size={18} className="text-glow" />
+                    </div>
+                    <div>
+                      <div className="label-eyebrow">Week to date</div>
+                      <div className="display text-xl text-ink">Labor</div>
+                    </div>
                   </div>
-                </Link>
+                  <Link href="/timesheets" className="label-eyebrow hover:text-rust transition-colors flex items-center gap-1">
+                    Open <ArrowUpRight size={12} />
+                  </Link>
+                </div>
+                <div className="grid grid-cols-2 gap-6">
+                  <div>
+                    <div className="label-eyebrow mb-1">Hours</div>
+                    <div className="display text-3xl tabular-nums text-ink">
+                      <AnimatedNumber value={weekLaborHours} decimals={1} />
+                    </div>
+                  </div>
+                  <div>
+                    <div className="label-eyebrow mb-1">Cost</div>
+                    <div className="display text-3xl tabular-nums text-glow text-glow">
+                      $<AnimatedNumber value={weekLaborCost} decimals={2} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Action grid */}
+            <div className="grid md:grid-cols-3 gap-6 stagger">
+              <ActionCard
+                href="/schedule"
+                icon={<CalendarDays size={22} />}
+                title="Build schedule"
+                desc="Draft shifts, then publish to notify your team."
+              />
+              <ActionCard
+                href="/employees"
+                icon={<Users size={22} />}
+                title="Manage team"
+                desc="Wages, locations, roles, deactivation."
+              />
+              <ActionCard
+                href="/timesheets"
+                icon={<FileBarChart size={22} />}
+                title="Run payroll"
+                desc="Export CSV, Excel, or PDF reports."
+              />
+              {role === "ADMIN" && (
+                <ActionCard
+                  href="/locations"
+                  icon={<MapPin size={22} />}
+                  title="Locations"
+                  desc="Add stores, restaurants, or branches."
+                />
               )}
-              <Link
+              <ActionCard
                 href="/time-off"
-                className="card p-8 hover:border-ink transition-colors"
-              >
-                <Inbox size={24} className="mb-4 text-rust" />
-                <div className="display text-2xl mb-1">Time off</div>
-                <div className="text-sm text-smoke">
-                  Review requests, approve or deny.
-                </div>
-              </Link>
-              <Link
+                icon={<Inbox size={22} />}
+                title="Time off"
+                desc="Review, approve, or deny requests."
+              />
+              <ActionCard
                 href="/swaps"
-                className="card p-8 hover:border-ink transition-colors"
-              >
-                <Repeat size={24} className="mb-4 text-rust" />
-                <div className="display text-2xl mb-1">Swap board</div>
-                <div className="text-sm text-smoke">
-                  Approve coverage between employees.
-                </div>
-              </Link>
+                icon={<Repeat size={22} />}
+                title="Swap board"
+                desc="Approve coverage between employees."
+              />
             </div>
           </div>
         )}
@@ -387,19 +405,68 @@ function StatCard({
   label,
   value,
   href,
+  live,
 }: {
   icon: React.ReactNode;
   label: string;
-  value: string;
+  value: number;
   href: string;
+  live?: boolean;
 }) {
   return (
-    <Link href={href} className="card p-8 hover:border-ink transition-colors">
-      <div className="text-smoke mb-4">{icon}</div>
-      <div className="text-[10px] uppercase tracking-[0.2em] text-smoke mb-2">
-        {label}
+    <Link
+      href={href}
+      className="card p-7 hover:border-rust transition-all group animate-slide-up relative overflow-hidden"
+    >
+      <div className="absolute inset-0 bg-rust/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+      <div className="relative">
+        <div className="flex items-start justify-between mb-5">
+          <div className="w-10 h-10 rounded-lg bg-rust/15 border border-rust/30 flex items-center justify-center text-rust">
+            {icon}
+          </div>
+          {live && (
+            <div className="flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-moss animate-pulse-glow"></span>
+              <span className="font-mono text-[10px] uppercase tracking-widest text-moss">live</span>
+            </div>
+          )}
+        </div>
+        <div className="label-eyebrow mb-2">{label}</div>
+        <div className="display text-5xl text-ink tabular-nums">
+          <AnimatedNumber value={value} decimals={0} />
+        </div>
       </div>
-      <div className="display text-5xl">{value}</div>
+    </Link>
+  );
+}
+
+function ActionCard({
+  href,
+  icon,
+  title,
+  desc,
+}: {
+  href: string;
+  icon: React.ReactNode;
+  title: string;
+  desc: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className="card p-7 hover:border-rust transition-all group animate-slide-up relative overflow-hidden"
+    >
+      <div className="absolute inset-0 bg-rust/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+      <div className="relative">
+        <div className="w-10 h-10 rounded-lg bg-rust/15 border border-rust/30 flex items-center justify-center text-rust mb-5 group-hover:scale-105 transition-transform">
+          {icon}
+        </div>
+        <div className="flex items-baseline justify-between mb-2">
+          <div className="display text-2xl text-ink">{title}</div>
+          <ArrowUpRight size={16} className="text-smoke group-hover:text-rust transition-colors" />
+        </div>
+        <div className="text-sm text-smoke">{desc}</div>
+      </div>
     </Link>
   );
 }
@@ -420,16 +487,30 @@ function AlertCard({
   return (
     <Link
       href={href}
-      className={`card p-4 flex items-center gap-3 hover:border-ink transition-colors ${
-        warn ? "bg-rust/5 border-rust/30" : ""
-      }`}
+      className="card p-4 flex items-center gap-3 hover:border-rust transition-all animate-slide-up relative overflow-hidden"
+      style={
+        warn
+          ? {
+              borderColor: "rgba(251, 146, 60, 0.4)",
+              background: "linear-gradient(180deg, rgba(251,146,60,0.08) 0%, rgba(15,22,38,0.7) 100%)",
+            }
+          : undefined
+      }
     >
-      <div className={warn ? "text-rust" : "text-smoke"}>{icon}</div>
-      <div className="flex-1">
-        <div className="display text-2xl leading-none">{count}</div>
-        <div className="text-xs text-smoke mt-0.5">{label}</div>
+      <div
+        className={`w-9 h-9 rounded-lg border flex items-center justify-center flex-shrink-0 ${
+          warn
+            ? "bg-amber/15 border-amber/40 text-amber"
+            : "bg-rust/15 border-rust/30 text-rust"
+        }`}
+      >
+        {icon}
       </div>
-      <span className="text-xs text-smoke">→</span>
+      <div className="flex-1 min-w-0">
+        <div className="display text-2xl leading-none tabular-nums text-ink">{count}</div>
+        <div className="text-[11px] text-smoke mt-0.5 truncate">{label}</div>
+      </div>
+      <ArrowUpRight size={14} className="text-smoke flex-shrink-0" />
     </Link>
   );
 }

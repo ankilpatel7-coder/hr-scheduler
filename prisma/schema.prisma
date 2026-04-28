@@ -10,6 +10,7 @@ datasource db {
 enum Role {
   ADMIN
   MANAGER
+  LEAD
   EMPLOYEE
 }
 
@@ -28,6 +29,12 @@ enum SwapStatus {
   CANCELED
 }
 
+enum EmploymentType {
+  W2
+  CONTRACTOR_1099
+  UNSPECIFIED
+}
+
 model User {
   id           String       @id @default(cuid())
   email        String       @unique
@@ -36,8 +43,22 @@ model User {
   role         Role         @default(EMPLOYEE)
   department   String?
   active       Boolean      @default(true)
+  archivedAt   DateTime?    // when employee was archived (soft delete); permanent delete only available 1+ year after this
   hourlyWage   Float        @default(0)
   isTipped     Boolean      @default(false)
+
+  // Profile (added v5)
+  photoUrl                String?  @db.Text  // base64 data URL
+  phone                   String?
+  address                 String?  @db.Text
+  dateOfBirth             DateTime?
+  hireDate                DateTime?
+  employmentType          EmploymentType @default(UNSPECIFIED)
+  emergencyContactName    String?
+  emergencyContactPhone   String?
+  emergencyContactRelation String?
+  notes                   String?  @db.Text  // admin-only freeform notes
+
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 
@@ -60,6 +81,9 @@ model Location {
   address   String?
   timezone  String   @default("America/New_York")
   active    Boolean  @default(true)
+  // Store hours as JSON: { mon: {open: "09:00", close: "21:00", closed: false}, ... }
+  // Days: mon, tue, wed, thu, fri, sat, sun
+  hours     Json?
   createdAt DateTime @default(now())
 
   shifts    Shift[]
@@ -112,7 +136,7 @@ model ClockEntry {
   lngIn       Float?
   latOut      Float?
   lngOut      Float?
-  editedBy    String?   // userId of manager who edited
+  editedBy    String?
   editNote    String?
   createdAt   DateTime  @default(now())
 
@@ -123,9 +147,9 @@ model Availability {
   id        String   @id @default(cuid())
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  dayOfWeek Int      // 0 = Sunday ... 6 = Saturday
-  startMinute Int    // minutes from midnight, e.g. 540 = 9:00 AM
-  endMinute   Int    // e.g. 1020 = 5:00 PM
+  dayOfWeek Int
+  startMinute Int
+  endMinute   Int
   available Boolean  @default(true)
   createdAt DateTime @default(now())
 

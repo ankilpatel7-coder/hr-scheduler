@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { requireAuth } from "@/lib/guards";
+import { requireAuth, isStaff } from "@/lib/guards";
 
 const saveSchema = z.object({
   entries: z.array(
@@ -21,7 +21,7 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const userId = searchParams.get("userId") ?? auth.userId;
 
-  if (userId !== auth.userId && auth.role === "EMPLOYEE") {
+  if (userId !== auth.userId && isStaff(auth.role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -43,7 +43,7 @@ export async function PUT(req: Request) {
   }
 
   const targetUserId = parsed.data.userId ?? auth.userId;
-  if (targetUserId !== auth.userId && auth.role === "EMPLOYEE") {
+  if (targetUserId !== auth.userId && isStaff(auth.role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

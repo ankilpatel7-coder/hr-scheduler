@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { requireAuth, requireRole } from "@/lib/guards";
+import {
+  requireAuth,
+  requireRole,
+  getScopedEmployeeIds,
+  getScopedLocationIds,
+  isStaff,
+} from "@/lib/guards";
 
 const createSchema = z.object({
   employeeId: z.string(),
@@ -28,22 +34,49 @@ export async function GET(req: Request) {
   }
   if (locationId) where.locationId = locationId;
 
-  // Employees see only their own published shifts
-  if (auth.role === "EMPLOYEE") {
+  if (isStaff(auth.role)) {
     where.employeeId = auth.userId;
     where.published = true;
+  } else if (auth.role === "MANAGER") {
+    const scopedIds = await getScopedEmployeeIds(auth.userId, auth.role);
+    where.employeeId = { in: scopedIds ?? [] };
+    const scopedLocs = await getScopedLocationIds(auth.userId, auth.role);
+    if (scopedLocs && scopedLocs.length > 0) {
+      // Restrict to manager's locations OR shifts with no location set yet
+      where.OR = [
+        { locationId: { in: scopedLocs } },
+        { locationId: null, employeeId: { in: scopedIds ?? [] } },
+      ];
+    }
   }
 
   const shifts = await prisma.shift.findMany({
     where,
     orderBy: { startTime: "asc" },
     include: {
-      employee: { select: { id: true, name: true, department: true, hourlyWage: true } },
+      employee: {
+        select: {
+          id: true,
+          name: true,
+          department: true,
+          hourlyWage: true,
+        },
+      },
       location: { select: { id: true, name: true } },
       swap: true,
     },
   });
-  return NextResponse.json({ shifts });
+
+  // Strip wage for non-admins
+  const safe =
+    auth.role === "ADMIN"
+      ? shifts
+      : shifts.map((s) => ({
+          ...s,
+          employee: { ...s.employee, hourlyWage: 0 },
+        }));
+
+  return NextResponse.json({ shifts: safe, viewerRole: auth.role });
 }
 
 export async function POST(req: Request) {
@@ -56,6 +89,27 @@ export async function POST(req: Request) {
   }
   const { employeeId, locationId, startTime, endTime, role: shiftRole, notes } =
     parsed.data;
+
+  // Manager can only schedule employees at their locations
+  if (auth.role === "MANAGER") {
+    const scopedIds = await getScopedEmployeeIds(auth.userId, auth.role);
+    if (!scopedIds || !scopedIds.includes(employeeId)) {
+      return NextResponse.json(
+        { error: "You can only schedule employees at your assigned location(s)." },
+        { status: 403 }
+      );
+    }
+    if (locationId) {
+      const scopedLocs = await getScopedLocationIds(auth.userId, auth.role);
+      if (!scopedLocs || !scopedLocs.includes(locationId)) {
+        return NextResponse.json(
+          { error: "You can only schedule shifts at your assigned location(s)." },
+          { status: 403 }
+        );
+      }
+    }
+  }
+
   if (new Date(endTime) <= new Date(startTime)) {
     return NextResponse.json(
       { error: "End time must be after start time" },
@@ -83,6 +137,16 @@ export async function PATCH(req: Request) {
   const body = await req.json();
   const { id, ...rest } = body;
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
+
+  if (auth.role === "MANAGER") {
+    const existing = await prisma.shift.findUnique({ where: { id } });
+    if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    const scopedIds = await getScopedEmployeeIds(auth.userId, auth.role);
+    if (!scopedIds || !scopedIds.includes(existing.employeeId)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+  }
+
   const updates: any = {};
   if (rest.startTime) updates.startTime = new Date(rest.startTime);
   if (rest.endTime) updates.endTime = new Date(rest.endTime);
@@ -99,6 +163,16 @@ export async function DELETE(req: Request) {
   const { searchParams } = new URL(req.url);
   const id = searchParams.get("id");
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
+
+  if (auth.role === "MANAGER") {
+    const existing = await prisma.shift.findUnique({ where: { id } });
+    if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    const scopedIds = await getScopedEmployeeIds(auth.userId, auth.role);
+    if (!scopedIds || !scopedIds.includes(existing.employeeId)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+  }
+
   await prisma.shift.delete({ where: { id } });
   return NextResponse.json({ ok: true });
 }

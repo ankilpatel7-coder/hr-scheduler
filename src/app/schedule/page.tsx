@@ -1,12 +1,23 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Navbar from "@/components/navbar";
-import { Plus, Trash2, ChevronLeft, ChevronRight, X, Send } from "lucide-react";
-import { addDays, startOfWeek, format, isSameDay } from "date-fns";
+import { Plus, Trash2, ChevronLeft, ChevronRight, X, Send, Copy, Clipboard, Printer, CalendarPlus, AlertTriangle } from "lucide-react";
+import { addDays, startOfWeek, format, isSameDay, differenceInMinutes } from "date-fns";
 
 type LocationRef = { id: string; name: string };
+
+type DayHours = { open?: string; close?: string; closed?: boolean };
+type Hours = {
+  mon?: DayHours;
+  tue?: DayHours;
+  wed?: DayHours;
+  thu?: DayHours;
+  fri?: DayHours;
+  sat?: DayHours;
+  sun?: DayHours;
+};
 
 type Employee = {
   id: string;
@@ -30,7 +41,19 @@ type Shift = {
   employee: { id: string; name: string; department: string | null; hourlyWage: number };
 };
 
-type Location = { id: string; name: string; active: boolean };
+type Location = {
+  id: string;
+  name: string;
+  active: boolean;
+  hours?: Hours | null;
+};
+
+const DAY_KEYS: (keyof Hours)[] = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+function dayKeyForDate(d: Date): keyof Hours {
+  // date-fns getDay: 0=Sun .. 6=Sat. We want mon-first.
+  const idx = (d.getDay() + 6) % 7;
+  return DAY_KEYS[idx];
+}
 
 export default function SchedulePage() {
   const { data: session, status } = useSession();
@@ -48,6 +71,31 @@ export default function SchedulePage() {
   );
   const [publishing, setPublishing] = useState(false);
   const [publishMsg, setPublishMsg] = useState<string | null>(null);
+  // Copy/paste clipboard for shifts (in-memory only)
+  const [clipboardShift, setClipboardShift] = useState<Shift | null>(null);
+  // Right-click context menu state
+  const [menu, setMenu] = useState<{
+    x: number;
+    y: number;
+    shift?: Shift;
+    employeeId?: string;
+    day?: Date;
+  } | null>(null);
+  // Copy last week dialog
+  const [showCopyWeek, setShowCopyWeek] = useState(false);
+  const [copyWeekRunning, setCopyWeekRunning] = useState(false);
+
+  // Close context menu on any click anywhere
+  useEffect(() => {
+    if (!menu) return;
+    function close() { setMenu(null); }
+    window.addEventListener("click", close);
+    window.addEventListener("scroll", close, true);
+    return () => {
+      window.removeEventListener("click", close);
+      window.removeEventListener("scroll", close, true);
+    };
+  }, [menu]);
 
   useEffect(() => {
     if (status === "unauthenticated") router.push("/login");
@@ -82,6 +130,134 @@ export default function SchedulePage() {
     if (!confirm("Delete this shift?")) return;
     await fetch(`/api/shifts?id=${id}`, { method: "DELETE" });
     load();
+  }
+
+  // Paste a copied shift onto a (employeeId, day) slot — preserves the time-of-day from the source
+  async function pasteShift(targetEmployeeId: string, targetDay: Date) {
+    if (!clipboardShift) return;
+    const src = clipboardShift;
+    const srcStart = new Date(src.startTime);
+    const srcEnd = new Date(src.endTime);
+    const newStart = new Date(targetDay);
+    newStart.setHours(srcStart.getHours(), srcStart.getMinutes(), 0, 0);
+    const newEnd = new Date(targetDay);
+    newEnd.setHours(srcEnd.getHours(), srcEnd.getMinutes(), 0, 0);
+    // Handle overnight shifts
+    if (newEnd <= newStart) newEnd.setDate(newEnd.getDate() + 1);
+
+    await fetch("/api/shifts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        employeeId: targetEmployeeId,
+        locationId: src.location?.id ?? null,
+        startTime: newStart.toISOString(),
+        endTime: newEnd.toISOString(),
+        role: src.role ?? undefined,
+        notes: src.notes ?? undefined,
+      }),
+    });
+    load();
+  }
+
+  // Duplicate to the same employee/day
+  async function duplicateShift(shift: Shift) {
+    const start = new Date(shift.startTime);
+    const end = new Date(shift.endTime);
+    // Bump by 1 hour to avoid an exact duplicate sitting on top of original
+    const newStart = new Date(end);
+    const newEnd = new Date(end.getTime() + (end.getTime() - start.getTime()));
+    await fetch("/api/shifts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        employeeId: shift.employeeId,
+        locationId: shift.location?.id ?? null,
+        startTime: newStart.toISOString(),
+        endTime: newEnd.toISOString(),
+        role: shift.role ?? undefined,
+        notes: shift.notes ?? undefined,
+      }),
+    });
+    load();
+  }
+
+  async function copyLastWeek() {
+    setCopyWeekRunning(true);
+    const lastWeekStart = addDays(weekStart, -7);
+    const lastWeekEnd = addDays(weekStart, 0);
+    const locQuery = locationFilter ? `&locationId=${locationFilter}` : "";
+    const res = await fetch(
+      `/api/shifts?from=${lastWeekStart.toISOString()}&to=${lastWeekEnd.toISOString()}${locQuery}`
+    );
+    if (!res.ok) {
+      setCopyWeekRunning(false);
+      alert("Failed to fetch last week's shifts");
+      return;
+    }
+    const data = await res.json();
+    const lastShifts: Shift[] = data.shifts ?? [];
+    if (lastShifts.length === 0) {
+      setCopyWeekRunning(false);
+      setShowCopyWeek(false);
+      alert("No shifts found in last week to copy.");
+      return;
+    }
+
+    // Delete this week's existing shifts (since user chose 'overwrite')
+    const thisWeekRes = await fetch(
+      `/api/shifts?from=${weekStart.toISOString()}&to=${addDays(weekStart, 7).toISOString()}${locQuery}`
+    );
+    if (thisWeekRes.ok) {
+      const thisData = await thisWeekRes.json();
+      const existing: Shift[] = thisData.shifts ?? [];
+      for (const s of existing) {
+        await fetch(`/api/shifts?id=${s.id}`, { method: "DELETE" });
+      }
+    }
+
+    // Create new shifts shifted forward by 7 days
+    let created = 0;
+    for (const s of lastShifts) {
+      const ns = new Date(s.startTime);
+      const ne = new Date(s.endTime);
+      ns.setDate(ns.getDate() + 7);
+      ne.setDate(ne.getDate() + 7);
+      const r = await fetch("/api/shifts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          employeeId: s.employeeId,
+          locationId: s.location?.id ?? null,
+          startTime: ns.toISOString(),
+          endTime: ne.toISOString(),
+          role: s.role ?? undefined,
+          notes: s.notes ?? undefined,
+        }),
+      });
+      if (r.ok) created++;
+    }
+    setCopyWeekRunning(false);
+    setShowCopyWeek(false);
+    setPublishMsg(`Copied ${created} shift${created !== 1 ? "s" : ""} from last week.`);
+    setTimeout(() => setPublishMsg(null), 4000);
+    load();
+  }
+
+  function printSchedule() {
+    window.print();
+  }
+
+  // Calculate weekly total hours for an employee in the current week (used by warning indicators)
+  function weeklyHoursFor(employeeId: string): number {
+    return shifts
+      .filter((s) => s.employeeId === employeeId)
+      .reduce(
+        (acc, s) =>
+          acc +
+          differenceInMinutes(new Date(s.endTime), new Date(s.startTime)) / 60,
+        0
+      );
   }
 
   async function publish() {
@@ -194,9 +370,23 @@ export default function SchedulePage() {
               <ChevronRight size={16} />
             </button>
             <button
+              onClick={() => setShowCopyWeek(true)}
+              className="btn btn-secondary print:hidden"
+              title="Copy last week's schedule into this week"
+            >
+              <CalendarPlus size={14} /> Copy last week
+            </button>
+            <button
+              onClick={printSchedule}
+              className="btn btn-secondary print:hidden"
+              title="Print this week's schedule"
+            >
+              <Printer size={14} /> Print
+            </button>
+            <button
               onClick={publish}
               disabled={publishing || draftCount === 0}
-              className="btn btn-rust"
+              className="btn btn-rust print:hidden"
               title={draftCount === 0 ? "No drafts to publish" : ""}
             >
               <Send size={14} />
@@ -252,37 +442,80 @@ export default function SchedulePage() {
                 </tr>
               </thead>
               <tbody>
-                {displayedEmployees.map((emp) => (
+                {displayedEmployees.map((emp) => {
+                  const empWeekHours = weeklyHoursFor(emp.id);
+                  const isOT = empWeekHours > 40;
+                  return (
                   <tr key={emp.id} className="border-b border-dust last:border-0">
                     <td className="sticky left-0 bg-paper px-4 py-3 align-top">
                       <div className="font-medium text-sm">{emp.name}</div>
                       <div className="text-[11px] text-smoke">
                         {emp.department ?? "—"}
                       </div>
+                      <div className={`text-[10px] mt-0.5 font-mono ${isOT ? "text-rose font-medium" : "text-smoke"}`}>
+                        {empWeekHours.toFixed(1)}h{isOT && " · OT"}
+                      </div>
                     </td>
                     {days.map((d) => {
                       const ss = shiftsFor(emp.id, d);
+                      // Determine if any of this employee's locations is closed on this day.
+                      // We pick the location used in shifts if any, otherwise first assigned location.
+                      const empLocId = ss[0]?.location?.id ?? emp.locations[0]?.location.id;
+                      const empLoc = empLocId
+                        ? locations.find((l) => l.id === empLocId)
+                        : undefined;
+                      const dayKey = dayKeyForDate(d);
+                      const dayHours = empLoc?.hours?.[dayKey];
+                      const isClosed = !!dayHours?.closed;
+
                       return (
                         <td
                           key={d.toISOString()}
-                          className="border-l border-dust p-2 align-top min-w-[130px]"
+                          className={`border-l border-dust p-2 align-top min-w-[130px] ${
+                            isClosed ? "bg-rose/5" : ""
+                          }`}
                         >
+                          {isClosed && ss.length === 0 && (
+                            <div className="text-[10px] uppercase tracking-[0.15em] text-rose/70 font-medium text-center py-1">
+                              Closed
+                            </div>
+                          )}
                           <div className="space-y-1">
-                            {ss.map((s) => (
+                            {ss.map((s) => {
+                              // Compute scheduled-outside-hours warning
+                              const sStart = new Date(s.startTime);
+                              const sEnd = new Date(s.endTime);
+                              let outsideHours = false;
+                              if (!isClosed && dayHours?.open && dayHours?.close) {
+                                const [oh, om] = dayHours.open.split(":").map(Number);
+                                const [ch, cm] = dayHours.close.split(":").map(Number);
+                                const openMin = oh * 60 + om;
+                                const closeMin = ch * 60 + cm;
+                                const startMin = sStart.getHours() * 60 + sStart.getMinutes();
+                                const endMin = sEnd.getHours() * 60 + sEnd.getMinutes();
+                                if (startMin < openMin || endMin > closeMin) outsideHours = true;
+                              }
+                              const showClosedWarn = isClosed;
+                              const showWarn = outsideHours || showClosedWarn;
+                              return (
                               <div
                                 key={s.id}
+                                onContextMenu={(e) => {
+                                  e.preventDefault();
+                                  setMenu({ x: e.clientX, y: e.clientY, shift: s });
+                                }}
                                 className={`px-2 py-1.5 rounded text-xs group relative ${
                                   s.published
-                                    ? "bg-ink text-paper"
-                                    : "bg-paper text-ink border-2 border-dashed border-rust"
-                                }`}
+                                    ? "bg-rust text-white"
+                                    : "bg-rust/5 text-ink border-2 border-dashed border-rust/40"
+                                } ${showWarn ? "ring-2 ring-amber" : ""}`}
                               >
                                 <div className="font-mono">
                                   {format(new Date(s.startTime), "h:mma")}
                                   <span
                                     className={
                                       s.published
-                                        ? "text-paper/50"
+                                        ? "text-white/60"
                                         : "text-smoke"
                                     }
                                   >
@@ -295,7 +528,7 @@ export default function SchedulePage() {
                                   <div
                                     className={
                                       s.published
-                                        ? "text-paper/70 truncate"
+                                        ? "text-white/80 truncate"
                                         : "text-smoke truncate"
                                     }
                                   >
@@ -306,7 +539,7 @@ export default function SchedulePage() {
                                   <div
                                     className={
                                       s.published
-                                        ? "text-paper/60 truncate text-[10px]"
+                                        ? "text-white/70 truncate text-[10px]"
                                         : "text-smoke truncate text-[10px]"
                                     }
                                   >
@@ -317,19 +550,43 @@ export default function SchedulePage() {
                                   onClick={() => deleteShift(s.id)}
                                   className={`absolute top-1 right-1 opacity-0 group-hover:opacity-100 ${
                                     s.published
-                                      ? "text-paper/70 hover:text-rust"
+                                      ? "text-white/80 hover:text-white"
                                       : "text-smoke hover:text-rust"
                                   }`}
                                 >
                                   <Trash2 size={12} />
                                 </button>
+                                {showWarn && (
+                                  <div
+                                    className="absolute -top-1 -right-1 bg-amber text-white rounded-full p-0.5"
+                                    title={
+                                      isClosed
+                                        ? "Scheduled on a CLOSED day"
+                                        : "Scheduled outside store hours"
+                                    }
+                                  >
+                                    <AlertTriangle size={10} />
+                                  </div>
+                                )}
                               </div>
-                            ))}
+                              );
+                            })}
                             <button
                               onClick={() =>
                                 setModalSlot({ day: d, employeeId: emp.id })
                               }
-                              className="w-full text-xs text-smoke hover:text-ink hover:bg-dust/30 py-1 rounded border border-dashed border-dust flex items-center justify-center gap-1"
+                              onContextMenu={(e) => {
+                                e.preventDefault();
+                                if (clipboardShift) {
+                                  setMenu({
+                                    x: e.clientX,
+                                    y: e.clientY,
+                                    employeeId: emp.id,
+                                    day: d,
+                                  });
+                                }
+                              }}
+                              className="w-full text-xs text-smoke hover:text-ink hover:bg-dust/30 py-1 rounded border border-dashed border-dust flex items-center justify-center gap-1 print:hidden"
                             >
                               <Plus size={12} /> Add
                             </button>
@@ -338,7 +595,8 @@ export default function SchedulePage() {
                       );
                     })}
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
             {displayedEmployees.length === 0 && (
@@ -352,6 +610,97 @@ export default function SchedulePage() {
         )}
       </main>
 
+      {/* Right-click context menu */}
+      {menu && (
+        <div
+          className="fixed z-50 card p-1 min-w-[180px] shadow-lift"
+          style={{ left: menu.x, top: menu.y }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {menu.shift && (
+            <>
+              <button
+                onClick={() => {
+                  setClipboardShift(menu.shift!);
+                  setMenu(null);
+                }}
+                className="w-full text-left px-3 py-2 text-sm hover:bg-dust/40 rounded flex items-center gap-2"
+              >
+                <Copy size={13} /> Copy
+              </button>
+              <button
+                onClick={() => {
+                  duplicateShift(menu.shift!);
+                  setMenu(null);
+                }}
+                className="w-full text-left px-3 py-2 text-sm hover:bg-dust/40 rounded flex items-center gap-2"
+              >
+                <Plus size={13} /> Duplicate (after this)
+              </button>
+              <button
+                onClick={() => {
+                  deleteShift(menu.shift!.id);
+                  setMenu(null);
+                }}
+                className="w-full text-left px-3 py-2 text-sm hover:bg-rose/10 text-rose rounded flex items-center gap-2"
+              >
+                <Trash2 size={13} /> Delete
+              </button>
+            </>
+          )}
+          {menu.employeeId && menu.day && (
+            <button
+              onClick={() => {
+                pasteShift(menu.employeeId!, menu.day!);
+                setMenu(null);
+              }}
+              className="w-full text-left px-3 py-2 text-sm hover:bg-dust/40 rounded flex items-center gap-2"
+            >
+              <Clipboard size={13} /> Paste here
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Copy last week confirmation */}
+      {showCopyWeek && (
+        <div className="fixed inset-0 z-50 bg-ink/40 flex items-center justify-center p-6">
+          <div className="card max-w-md p-6">
+            <h2 className="display text-2xl text-ink mb-2">Copy last week</h2>
+            <p className="text-sm text-smoke mb-4">
+              This will copy all shifts from{" "}
+              <span className="font-mono text-ink">
+                {format(addDays(weekStart, -7), "MMM d")} – {format(addDays(weekStart, -1), "MMM d")}
+              </span>{" "}
+              into{" "}
+              <span className="font-mono text-ink">
+                {format(weekStart, "MMM d")} – {format(addDays(weekStart, 6), "MMM d")}
+              </span>
+              .
+            </p>
+            <div className="text-xs text-amber bg-amber/10 px-3 py-2 rounded border border-amber/30 mb-4">
+              ⚠️ This will <strong>delete this week's existing shifts first</strong>, then copy
+              last week's shifts forward by 7 days.
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setShowCopyWeek(false)}
+                className="btn btn-secondary"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={copyLastWeek}
+                disabled={copyWeekRunning}
+                className="btn btn-primary"
+              >
+                {copyWeekRunning ? "Copying…" : "Copy and overwrite"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {modalSlot && (
         <AddShiftModal
           day={modalSlot.day}
@@ -359,6 +708,10 @@ export default function SchedulePage() {
           employeeName={
             employees.find((e) => e.id === modalSlot.employeeId)?.name ?? ""
           }
+          employeeBaseLocationId={
+            employees.find((e) => e.id === modalSlot.employeeId)?.locations[0]?.location.id ?? ""
+          }
+          existingWeeklyHours={weeklyHoursFor(modalSlot.employeeId)}
           locations={locations}
           defaultLocationId={locationFilter}
           onClose={() => setModalSlot(null)}
@@ -376,6 +729,8 @@ function AddShiftModal({
   day,
   employeeId,
   employeeName,
+  employeeBaseLocationId,
+  existingWeeklyHours,
   locations,
   defaultLocationId,
   onClose,
@@ -384,31 +739,55 @@ function AddShiftModal({
   day: Date;
   employeeId: string;
   employeeName: string;
+  employeeBaseLocationId: string;
+  existingWeeklyHours: number;
   locations: Location[];
   defaultLocationId: string;
   onClose: () => void;
   onCreated: () => void;
 }) {
+  // Priority for location: explicit filter > employee's base location > first location
+  const initialLocId =
+    defaultLocationId || employeeBaseLocationId || (locations[0]?.id ?? "");
   const [form, setForm] = useState({
     start: "09:00",
     end: "17:00",
     role: "",
     notes: "",
-    locationId: defaultLocationId || (locations[0]?.id ?? ""),
+    locationId: initialLocId,
   });
   const [err, setErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  // Compute warnings: outside store hours, overtime
+  const dayKey = dayKeyForDate(day);
+  const selectedLoc = locations.find((l) => l.id === form.locationId);
+  const dayHours = selectedLoc?.hours?.[dayKey];
+  const isClosedDay = !!dayHours?.closed;
+  const [sH, sM] = form.start.split(":").map(Number);
+  const [eH, eM] = form.end.split(":").map(Number);
+  const startMin = sH * 60 + sM;
+  const endMin = eH * 60 + eM;
+  const shiftHours = (endMin - startMin) / 60;
+  let outsideHours = false;
+  if (!isClosedDay && dayHours?.open && dayHours?.close) {
+    const [oh, om] = dayHours.open.split(":").map(Number);
+    const [ch, cm] = dayHours.close.split(":").map(Number);
+    if (startMin < oh * 60 + om || endMin > ch * 60 + cm) outsideHours = true;
+  }
+  const projectedWeeklyHours = existingWeeklyHours + (shiftHours > 0 ? shiftHours : 0);
+  const willCauseOT = projectedWeeklyHours > 40;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setErr(null);
     setSaving(true);
-    const [sH, sM] = form.start.split(":").map(Number);
-    const [eH, eM] = form.end.split(":").map(Number);
+    const [startH, startM] = form.start.split(":").map(Number);
+    const [endH, endM] = form.end.split(":").map(Number);
     const startTime = new Date(day);
-    startTime.setHours(sH, sM, 0, 0);
+    startTime.setHours(startH, startM, 0, 0);
     const endTime = new Date(day);
-    endTime.setHours(eH, eM, 0, 0);
+    endTime.setHours(endH, endM, 0, 0);
     if (endTime <= startTime) endTime.setDate(endTime.getDate() + 1);
     const res = await fetch("/api/shifts", {
       method: "POST",
@@ -431,11 +810,8 @@ function AddShiftModal({
     onCreated();
   }
 
-  // Kentucky break-reminder hint
-  const [sH, sM] = form.start.split(":").map(Number);
-  const [eH, eM] = form.end.split(":").map(Number);
-  const durationHours =
-    Math.max(0, (eH * 60 + (eM || 0) - sH * 60 - (sM || 0))) / 60;
+  // Kentucky break-reminder hint — uses shiftHours computed above
+  const durationHours = Math.max(0, shiftHours);
 
   return (
     <div className="fixed inset-0 z-50 bg-ink/40 flex items-center justify-center p-6">
@@ -511,6 +887,41 @@ function AddShiftModal({
               {err}
             </div>
           )}
+
+          {/* Warnings */}
+          {(isClosedDay || outsideHours || willCauseOT) && (
+            <div className="space-y-2">
+              {isClosedDay && (
+                <div className="text-xs text-amber bg-amber/10 px-3 py-2 rounded border border-amber/30 flex items-start gap-2">
+                  <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
+                  <div>
+                    <strong>Location closed</strong> on {format(day, "EEEE")}. You can still
+                    schedule, but this is outside your set business hours.
+                  </div>
+                </div>
+              )}
+              {outsideHours && !isClosedDay && (
+                <div className="text-xs text-amber bg-amber/10 px-3 py-2 rounded border border-amber/30 flex items-start gap-2">
+                  <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
+                  <div>
+                    <strong>Outside store hours</strong>. Open hours for {format(day, "EEEE")}
+                    : {dayHours?.open}–{dayHours?.close}
+                  </div>
+                </div>
+              )}
+              {willCauseOT && (
+                <div className="text-xs text-rose bg-rose/10 px-3 py-2 rounded border border-rose/30 flex items-start gap-2">
+                  <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
+                  <div>
+                    <strong>Overtime warning</strong>. {employeeName}'s weekly hours will be{" "}
+                    <span className="font-mono">{projectedWeeklyHours.toFixed(1)}h</span>
+                    {" "}(over 40h triggers OT pay).
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           <button disabled={saving} className="btn btn-primary w-full">
             {saving ? "Saving…" : "Create shift (draft)"}
           </button>

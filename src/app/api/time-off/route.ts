@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { requireAuth } from "@/lib/guards";
+import { requireAuth, isStaff, getScopedEmployeeIds } from "@/lib/guards";
 import { sendEmail, baseEmailTemplate } from "@/lib/email";
 import { format } from "date-fns";
 
@@ -17,11 +17,20 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const statusFilter = searchParams.get("status");
   const scope = searchParams.get("scope"); // "mine" | "all"
+  const locationId = searchParams.get("locationId");
 
   const where: any = {};
   if (statusFilter) where.status = statusFilter;
-  if (scope === "mine" || auth.role === "EMPLOYEE") {
+  if (scope === "mine" || isStaff(auth.role)) {
     where.userId = auth.userId;
+  } else if (auth.role === "MANAGER") {
+    // Manager sees only requests from staff at their location(s)
+    const scoped = await getScopedEmployeeIds(auth.userId, "MANAGER");
+    where.userId = { in: scoped ?? [] };
+  }
+
+  if (locationId && (auth.role === "ADMIN" || auth.role === "MANAGER")) {
+    where.user = { locations: { some: { locationId } } };
   }
 
   const requests = await prisma.timeOffRequest.findMany({
@@ -90,10 +99,30 @@ export async function DELETE(req: Request) {
   if ("error" in auth) return auth.error;
   const { searchParams } = new URL(req.url);
   const id = searchParams.get("id");
+  const hard = searchParams.get("hard") === "true";
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
   const existing = await prisma.timeOffRequest.findUnique({ where: { id } });
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  if (existing.userId !== auth.userId && auth.role === "EMPLOYEE") {
+
+  // Hard delete: only admin/manager (with scope) can use this
+  if (hard) {
+    if (auth.role === "ADMIN") {
+      await prisma.timeOffRequest.delete({ where: { id } });
+      return NextResponse.json({ ok: true });
+    }
+    if (auth.role === "MANAGER") {
+      const scoped = await getScopedEmployeeIds(auth.userId, "MANAGER");
+      if (!scoped || !scoped.includes(existing.userId)) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+      await prisma.timeOffRequest.delete({ where: { id } });
+      return NextResponse.json({ ok: true });
+    }
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  // Soft cancel (employees can do this for their own pending requests)
+  if (existing.userId !== auth.userId && isStaff(auth.role)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   if (existing.status !== "PENDING") {
@@ -104,4 +133,59 @@ export async function DELETE(req: Request) {
     data: { status: "CANCELED" },
   });
   return NextResponse.json({ ok: true });
+}
+
+const patchSchema = z.object({
+  id: z.string(),
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
+  reason: z.string().nullable().optional(),
+});
+
+export async function PATCH(req: Request) {
+  const auth = await requireAuth();
+  if ("error" in auth) return auth.error;
+
+  const body = await req.json();
+  const parsed = patchSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: "Invalid input" }, { status: 400 });
+  }
+  const { id, startDate, endDate, reason } = parsed.data;
+
+  const existing = await prisma.timeOffRequest.findUnique({ where: { id } });
+  if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+  // Authz: requester can edit their own pending; manager can edit any in scope; admin can edit any
+  if (auth.role === "ADMIN") {
+    // ok
+  } else if (auth.role === "MANAGER") {
+    const scoped = await getScopedEmployeeIds(auth.userId, "MANAGER");
+    if (!scoped || !scoped.includes(existing.userId)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+  } else {
+    // Staff/Lead/Employee: only own pending
+    if (existing.userId !== auth.userId) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+    if (existing.status !== "PENDING") {
+      return NextResponse.json(
+        { error: "Cannot edit a decided request. Cancel and create a new one." },
+        { status: 400 }
+      );
+    }
+  }
+
+  const data: any = {};
+  if (startDate) data.startDate = new Date(startDate);
+  if (endDate) data.endDate = new Date(endDate);
+  if (reason !== undefined) data.reason = reason;
+
+  if (data.startDate && data.endDate && data.endDate < data.startDate) {
+    return NextResponse.json({ error: "End date must be on or after start date" }, { status: 400 });
+  }
+
+  const updated = await prisma.timeOffRequest.update({ where: { id }, data });
+  return NextResponse.json({ request: updated });
 }

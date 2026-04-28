@@ -1,159 +1,355 @@
-@import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap");
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  --bone: #f5f2ec;
-  --ink: #1a1816;
-  --paper: #fbf9f4;
-  --rust: #b4553a;
-  --moss: #5a6b4a;
-  --dust: #ddd6c7;
+  /* Light theme — Linear + Stripe blend */
+  --bg-deep: #fafbfc;        /* page background */
+  --bg-surface: #ffffff;     /* card surface */
+  --bg-raised: #f8fafc;      /* raised surface (table headers) */
+  --bg-elevated: #f1f5f9;    /* hover/elevated surface */
+
+  --border-line: #e2e8f0;    /* default borders */
+  --border-bright: #cbd5e1;  /* hover/focus borders */
+
+  --text-primary: #0f172a;   /* slate-900 */
+  --text-secondary: #64748b; /* slate-500 */
+  --text-muted: #94a3b8;     /* slate-400 */
+
+  --accent-blue: #6366f1;    /* indigo-500 */
+  --accent-blue-bright: #4f46e5; /* indigo-600 (darker for hover) */
+  --accent-cyan: #10b981;    /* emerald */
+  --accent-glow: #8b5cf6;    /* violet */
+  --accent-amber: #f59e0b;
+  --accent-rose: #ef4444;
 }
 
-html,
-body {
-  background-color: var(--bone);
-  color: var(--ink);
-  font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+html, body {
+  background-color: var(--bg-deep);
+  color: var(--text-primary);
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
   font-weight: 400;
   letter-spacing: -0.005em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  min-height: 100vh;
 }
 
-h1,
-h2,
-h3,
-.display {
+h1, h2, h3, .display {
   font-family: "Fraunces", ui-serif, Georgia, serif;
   font-optical-sizing: auto;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.025em;
+  color: var(--text-primary);
+  font-weight: 500;
 }
 
-/* Subtle paper texture across the whole app */
-body {
-  background-image: radial-gradient(
-      circle at 1px 1px,
-      rgba(26, 24, 22, 0.025) 1px,
-      transparent 0
-    );
-  background-size: 24px 24px;
-}
-
-/* Form elements */
-input,
-select,
-textarea {
-  background-color: var(--paper);
-  border: 1px solid var(--dust);
-  padding: 0.625rem 0.875rem;
-  border-radius: 4px;
-  color: var(--ink);
+/* ---------- Form elements ---------- */
+input, select, textarea {
+  background-color: #ffffff;
+  border: 1px solid var(--border-line);
+  padding: 0.5625rem 0.875rem;
+  border-radius: 6px;
+  color: var(--text-primary);
   font-size: 0.9375rem;
-  transition: border-color 0.15s ease;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
   width: 100%;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
 }
-input:focus,
-select:focus,
-textarea:focus {
+input:focus, select:focus, textarea:focus {
   outline: none;
-  border-color: var(--ink);
+  border-color: var(--accent-blue);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
+}
+input::placeholder, textarea::placeholder {
+  color: var(--text-muted);
+}
+select option {
+  background: var(--bg-surface);
+  color: var(--text-primary);
 }
 
 label {
   display: block;
-  font-size: 0.75rem;
-  font-weight: 500;
+  font-size: 0.6875rem;
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--smoke, #4a4742);
-  margin-bottom: 0.375rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.5rem;
 }
 
+/* ---------- Buttons ---------- */
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  padding: 0.625rem 1.125rem;
+  padding: 0.5625rem 1.125rem;
   font-size: 0.875rem;
   font-weight: 500;
-  letter-spacing: 0.01em;
-  border-radius: 4px;
-  transition: all 0.15s ease;
+  border-radius: 6px;
+  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
   cursor: pointer;
   border: 1px solid transparent;
+  position: relative;
+  white-space: nowrap;
 }
 .btn-primary {
-  background-color: var(--ink);
-  color: var(--paper);
+  background: var(--accent-blue);
+  color: white;
+  box-shadow: 0 1px 2px rgba(99, 102, 241, 0.2);
 }
-.btn-primary:hover {
-  background-color: #000;
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent-blue-bright);
+  box-shadow: 0 1px 2px rgba(79, 70, 229, 0.25), 0 4px 8px rgba(79, 70, 229, 0.15);
 }
 .btn-secondary {
-  background-color: var(--paper);
-  color: var(--ink);
-  border-color: var(--dust);
+  background-color: #ffffff;
+  color: var(--text-primary);
+  border-color: var(--border-line);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
-.btn-secondary:hover {
-  border-color: var(--ink);
+.btn-secondary:hover:not(:disabled) {
+  background-color: var(--bg-elevated);
+  border-color: var(--border-bright);
 }
 .btn-rust {
-  background-color: var(--rust);
-  color: var(--paper);
+  background: var(--accent-cyan);
+  color: white;
 }
-.btn-rust:hover {
-  background-color: #9c4730;
+.btn-rust:hover:not(:disabled) {
+  background: #059669;
 }
 .btn-ghost {
   background-color: transparent;
-  color: var(--ink);
+  color: var(--text-secondary);
 }
-.btn-ghost:hover {
-  background-color: rgba(26, 24, 22, 0.05);
+.btn-ghost:hover:not(:disabled) {
+  background-color: var(--bg-elevated);
+  color: var(--text-primary);
 }
 .btn:disabled {
-  opacity: 0.5;
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
+/* ---------- Cards ---------- */
 .card {
-  background-color: var(--paper);
-  border: 1px solid var(--dust);
-  border-radius: 6px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-line);
+  border-radius: 10px;
+  position: relative;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+.card:hover {
+  border-color: var(--border-bright);
 }
 
+/* ---------- Chips ---------- */
 .chip {
   display: inline-flex;
   align-items: center;
-  padding: 0.125rem 0.5rem;
+  padding: 0.1875rem 0.625rem;
   font-size: 0.6875rem;
   font-weight: 500;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
-  border-radius: 3px;
-  border: 1px solid var(--dust);
-  background: var(--bone);
+  letter-spacing: 0.06em;
+  border-radius: 999px;
+  border: 1px solid var(--border-line);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  font-family: "Inter", sans-serif;
 }
 .chip-rust {
-  color: var(--rust);
-  border-color: var(--rust);
+  color: #4338ca;
+  border-color: rgba(99, 102, 241, 0.25);
+  background: rgba(99, 102, 241, 0.08);
 }
 .chip-moss {
-  color: var(--moss);
-  border-color: var(--moss);
+  color: #047857;
+  border-color: rgba(16, 185, 129, 0.25);
+  background: rgba(16, 185, 129, 0.08);
 }
 
-/* Thin divider */
+/* ---------- Number / data ---------- */
+.font-mono, code, pre, .tabular {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-feature-settings: "tnum" 1;
+}
+
+/* ---------- Glass surface (nav, modals) ---------- */
+.glass {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  border: 1px solid var(--border-line);
+}
+
+/* ---------- Animations ---------- */
+@keyframes shimmer {
+  0% { background-position: -1000px 0; }
+  100% { background-position: 1000px 0; }
+}
+@keyframes pulse-glow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.65; }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in { animation: fade-in 0.4s ease-out; }
+.animate-slide-up { animation: slide-up 0.5s cubic-bezier(0.16, 1, 0.3, 1); }
+.animate-pulse-glow { animation: pulse-glow 2.5s ease-in-out infinite; }
+
+.stagger > *:nth-child(1) { animation-delay: 0ms; }
+.stagger > *:nth-child(2) { animation-delay: 50ms; }
+.stagger > *:nth-child(3) { animation-delay: 100ms; }
+.stagger > *:nth-child(4) { animation-delay: 150ms; }
+.stagger > *:nth-child(5) { animation-delay: 200ms; }
+.stagger > *:nth-child(6) { animation-delay: 250ms; }
+
+.text-glow {
+  color: var(--accent-glow);
+}
+
 .rule {
   height: 1px;
-  background: linear-gradient(
-    to right,
-    transparent,
-    var(--dust) 20%,
-    var(--dust) 80%,
-    transparent
-  );
+  background: linear-gradient(to right, transparent, var(--border-line) 20%, var(--border-line) 80%, transparent);
+}
+
+/* Subtle scrollbar */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--bg-deep); }
+::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 5px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+.label-eyebrow {
+  font-family: "Inter", sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+::selection {
+  background: rgba(99, 102, 241, 0.18);
+  color: var(--text-primary);
+}
+
+/* Modal backdrop — soft dim */
+.bg-ink\/40 {
+  background-color: rgba(15, 23, 42, 0.4) !important;
+  backdrop-filter: blur(4px);
+}
+
+/* Fix legacy classes that referred to inverted colors */
+.bg-ink.text-paper {
+  background: var(--accent-blue) !important;
+  color: white !important;
+  border-color: transparent !important;
+}
+
+.skeleton {
+  background: linear-gradient(90deg, var(--bg-elevated) 0%, var(--bg-raised) 50%, var(--bg-elevated) 100%);
+  background-size: 1000px 100%;
+  animation: shimmer 2s linear infinite;
+  border-radius: 4px;
+}
+
+table {
+  color: var(--text-primary);
+}
+thead {
+  background: var(--bg-raised);
+}
+
+/* Stripe-style divider lines for data tables */
+tbody tr {
+  border-bottom: 1px solid var(--border-line);
+}
+tbody tr:last-child {
+  border-bottom: none;
+}
+
+/* Checkbox — clean indigo accent */
+input[type="checkbox"] {
+  width: 1.0625rem;
+  height: 1.0625rem;
+  padding: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  border: 1px solid var(--border-bright);
+  background: #ffffff;
+  border-radius: 4px;
+  cursor: pointer;
+  position: relative;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+input[type="checkbox"]:checked {
+  background: var(--accent-blue);
+  border-color: var(--accent-blue);
+}
+input[type="checkbox"]:checked::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='white'><path d='M6 11L2.5 7.5l1.06-1.06L6 8.88l6.44-6.44L13.5 3.5z'/></svg>");
+  background-size: 80%;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+input[type="checkbox"]:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 2px;
+}
+
+/* ---------- Print styles ---------- */
+@media print {
+  body {
+    background: white !important;
+    color: black !important;
+  }
+  /* Hide non-essential UI when printing */
+  nav, .print\:hidden, button:not(.print-keep) {
+    display: none !important;
+  }
+  /* Cards become plain white */
+  .card {
+    box-shadow: none !important;
+    border: 1px solid #ddd !important;
+    background: white !important;
+    page-break-inside: avoid;
+  }
+  /* Compact the schedule */
+  table {
+    font-size: 10px !important;
+    width: 100% !important;
+    page-break-inside: avoid;
+  }
+  th, td {
+    padding: 4px 6px !important;
+  }
+  /* Remove background colors that won't print well */
+  .bg-rust { background: #4f46e5 !important; color: white !important; }
+  .text-white { color: white !important; }
+  /* Larger heading */
+  h1.display, .display { color: black !important; }
+  /* Hide hover-only buttons */
+  .group-hover\:opacity-100 { display: none !important; }
 }

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Navbar from "@/components/navbar";
+import LocationFilter from "@/components/location-filter";
 import { format } from "date-fns";
 import { Check, Ban, Hand } from "lucide-react";
 
@@ -27,6 +28,7 @@ export default function SwapsPage() {
   const router = useRouter();
   const [swaps, setSwaps] = useState<Swap[]>([]);
   const [loading, setLoading] = useState(true);
+  const [locationFilter, setLocationFilter] = useState("");
 
   useEffect(() => {
     if (status === "unauthenticated") router.push("/login");
@@ -37,7 +39,8 @@ export default function SwapsPage() {
   const canDecide = role === "ADMIN" || role === "MANAGER";
 
   async function load() {
-    const res = await fetch("/api/swaps");
+    const q = locationFilter ? `?locationId=${locationFilter}` : "";
+    const res = await fetch(`/api/swaps${q}`);
     if (res.ok) {
       const d = await res.json();
       setSwaps(d.swaps);
@@ -48,7 +51,7 @@ export default function SwapsPage() {
   useEffect(() => {
     if (session) load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session]);
+  }, [session, locationFilter]);
 
   async function claim(id: string) {
     const res = await fetch("/api/swaps/claim", {
@@ -86,11 +89,14 @@ export default function SwapsPage() {
     <div className="min-h-screen">
       <Navbar />
       <main className="max-w-5xl mx-auto px-6 py-10">
-        <div className="mb-8">
-          <div className="text-[10px] tracking-[0.3em] uppercase text-smoke mb-2">
-            Shift coverage
+        <div className="flex items-baseline justify-between mb-8 flex-wrap gap-4">
+          <div>
+            <div className="text-[10px] tracking-[0.3em] uppercase text-smoke mb-2">
+              Shift coverage
+            </div>
+            <h1 className="display text-5xl">Swap board</h1>
           </div>
-          <h1 className="display text-5xl">Swap board</h1>
+          <LocationFilter value={locationFilter} onChange={setLocationFilter} />
         </div>
 
         {loading ? (

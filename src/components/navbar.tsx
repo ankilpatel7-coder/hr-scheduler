@@ -11,29 +11,38 @@ export default function Navbar() {
 
   if (!session) return null;
 
+  const isStaffMember = role === "EMPLOYEE" || role === "LEAD";
+  const isManager = role === "MANAGER";
+  const isAdmin = role === "ADMIN";
+
   const links: { href: string; label: string; show: boolean }[] = [
     { href: "/dashboard", label: "Overview", show: true },
-    { href: "/clock", label: "Clock In", show: role === "EMPLOYEE" },
-    { href: "/my-shifts", label: "My Shifts", show: role === "EMPLOYEE" },
-    { href: "/availability", label: "Availability", show: role === "EMPLOYEE" },
-    { href: "/schedule", label: "Schedule", show: role === "ADMIN" || role === "MANAGER" },
-    { href: "/employees", label: "Employees", show: role === "ADMIN" || role === "MANAGER" },
-    { href: "/locations", label: "Locations", show: role === "ADMIN" },
+    { href: "/clock", label: "Clock In", show: isStaffMember },
+    { href: "/my-shifts", label: "My Shifts", show: isStaffMember },
+    { href: "/availability", label: "Availability", show: isStaffMember },
+    { href: "/schedule", label: "Schedule", show: isAdmin || isManager },
+    { href: "/employees", label: "Employees", show: isAdmin || isManager },
+    { href: "/locations", label: "Locations", show: isAdmin },
     { href: "/time-off", label: "Time Off", show: true },
     { href: "/swaps", label: "Swaps", show: true },
     { href: "/timesheets", label: "Timesheets", show: true },
+    { href: "/profile", label: "Profile", show: isStaffMember },
+    { href: "/settings", label: "Settings", show: isAdmin },
   ];
 
   return (
-    <header className="border-b border-dust bg-paper/60 backdrop-blur-sm sticky top-0 z-40">
-      <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-        <Link href="/dashboard" className="flex items-baseline gap-2">
-          <span className="display text-2xl font-semibold tracking-tight">Shiftwork</span>
-          <span className="text-[10px] uppercase tracking-[0.2em] text-smoke mt-1">
-            ·&nbsp;HR
-          </span>
+    <header className="glass sticky top-0 z-40 border-b border-dust/60">
+      <div className="max-w-[1500px] mx-auto px-6 h-16 flex items-center justify-between">
+        <Link href="/dashboard" className="flex items-center gap-3 group">
+          <div className="relative w-8 h-8 rounded-md bg-rust flex items-center justify-center">
+            <span className="relative font-display text-white font-bold text-base leading-none">S</span>
+          </div>
+          <div className="flex items-baseline gap-2">
+            <span className="display text-xl font-semibold tracking-tight text-ink">Shiftwork</span>
+          </div>
         </Link>
-        <nav className="hidden lg:flex items-center gap-1">
+
+        <nav className="hidden lg:flex items-center gap-0.5 bg-paper/40 rounded-full p-1 border border-dust/60">
           {links
             .filter((l) => l.show)
             .map((l) => {
@@ -42,22 +51,26 @@ export default function Navbar() {
                 <Link
                   key={l.href}
                   href={l.href}
-                  className={`px-3 py-1.5 text-sm rounded ${
+                  className={`relative px-3.5 py-1.5 text-[13px] font-medium rounded-full transition-all duration-200 ${
                     active
-                      ? "bg-ink text-paper"
-                      : "text-ink/70 hover:text-ink hover:bg-dust/40"
+                      ? "text-white"
+                      : "text-smoke hover:text-ink"
                   }`}
                 >
-                  {l.label}
+                  {active && (
+                    <span className="absolute inset-0 rounded-full bg-rust"></span>
+                  )}
+                  <span className="relative">{l.label}</span>
                 </Link>
               );
             })}
         </nav>
+
         <div className="flex items-center gap-3">
-          <div className="hidden sm:block text-right">
-            <div className="text-sm font-medium leading-tight">{session.user?.name}</div>
-            <div className="text-[10px] uppercase tracking-[0.15em] text-smoke">
-              {role}
+          <div className="hidden sm:flex flex-col items-end">
+            <div className="text-sm font-medium leading-tight text-ink">{session.user?.name}</div>
+            <div className="font-mono text-[9px] uppercase tracking-[0.2em] text-rust mt-0.5">
+              ● {role}
             </div>
           </div>
           <button
@@ -69,7 +82,9 @@ export default function Navbar() {
           </button>
         </div>
       </div>
-      <div className="lg:hidden border-t border-dust overflow-x-auto">
+
+      {/* Mobile/tablet horizontal scroll nav */}
+      <div className="lg:hidden border-t border-dust/60 overflow-x-auto">
         <div className="flex gap-1 px-4 py-2 min-w-max">
           {links
             .filter((l) => l.show)
@@ -79,8 +94,10 @@ export default function Navbar() {
                 <Link
                   key={l.href}
                   href={l.href}
-                  className={`px-3 py-1 text-xs rounded whitespace-nowrap ${
-                    active ? "bg-ink text-paper" : "text-ink/70"
+                  className={`relative px-3 py-1 text-xs rounded-full whitespace-nowrap transition-all ${
+                    active
+                      ? "text-white bg-rust"
+                      : "text-smoke"
                   }`}
                 >
                   {l.label}

@@ -12,5 +12,7 @@ export const config = {
     "/availability/:path*",
     "/time-off/:path*",
     "/swaps/:path*",
+    "/settings/:path*",
+    "/profile/:path*",
   ],
 };

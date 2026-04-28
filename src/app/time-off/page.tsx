@@ -3,7 +3,8 @@ import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Navbar from "@/components/navbar";
-import { Plus, X, Check, Ban } from "lucide-react";
+import LocationFilter from "@/components/location-filter";
+import { Plus, X, Check, Ban, Pencil, Trash2 } from "lucide-react";
 import { format } from "date-fns";
 
 type Req = {
@@ -24,7 +25,9 @@ export default function TimeOffPage() {
   const [requests, setRequests] = useState<Req[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
+  const [editing, setEditing] = useState<Req | null>(null);
   const [scope, setScope] = useState<"mine" | "all">("all");
+  const [locationFilter, setLocationFilter] = useState("");
 
   useEffect(() => {
     if (status === "unauthenticated") router.push("/login");
@@ -34,7 +37,11 @@ export default function TimeOffPage() {
   const canApprove = role === "ADMIN" || role === "MANAGER";
 
   async function load() {
-    const q = role === "EMPLOYEE" ? "?scope=mine" : scope === "mine" ? "?scope=mine" : "";
+    const params = new URLSearchParams();
+    const isStaff = role === "EMPLOYEE" || role === "LEAD";
+    if (isStaff || scope === "mine") params.set("scope", "mine");
+    if (locationFilter) params.set("locationId", locationFilter);
+    const q = params.toString() ? `?${params.toString()}` : "";
     const res = await fetch(`/api/time-off${q}`);
     if (res.ok) {
       const d = await res.json();
@@ -46,7 +53,7 @@ export default function TimeOffPage() {
   useEffect(() => {
     if (session) load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session, scope]);
+  }, [session, scope, locationFilter]);
 
   async function decide(id: string, decision: "APPROVED" | "DENIED", note?: string) {
     await fetch("/api/time-off/decide", {
@@ -63,6 +70,21 @@ export default function TimeOffPage() {
     load();
   }
 
+  async function hardDelete(id: string) {
+    if (
+      !confirm(
+        "Permanently delete this request? This cannot be undone and will remove the record entirely."
+      )
+    )
+      return;
+    const res = await fetch(`/api/time-off?id=${id}&hard=true`, { method: "DELETE" });
+    if (!res.ok) {
+      const d = await res.json();
+      alert(d.error ?? "Failed to delete");
+    }
+    load();
+  }
+
   return (
     <div className="min-h-screen">
       <Navbar />
@@ -74,9 +96,12 @@ export default function TimeOffPage() {
             </div>
             <h1 className="display text-5xl">Time off</h1>
           </div>
-          <button onClick={() => setShowCreate(true)} className="btn btn-primary">
-            <Plus size={16} /> New request
-          </button>
+          <div className="flex items-center gap-3 flex-wrap">
+            <LocationFilter value={locationFilter} onChange={setLocationFilter} />
+            <button onClick={() => setShowCreate(true)} className="btn btn-primary">
+              <Plus size={16} /> New request
+            </button>
+          </div>
         </div>
 
         {canApprove && (
@@ -147,10 +172,28 @@ export default function TimeOffPage() {
                   )}
                   {r.status === "PENDING" &&
                     r.user.id === (session?.user as any)?.id && (
-                      <button onClick={() => cancelMine(r.id)} className="btn btn-ghost !py-1">
-                        Cancel
-                      </button>
+                      <div className="flex gap-1">
+                        <button
+                          onClick={() => setEditing(r)}
+                          className="btn btn-ghost !p-1.5"
+                          title="Edit"
+                        >
+                          <Pencil size={14} />
+                        </button>
+                        <button onClick={() => cancelMine(r.id)} className="btn btn-ghost !py-1">
+                          Cancel
+                        </button>
+                      </div>
                     )}
+                  {canApprove && (
+                    <button
+                      onClick={() => hardDelete(r.id)}
+                      className="btn btn-ghost !p-1.5 text-rose"
+                      title="Permanently delete"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
@@ -163,6 +206,16 @@ export default function TimeOffPage() {
           onClose={() => setShowCreate(false)}
           onCreated={() => {
             setShowCreate(false);
+            load();
+          }}
+        />
+      )}
+      {editing && (
+        <EditTimeOffModal
+          request={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null);
             load();
           }}
         />
@@ -260,6 +313,104 @@ function CreateModal({
           <button disabled={saving} className="btn btn-primary w-full">
             {saving ? "Submitting…" : "Submit request"}
           </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function EditTimeOffModal({
+  request,
+  onClose,
+  onSaved,
+}: {
+  request: Req;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [form, setForm] = useState({
+    startDate: format(new Date(request.startDate), "yyyy-MM-dd"),
+    endDate: format(new Date(request.endDate), "yyyy-MM-dd"),
+    reason: request.reason ?? "",
+  });
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setErr(null);
+    const res = await fetch("/api/time-off", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: request.id,
+        startDate: form.startDate,
+        endDate: form.endDate,
+        reason: form.reason || null,
+      }),
+    });
+    setSaving(false);
+    if (!res.ok) {
+      const d = await res.json();
+      setErr(d.error ?? "Failed");
+      return;
+    }
+    onSaved();
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-ink/40 flex items-center justify-center p-6">
+      <div className="card w-full max-w-md p-6 relative">
+        <button onClick={onClose} className="absolute top-4 right-4 btn btn-ghost !p-1.5">
+          <X size={16} />
+        </button>
+        <div className="mb-6">
+          <div className="label-eyebrow mb-1">Edit request</div>
+          <h2 className="display text-2xl text-ink">Time off</h2>
+        </div>
+        <form onSubmit={submit} className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label>Start date</label>
+              <input
+                type="date"
+                required
+                value={form.startDate}
+                onChange={(e) => setForm({ ...form, startDate: e.target.value })}
+              />
+            </div>
+            <div>
+              <label>End date</label>
+              <input
+                type="date"
+                required
+                value={form.endDate}
+                onChange={(e) => setForm({ ...form, endDate: e.target.value })}
+              />
+            </div>
+          </div>
+          <div>
+            <label>Reason</label>
+            <textarea
+              rows={3}
+              value={form.reason}
+              onChange={(e) => setForm({ ...form, reason: e.target.value })}
+            />
+          </div>
+          {err && (
+            <div className="text-sm text-rose bg-rose/10 px-3 py-2 rounded border border-rose/30">
+              {err}
+            </div>
+          )}
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={onClose} className="btn btn-secondary">
+              Cancel
+            </button>
+            <button disabled={saving} className="btn btn-primary">
+              {saving ? "Saving…" : "Save changes"}
+            </button>
+          </div>
         </form>
       </div>
     </div>
