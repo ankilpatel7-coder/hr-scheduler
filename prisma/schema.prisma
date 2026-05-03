@@ -206,6 +206,11 @@ model User {
   // KY-specific (only set when tenant.state = KY; nullable otherwise)
   kyExemptionsAllowance  Int?         // KY DOR Form K-4
 
+  // 4-digit PIN for mobile clock-in (v12.3). Hashed with bcrypt. Pair with rate
+  // limiting on the future PIN-validation endpoint to prevent brute force.
+  pinHash      String?
+  pinUpdatedAt DateTime?
+
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 

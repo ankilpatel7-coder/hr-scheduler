@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
-import { Building2, LayoutDashboard, LogOut, Shield, Key } from "lucide-react";
+import { Building2, LayoutDashboard, LogOut, Shield, Key, Hash } from "lucide-react";
 
 export default function AdminNav({ userName }: { userName: string }) {
   const pathname = usePathname();
@@ -47,6 +47,9 @@ export default function AdminNav({ userName }: { userName: string }) {
           <span className="text-xs text-smoke">{userName}</span>
           <Link href="/change-password" className="text-smoke hover:text-ink" title="Change password">
             <Key size={16} />
+          </Link>
+          <Link href="/change-pin" className="text-smoke hover:text-ink" title="Set/change 4-digit PIN">
+            <Hash size={16} />
           </Link>
           <button
             onClick={() => signOut({ callbackUrl: "/login" })}

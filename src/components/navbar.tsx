@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
-import { LogOut, Shield, Key } from "lucide-react";
+import { LogOut, Shield, Key, Hash } from "lucide-react";
 
 /**
  * v12.2 navbar: tenant-aware path prefixing.
@@ -106,6 +106,9 @@ export default function Navbar() {
           </div>
           <Link href="/change-password" className="btn btn-ghost !p-2" title="Change password">
             <Key size={16} />
+          </Link>
+          <Link href="/change-pin" className="btn btn-ghost !p-2" title="Set/change 4-digit PIN (mobile clock-in)">
+            <Hash size={16} />
           </Link>
           <button onClick={() => signOut({ callbackUrl: "/login" })} className="btn btn-ghost !p-2" title="Sign out">
             <LogOut size={16} />
