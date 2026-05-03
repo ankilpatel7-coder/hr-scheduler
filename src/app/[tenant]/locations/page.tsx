@@ -1,7 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
-import { useRouter } from "next/navigation";
+import { useRouter, useParams } from "next/navigation";
+import Link from "next/link";
 import Navbar from "@/components/navbar";
 import { MapPin, Plus, X, Pencil, Clock } from "lucide-react";
 
@@ -49,6 +50,7 @@ const DEFAULT_HOURS: Hours = {
 export default function LocationsPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
+  const params = useParams<{ tenant: string }>();
   const [locations, setLocations] = useState<Location[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
@@ -94,6 +96,13 @@ export default function LocationsPage() {
             </div>
             <h1 className="display text-5xl">Locations</h1>
           </div>
+          <Link
+            href={`/${params?.tenant}/locations/llc`}
+            className="btn btn-secondary"
+            title="Edit LLC / payroll-issuer info per location"
+          >
+            💼 Manage LLC info
+          </Link>
           <button onClick={() => setShowAdd(true)} className="btn btn-primary">
             <Plus size={16} /> Add location
           </button>
