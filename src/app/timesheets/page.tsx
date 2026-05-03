@@ -4,7 +4,8 @@ import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Navbar from "@/components/navbar";
 import LocationFilter from "@/components/location-filter";
-import { Download, Pencil, Trash2, X, ChevronDown, Plus } from "lucide-react";
+import SelfieVerifyModal from "@/components/selfie-verify-modal";
+import { Download, Pencil, Trash2, X, ChevronDown, Plus, Camera } from "lucide-react";
 import { format, startOfWeek, endOfWeek, subDays } from "date-fns";
 
 type Entry = {
@@ -45,6 +46,7 @@ export default function TimesheetsPage() {
     format(endOfWeek(new Date(), { weekStartsOn: 1 }), "yyyy-MM-dd")
   );
   const [editing, setEditing] = useState<Entry | null>(null);
+  const [verifying, setVerifying] = useState<Entry | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [locationFilter, setLocationFilter] = useState("");
@@ -260,7 +262,7 @@ export default function TimesheetsPage() {
                   <th className="px-4 py-3 font-medium text-right">Hours</th>
                   {isAdmin && <th className="px-4 py-3 font-medium text-right">Pay</th>}
                   <th className="px-4 py-3 font-medium">Edited</th>
-                  {canManage && <th className="px-4 py-3 font-medium" />}
+                  <th className="px-4 py-3 font-medium" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-dust">
@@ -310,26 +312,37 @@ export default function TimesheetsPage() {
                           ""
                         )}
                       </td>
-                      {canManage && (
-                        <td className="px-4 py-3 text-right">
-                          <div className="flex justify-end gap-1">
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex justify-end gap-1">
+                          {(e.selfieIn || e.selfieOut) && (
                             <button
-                              onClick={() => setEditing(e)}
+                              onClick={() => setVerifying(e)}
                               className="btn btn-ghost !p-1.5"
-                              title="Edit"
+                              title="View selfies & GPS"
                             >
-                              <Pencil size={14} />
+                              <Camera size={14} />
                             </button>
-                            <button
-                              onClick={() => deleteEntry(e.id)}
-                              className="btn btn-ghost !p-1.5 text-rose"
-                              title="Delete"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        </td>
-                      )}
+                          )}
+                          {canManage && (
+                            <>
+                              <button
+                                onClick={() => setEditing(e)}
+                                className="btn btn-ghost !p-1.5"
+                                title="Edit"
+                              >
+                                <Pencil size={14} />
+                              </button>
+                              <button
+                                onClick={() => deleteEntry(e.id)}
+                                className="btn btn-ghost !p-1.5 text-rose"
+                                title="Delete"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </td>
                     </tr>
                   );
                 })}
@@ -352,6 +365,13 @@ export default function TimesheetsPage() {
             setEditing(null);
             load();
           }}
+        />
+      )}
+      {verifying && (
+        <SelfieVerifyModal
+          entryId={verifying.id}
+          employeeName={verifying.user.name}
+          onClose={() => setVerifying(null)}
         />
       )}
       {showAdd && (

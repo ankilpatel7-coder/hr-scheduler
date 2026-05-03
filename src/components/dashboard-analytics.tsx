@@ -14,7 +14,8 @@ import {
   Legend,
 } from "recharts";
 import { format } from "date-fns";
-import { Users, Activity, Clock, AlertTriangle, MapPin } from "lucide-react";
+import { Users, Activity, Clock, AlertTriangle, MapPin, Camera } from "lucide-react";
+import SelfieVerifyModal from "@/components/selfie-verify-modal";
 
 type Roster = {
   shiftId: string;
@@ -25,6 +26,7 @@ type Roster = {
   role: string | null;
   status: "scheduled" | "clocked_in" | "completed" | "no_show";
   clockedInAt: string | null;
+  openClockEntryId: string | null;
 };
 
 type AnalyticsData = {
@@ -51,6 +53,10 @@ export default function DashboardAnalytics() {
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [locationFilter, setLocationFilter] = useState<string>("");
+  const [verifying, setVerifying] = useState<{
+    entryId: string;
+    name: string;
+  } | null>(null);
 
   async function load() {
     setLoading(true);
@@ -120,7 +126,13 @@ export default function DashboardAnalytics() {
         ) : (
           <div className="space-y-3">
             {data.today.roster.map((r) => (
-              <RosterRow key={r.shiftId} roster={r} />
+              <RosterRow
+                key={r.shiftId}
+                roster={r}
+                onVerify={(entryId) =>
+                  setVerifying({ entryId, name: r.employee.name })
+                }
+              />
             ))}
           </div>
         )}
@@ -245,11 +257,24 @@ export default function DashboardAnalytics() {
           </div>
         </div>
       )}
+      {verifying && (
+        <SelfieVerifyModal
+          entryId={verifying.entryId}
+          employeeName={verifying.name}
+          onClose={() => setVerifying(null)}
+        />
+      )}
     </div>
   );
 }
 
-function RosterRow({ roster }: { roster: Roster }) {
+function RosterRow({
+  roster,
+  onVerify,
+}: {
+  roster: Roster;
+  onVerify: (entryId: string) => void;
+}) {
   const start = new Date(roster.startTime);
   const end = new Date(roster.endTime);
   const now = new Date();
@@ -342,6 +367,22 @@ function RosterRow({ roster }: { roster: Roster }) {
         <Icon size={14} />
         <span className="text-xs font-medium">{statusInfo.label}</span>
       </div>
+
+      {/* Verify selfie/GPS — only when actively clocked in */}
+      {roster.status === "clocked_in" && roster.openClockEntryId && (
+        <button
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onVerify(roster.openClockEntryId!);
+          }}
+          className="flex-shrink-0 p-1.5 rounded hover:bg-rust/10 text-smoke hover:text-rust transition-colors"
+          title="View clock-in selfie & GPS"
+          aria-label="Verify clock-in"
+        >
+          <Camera size={14} />
+        </button>
+      )}
     </Link>
   );
 }

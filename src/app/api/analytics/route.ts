@@ -136,6 +136,9 @@ export async function GET(req: Request) {
       role: s.role,
       status,
       clockedInAt: open?.clockIn ?? null,
+      // Surface the open clock-entry id so the UI can offer a "verify selfie" action
+      // for clocked-in rows. Photos themselves are fetched on-demand via /api/clock-entries/[id]/selfie.
+      openClockEntryId: open?.id ?? null,
     };
   });
 
