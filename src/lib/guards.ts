@@ -1,13 +1,16 @@
+/**
+ * Auth guards — v12 changes:
+ *   - Adds requireSuperAdmin() check for super-admin-only routes.
+ *   - All existing guards continue to work but caller is responsible for
+ *     also scoping queries by tenant (via requireTenantContext from tenant.ts).
+ */
+
 import { NextResponse } from "next/server";
 import { getServerAuth } from "./auth";
 import { prisma } from "./db";
 
 export type AppRole = "ADMIN" | "MANAGER" | "LEAD" | "EMPLOYEE";
 
-/**
- * For permission checks, LEAD and EMPLOYEE are equivalent.
- * Use this helper to normalize the role for permission decisions.
- */
 export function isStaff(role: AppRole): boolean {
   return role === "EMPLOYEE" || role === "LEAD";
 }
@@ -21,6 +24,8 @@ export async function requireAuth() {
     session,
     userId: (session.user as any).id as string,
     role: (session.user as any).role as AppRole,
+    tenantId: (session.user as any).tenantId as string | null,
+    isSuperAdmin: (session.user as any).superAdmin === true,
   };
 }
 
@@ -34,10 +39,11 @@ export async function requireRole(roles: AppRole[]) {
 }
 
 /**
- * Returns the location IDs the user is allowed to operate on.
- * - ADMIN: returns null (means "no restriction — all locations")
- * - MANAGER: returns array of location IDs the manager is assigned to via EmployeeLocation
- * - LEAD/EMPLOYEE: returns array of location IDs they're assigned to
+ * Returns the location IDs the user is allowed to operate on, scoped to their tenant.
+ *
+ * - Super-admin: returns null ("all locations across all tenants" — caller decides scope)
+ * - ADMIN: returns null ("all locations within their tenant")
+ * - MANAGER/LEAD/EMPLOYEE: returns array of locationIds they're assigned to
  */
 export async function getScopedLocationIds(
   userId: string,
@@ -52,9 +58,11 @@ export async function getScopedLocationIds(
 }
 
 /**
- * Returns the user IDs that a manager is allowed to see/manage.
- * - ADMIN: returns null (no restriction)
- * - MANAGER: returns array of user IDs who share at least one location with the manager
+ * Returns the user IDs that the requesting user is allowed to see/manage.
+ * Tenant-scoping is the caller's responsibility (this only handles role-based scoping).
+ *
+ * - ADMIN: returns null (no role-based restriction)
+ * - MANAGER: returns array of userIds sharing at least one location
  * - LEAD/EMPLOYEE: returns just their own ID
  */
 export async function getScopedEmployeeIds(

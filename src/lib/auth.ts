@@ -1,3 +1,11 @@
+/**
+ * NextAuth setup — v12 changes:
+ *   - Session token now includes tenantId and superAdmin flag.
+ *   - On login, user can authenticate from any tenant context (or none for super-admins).
+ *   - Future: super-admin can "impersonate" / view-as a tenant via a tenantOverride
+ *     on the session (not implemented in Phase A).
+ */
+
 import type { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
@@ -26,7 +34,9 @@ export const authOptions: NextAuthOptions = {
           email: user.email,
           name: user.name,
           role: user.role,
-        };
+          tenantId: user.tenantId,
+          superAdmin: user.superAdmin,
+        } as any;
       },
     }),
   ],
@@ -35,6 +45,8 @@ export const authOptions: NextAuthOptions = {
       if (user) {
         token.id = (user as any).id;
         token.role = (user as any).role;
+        token.tenantId = (user as any).tenantId ?? null;
+        token.superAdmin = (user as any).superAdmin === true;
       }
       return token;
     },
@@ -42,6 +54,8 @@ export const authOptions: NextAuthOptions = {
       if (session.user) {
         (session.user as any).id = token.id;
         (session.user as any).role = token.role;
+        (session.user as any).tenantId = (token as any).tenantId ?? null;
+        (session.user as any).superAdmin = (token as any).superAdmin === true;
       }
       return session;
     },

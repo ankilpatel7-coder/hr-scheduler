@@ -2,12 +2,13 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
-import { LogOut } from "lucide-react";
+import { LogOut, Shield } from "lucide-react";
 
 export default function Navbar() {
   const { data: session } = useSession();
   const path = usePathname();
   const role = (session?.user as any)?.role;
+  const isSuperAdmin = (session?.user as any)?.superAdmin === true;
 
   if (!session) return null;
 
@@ -26,6 +27,7 @@ export default function Navbar() {
     { href: "/time-off", label: "Time Off", show: true },
     { href: "/swaps", label: "Swaps", show: true },
     { href: "/timesheets", label: "Timesheets", show: true },
+    { href: "/payroll", label: "Payroll", show: isAdmin },
     { href: "/profile", label: "Profile", show: isStaffMember },
     { href: "/settings", label: "Settings", show: isAdmin },
   ];
@@ -46,20 +48,16 @@ export default function Navbar() {
           {links
             .filter((l) => l.show)
             .map((l) => {
-              const active = path === l.href;
+              const active = path === l.href || (l.href !== "/dashboard" && path?.startsWith(l.href));
               return (
                 <Link
                   key={l.href}
                   href={l.href}
                   className={`relative px-3.5 py-1.5 text-[13px] font-medium rounded-full transition-all duration-200 ${
-                    active
-                      ? "text-white"
-                      : "text-smoke hover:text-ink"
+                    active ? "text-white" : "text-smoke hover:text-ink"
                   }`}
                 >
-                  {active && (
-                    <span className="absolute inset-0 rounded-full bg-rust"></span>
-                  )}
+                  {active && <span className="absolute inset-0 rounded-full bg-rust"></span>}
                   <span className="relative">{l.label}</span>
                 </Link>
               );
@@ -67,23 +65,27 @@ export default function Navbar() {
         </nav>
 
         <div className="flex items-center gap-3">
+          {isSuperAdmin && (
+            <Link
+              href="/_admin"
+              className="flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium border border-rust/30 text-rust hover:bg-rust/5"
+              title="Super-admin console"
+            >
+              <Shield size={12} /> Super Admin
+            </Link>
+          )}
           <div className="hidden sm:flex flex-col items-end">
             <div className="text-sm font-medium leading-tight text-ink">{session.user?.name}</div>
             <div className="font-mono text-[9px] uppercase tracking-[0.2em] text-rust mt-0.5">
               ● {role}
             </div>
           </div>
-          <button
-            onClick={() => signOut({ callbackUrl: "/login" })}
-            className="btn btn-ghost !p-2"
-            title="Sign out"
-          >
+          <button onClick={() => signOut({ callbackUrl: "/login" })} className="btn btn-ghost !p-2" title="Sign out">
             <LogOut size={16} />
           </button>
         </div>
       </div>
 
-      {/* Mobile/tablet horizontal scroll nav */}
       <div className="lg:hidden border-t border-dust/60 overflow-x-auto">
         <div className="flex gap-1 px-4 py-2 min-w-max">
           {links
@@ -95,9 +97,7 @@ export default function Navbar() {
                   key={l.href}
                   href={l.href}
                   className={`relative px-3 py-1 text-xs rounded-full whitespace-nowrap transition-all ${
-                    active
-                      ? "text-white bg-rust"
-                      : "text-smoke"
+                    active ? "text-white bg-rust" : "text-smoke"
                   }`}
                 >
                   {l.label}
