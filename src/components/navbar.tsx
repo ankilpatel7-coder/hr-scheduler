@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
-import { LogOut, Shield } from "lucide-react";
+import { LogOut, Shield, Key } from "lucide-react";
 
 export default function Navbar() {
   const { data: session } = useSession();
@@ -12,21 +12,23 @@ export default function Navbar() {
 
   if (!session) return null;
 
-  const isStaffMember = role === "EMPLOYEE" || role === "LEAD";
-  const isManager = role === "MANAGER";
-  const isAdmin = role === "ADMIN";
+  // Super-admins: separation of concerns. They manage tenants & tenant admins via /superadmin only.
+  // Hide all tenant nav links so they don't accidentally browse a tenant's data.
+  const isStaffMember = !isSuperAdmin && (role === "EMPLOYEE" || role === "LEAD");
+  const isManager = !isSuperAdmin && role === "MANAGER";
+  const isAdmin = !isSuperAdmin && role === "ADMIN";
 
   const links: { href: string; label: string; show: boolean }[] = [
-    { href: "/dashboard", label: "Overview", show: true },
+    { href: "/dashboard", label: "Overview", show: !isSuperAdmin },
     { href: "/clock", label: "Clock In", show: isStaffMember },
     { href: "/my-shifts", label: "My Shifts", show: isStaffMember },
     { href: "/availability", label: "Availability", show: isStaffMember },
     { href: "/schedule", label: "Schedule", show: isAdmin || isManager },
     { href: "/employees", label: "Employees", show: isAdmin || isManager },
     { href: "/locations", label: "Locations", show: isAdmin },
-    { href: "/time-off", label: "Time Off", show: true },
-    { href: "/swaps", label: "Swaps", show: true },
-    { href: "/timesheets", label: "Timesheets", show: true },
+    { href: "/time-off", label: "Time Off", show: !isSuperAdmin },
+    { href: "/swaps", label: "Swaps", show: !isSuperAdmin },
+    { href: "/timesheets", label: "Timesheets", show: !isSuperAdmin },
     { href: "/payroll", label: "Payroll", show: isAdmin },
     { href: "/profile", label: "Profile", show: isStaffMember },
     { href: "/settings", label: "Settings", show: isAdmin },
@@ -80,6 +82,9 @@ export default function Navbar() {
               ● {role}
             </div>
           </div>
+          <Link href="/change-password" className="btn btn-ghost !p-2" title="Change password">
+            <Key size={16} />
+          </Link>
           <button onClick={() => signOut({ callbackUrl: "/login" })} className="btn btn-ghost !p-2" title="Sign out">
             <LogOut size={16} />
           </button>

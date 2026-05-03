@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { ArrowLeft, ExternalLink } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { format } from "date-fns";
 import TenantEditForm from "./tenant-edit-form";
 import LoginLink from "./login-link";
@@ -39,16 +39,16 @@ export default async function TenantDetailPage({
           <div className="label-eyebrow mb-1">Business</div>
           <h1 className="display text-4xl text-ink">{tenant.businessName}</h1>
           <div className="text-sm text-smoke mt-1">
-            <code className="font-mono text-rust">/{tenant.slug}</code>
+            <span>slug: <code className="font-mono text-rust">{tenant.slug}</code></span>
             {" · "}
             <span>{tenant.state}</span>
             {" · "}
             <span>Created {format(tenant.createdAt, "MMM d, yyyy")}</span>
           </div>
+          <div className="text-[11px] text-smoke italic mt-1">
+            Super-admins can&apos;t directly view a tenant&apos;s dashboard yet — sign in as one of the tenant&apos;s admins below to do that. Per-tenant URLs (<code>/{tenant.slug}/dashboard</code>) coming in v12.2.
+          </div>
         </div>
-        <Link href={`/${tenant.slug}`} target="_blank" className="btn btn-secondary">
-          Open dashboard <ExternalLink size={12} />
-        </Link>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
