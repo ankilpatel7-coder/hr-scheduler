@@ -4,45 +4,67 @@ import { usePathname } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
 import { LogOut, Shield, Key } from "lucide-react";
 
+/**
+ * v12.2 navbar: tenant-aware path prefixing.
+ *
+ * Every nav link is prefixed with the current tenant slug, extracted from the
+ * URL path. So when a user is on /greenreleaf/dashboard, all nav links go to
+ * /greenreleaf/<route>.
+ *
+ * Falls back gracefully:
+ *   - If we can't determine the tenant from URL (e.g. on /change-password), links
+ *     go to root paths (works because layout.tsx in [tenant]/ has done the auth + redirect).
+ *   - For super-admins, all tenant links are hidden (they don't have a "current tenant").
+ */
+
 export default function Navbar() {
   const { data: session } = useSession();
-  const path = usePathname();
+  const path = usePathname() ?? "";
   const role = (session?.user as any)?.role;
   const isSuperAdmin = (session?.user as any)?.superAdmin === true;
 
   if (!session) return null;
 
-  // Super-admins: separation of concerns. They manage tenants & tenant admins via /superadmin only.
-  // Hide all tenant nav links so they don't accidentally browse a tenant's data.
+  // Extract current tenant slug from URL: /<slug>/<rest>
+  const segments = path.replace(/^\/+/, "").split("/");
+  const currentSlug = segments[0] && !["login", "signup", "change-password", "superadmin", "api"].includes(segments[0])
+    ? segments[0]
+    : "";
+
+  function tlink(p: string) {
+    return currentSlug ? `/${currentSlug}${p}` : p;
+  }
+
   const isStaffMember = !isSuperAdmin && (role === "EMPLOYEE" || role === "LEAD");
   const isManager = !isSuperAdmin && role === "MANAGER";
   const isAdmin = !isSuperAdmin && role === "ADMIN";
 
   const links: { href: string; label: string; show: boolean }[] = [
-    { href: "/dashboard", label: "Overview", show: !isSuperAdmin },
-    { href: "/clock", label: "Clock In", show: isStaffMember },
-    { href: "/my-shifts", label: "My Shifts", show: isStaffMember },
-    { href: "/availability", label: "Availability", show: isStaffMember },
-    { href: "/schedule", label: "Schedule", show: isAdmin || isManager },
-    { href: "/employees", label: "Employees", show: isAdmin || isManager },
-    { href: "/locations", label: "Locations", show: isAdmin },
-    { href: "/time-off", label: "Time Off", show: !isSuperAdmin },
-    { href: "/swaps", label: "Swaps", show: !isSuperAdmin },
-    { href: "/timesheets", label: "Timesheets", show: !isSuperAdmin },
-    { href: "/payroll", label: "Payroll", show: isAdmin },
-    { href: "/profile", label: "Profile", show: isStaffMember },
-    { href: "/settings", label: "Settings", show: isAdmin },
+    { href: tlink("/dashboard"), label: "Overview", show: !isSuperAdmin },
+    { href: tlink("/clock"), label: "Clock In", show: isStaffMember },
+    { href: tlink("/my-shifts"), label: "My Shifts", show: isStaffMember },
+    { href: tlink("/availability"), label: "Availability", show: isStaffMember },
+    { href: tlink("/schedule"), label: "Schedule", show: isAdmin || isManager },
+    { href: tlink("/employees"), label: "Employees", show: isAdmin || isManager },
+    { href: tlink("/locations"), label: "Locations", show: isAdmin },
+    { href: tlink("/time-off"), label: "Time Off", show: !isSuperAdmin },
+    { href: tlink("/swaps"), label: "Swaps", show: !isSuperAdmin },
+    { href: tlink("/timesheets"), label: "Timesheets", show: !isSuperAdmin },
+    { href: tlink("/payroll"), label: "Payroll", show: isAdmin },
+    { href: tlink("/profile"), label: "Profile", show: isStaffMember },
+    { href: tlink("/settings"), label: "Settings", show: isAdmin },
   ];
 
   return (
     <header className="glass sticky top-0 z-40 border-b border-dust/60">
       <div className="max-w-[1500px] mx-auto px-6 h-16 flex items-center justify-between">
-        <Link href="/dashboard" className="flex items-center gap-3 group">
+        <Link href={tlink("/dashboard")} className="flex items-center gap-3 group">
           <div className="relative w-8 h-8 rounded-md bg-rust flex items-center justify-center">
             <span className="relative font-display text-white font-bold text-base leading-none">S</span>
           </div>
           <div className="flex items-baseline gap-2">
             <span className="display text-xl font-semibold tracking-tight text-ink">Shiftwork</span>
+            {currentSlug && <span className="text-xs text-smoke font-mono">/{currentSlug}</span>}
           </div>
         </Link>
 
@@ -50,7 +72,7 @@ export default function Navbar() {
           {links
             .filter((l) => l.show)
             .map((l) => {
-              const active = path === l.href || (l.href !== "/dashboard" && path?.startsWith(l.href));
+              const active = path === l.href || (l.href !== tlink("/dashboard") && path?.startsWith(l.href));
               return (
                 <Link
                   key={l.href}
