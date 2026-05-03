@@ -22,13 +22,14 @@ function LoginForm() {
       setErr("Invalid email or password.");
       return;
     }
-    router.push(params.get("callbackUrl") ?? "/dashboard");
+    // v12.2: redirect to "/" — the root page handles smart routing
+    // (super-admin → /superadmin, tenant user → /<slug>/dashboard)
+    router.push(params.get("callbackUrl") ?? "/");
     router.refresh();
   }
 
   return (
     <div className="min-h-screen grid md:grid-cols-2">
-      {/* Left hero */}
       <div className="hidden md:flex flex-col justify-between p-12 relative overflow-hidden border-r border-dust">
         <div className="absolute inset-0">
           <div className="absolute inset-0 opacity-[0.06]" style={{
@@ -71,7 +72,6 @@ function LoginForm() {
         </div>
       </div>
 
-      {/* Right form */}
       <div className="flex items-center justify-center p-8 md:p-12 relative">
         <div className="w-full max-w-sm relative z-10 animate-slide-up">
           <div className="mb-10">
