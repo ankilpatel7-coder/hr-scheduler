@@ -1,15 +1,15 @@
-// TRANSITIONAL v12 schema. Used ONCE, between v11 and final v12 schema.
-// Difference from final v12: tenantId is NULLABLE on Location, Shift, ClockEntry,
-// TimeOffRequest, ShiftSwap. This lets `prisma db push` add the columns without
-// failing on existing rows. The migration script then backfills tenantId, and a
-// second `prisma db push` against the final schema enforces NOT NULL.
+// Shiftwork v12 schema — multi-tenant + payroll
+// Changes vs v11:
+//   - New Tenant model. Every tenant-scoped model gets `tenantId` FK.
+//   - User.superAdmin boolean. SUPER_ADMIN can manage tenants; tenant-scoped users have superAdmin=false.
+//   - SUPER_ADMIN users have tenantId=null (they don't belong to any single tenant).
+//   - User gains W-4 / payroll fields.
+//   - New PayPeriod, PayStub models for payroll generation.
+//   - All existing relations preserved; new tenantId added to every relevant model.
 //
-// Workflow:
-//   1. cp schema.transitional.prisma schema.prisma
-//   2. npx prisma db push          (adds columns + new tables, allows nulls)
-//   3. npx tsx scripts/migrate-to-v12.ts  (backfills tenantId, creates super-admin)
-//   4. cp schema.prisma.final schema.prisma  (FINAL v12 schema)
-//   5. npx prisma db push          (enforces NOT NULL)
+// Migration safety: see scripts/migrate-to-v12.ts for the data migration that
+// (a) creates the Greenreleaf tenant, (b) backfills tenantId on existing rows,
+// (c) promotes the existing admin to also be SUPER_ADMIN, (d) sets W-4 defaults.
 
 generator client {
   provider = "prisma-client-js"
@@ -19,6 +19,10 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
+
+// ============================================================
+// Enums
+// ============================================================
 
 enum Role {
   ADMIN
@@ -56,8 +60,8 @@ enum FilingStatus {
 }
 
 enum PayPeriodStatus {
-  DRAFT
-  FINALIZED
+  DRAFT       // Period exists; paystubs may be regenerated
+  FINALIZED   // Locked; paystubs are immutable
 }
 
 enum USState {
@@ -114,21 +118,28 @@ enum USState {
   DC
 }
 
+// ============================================================
+// Tenant — top-level container for a business
+// ============================================================
+
 model Tenant {
   id              String   @id @default(cuid())
-  slug            String   @unique
+  slug            String   @unique  // URL subdomain, e.g. "greenreleaf" → greenreleaf.shiftwork.app
   businessName    String
-  legalName       String?
+  legalName       String?  // for tax forms; defaults to businessName
   state           USState
   addressLine1    String?
   addressLine2    String?
   city            String?
   zip             String?
   phone           String?
-  federalEIN      String?
-  stateTaxId      String?
-  payFrequency    String   @default("BIWEEKLY")
-  firstPeriodStart DateTime?
+  federalEIN      String?  // 9 digits, no dash
+  stateTaxId      String?  // KY withholding account number, etc.
+
+  // Payroll config
+  payFrequency    String   @default("BIWEEKLY")  // BIWEEKLY only for v12; future: WEEKLY, SEMI_MONTHLY, MONTHLY
+  firstPeriodStart DateTime?  // anchor date for computing pay period boundaries
+
   active          Boolean  @default(true)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -139,30 +150,37 @@ model Tenant {
   clockEntries    ClockEntry[]
   timeOff         TimeOffRequest[]
   swaps           ShiftSwap[]
-  payPeriods      PayPeriod[]
+  payPeriods     PayPeriod[]
 
   @@index([slug])
   @@index([active])
 }
 
+// ============================================================
+// User
+// ============================================================
+
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
+  id           String       @id @default(cuid())
+  email        String       @unique
   name         String
   passwordHash String
 
-  // TRANSITIONAL: tenantId nullable to allow upgrade from v11
+  // Tenant scoping
+  // - SUPER_ADMIN users have tenantId = null (they don't belong to any tenant).
+  // - All other users belong to exactly one tenant.
   tenantId     String?
-  tenant       Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  superAdmin   Boolean  @default(false)
+  tenant       Tenant?      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  superAdmin   Boolean      @default(false)
 
-  role         Role     @default(EMPLOYEE)
+  role         Role         @default(EMPLOYEE)
   department   String?
-  active       Boolean  @default(true)
+  active       Boolean      @default(true)
   archivedAt   DateTime?
-  hourlyWage   Float    @default(0)
-  isTipped     Boolean  @default(false)
+  hourlyWage   Float        @default(0)
+  isTipped     Boolean      @default(false)
 
+  // Profile (v5+)
   photoUrl                 String?  @db.Text
   phone                    String?
   address                  String?  @db.Text
@@ -174,16 +192,22 @@ model User {
   emergencyContactRelation String?
   notes                    String?  @db.Text
 
+  // Payroll / W-4 fields (NEW in v12)
+  // Sourced from the employee's W-4 form (post-2020 design).
+  // Defaults assume "Single, no other adjustments" — must be overridden per-employee
+  // before payroll calculations are reliable.
   filingStatus           FilingStatus @default(SINGLE)
-  multipleJobsCheckbox   Boolean      @default(false)
-  dependentsCredit       Float        @default(0)
-  otherIncome            Float        @default(0)
-  deductionsAdjustment   Float        @default(0)
-  extraWithholding       Float        @default(0)
-  kyExemptionsAllowance  Int?
+  multipleJobsCheckbox   Boolean      @default(false)  // W-4 step 2c
+  dependentsCredit       Float        @default(0)      // W-4 step 3 (annual dollars, e.g. $2000 per qualifying child)
+  otherIncome            Float        @default(0)      // W-4 step 4a (annual dollars)
+  deductionsAdjustment   Float        @default(0)      // W-4 step 4b (annual dollars beyond standard deduction)
+  extraWithholding       Float        @default(0)      // W-4 step 4c (per-pay-period dollars)
 
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  // KY-specific (only set when tenant.state = KY; nullable otherwise)
+  kyExemptionsAllowance  Int?         // KY DOR Form K-4
+
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
 
   shifts          Shift[]            @relation("EmployeeShifts")
   createdShifts   Shift[]            @relation("ManagerShifts")
@@ -198,20 +222,38 @@ model User {
   resetTokens     PasswordReset[]
   payStubs        PayStub[]
 
+  // Indexes for tenant scoping
   @@index([tenantId, active])
   @@index([tenantId, role])
   @@index([superAdmin])
 }
 
+// ============================================================
+// Location
+// ============================================================
+
 model Location {
   id        String   @id @default(cuid())
-  tenantId  String?  // TRANSITIONAL: nullable
-  tenant    Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   name      String
-  address   String?
+  address   String?  // legacy v11 single-line address; superseded by structured fields below
   timezone  String   @default("America/New_York")
   active    Boolean  @default(true)
   hours     Json?
+
+  // LLC / payroll-issuer info (v12.2). When set, paystubs use these instead of tenant info.
+  // Each location can be a distinct LLC for tax/payroll purposes.
+  legalName    String?  // "Reed KY Dispensary LLC"
+  addressLine1 String?
+  addressLine2 String?
+  city         String?
+  locState     USState?
+  zip          String?
+  phone        String?
+  federalEIN   String?  // 9 digits, no dash
+  stateTaxId   String?  // KY withholding account number, etc.
+
   createdAt DateTime @default(now())
 
   shifts    Shift[]
@@ -230,26 +272,30 @@ model EmployeeLocation {
   @@id([userId, locationId])
 }
 
-model Shift {
-  id           String   @id @default(cuid())
-  tenantId     String?  // TRANSITIONAL: nullable
-  tenant       Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  employeeId   String
-  employee     User     @relation("EmployeeShifts", fields: [employeeId], references: [id], onDelete: Cascade)
-  managerId    String
-  manager      User     @relation("ManagerShifts", fields: [managerId], references: [id])
-  locationId   String?
-  location     Location? @relation(fields: [locationId], references: [id])
-  startTime    DateTime
-  endTime      DateTime
-  role         String?
-  notes        String?
-  published    Boolean  @default(false)
-  publishedAt  DateTime?
-  reminderSent Boolean  @default(false)
-  createdAt    DateTime @default(now())
+// ============================================================
+// Shift
+// ============================================================
 
-  swap         ShiftSwap?
+model Shift {
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employeeId  String
+  employee    User     @relation("EmployeeShifts", fields: [employeeId], references: [id], onDelete: Cascade)
+  managerId   String
+  manager     User     @relation("ManagerShifts", fields: [managerId], references: [id])
+  locationId  String?
+  location    Location? @relation(fields: [locationId], references: [id])
+  startTime   DateTime
+  endTime     DateTime
+  role        String?
+  notes       String?
+  published   Boolean  @default(false)
+  publishedAt DateTime?
+  reminderSent Boolean @default(false)
+  createdAt   DateTime @default(now())
+
+  swap        ShiftSwap?
 
   @@index([tenantId, startTime])
   @@index([employeeId, startTime])
@@ -257,10 +303,14 @@ model Shift {
   @@index([published, startTime])
 }
 
+// ============================================================
+// ClockEntry
+// ============================================================
+
 model ClockEntry {
   id          String    @id @default(cuid())
-  tenantId    String?   // TRANSITIONAL: nullable
-  tenant      Tenant?   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenantId    String
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   userId      String
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   clockIn     DateTime
@@ -279,6 +329,12 @@ model ClockEntry {
   @@index([userId, clockIn])
 }
 
+// ============================================================
+// Availability — per-employee weekly availability
+// (Inherits tenant scope via user; no direct tenantId needed since every
+// availability row is owned by a single user that's already tenant-scoped.)
+// ============================================================
+
 model Availability {
   id          String   @id @default(cuid())
   userId      String
@@ -292,10 +348,14 @@ model Availability {
   @@index([userId, dayOfWeek])
 }
 
+// ============================================================
+// TimeOffRequest
+// ============================================================
+
 model TimeOffRequest {
   id           String         @id @default(cuid())
-  tenantId     String?        // TRANSITIONAL: nullable
-  tenant       Tenant?        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenantId     String
+  tenant       Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   userId       String
   user         User           @relation("EmployeeTimeOff", fields: [userId], references: [id], onDelete: Cascade)
   startDate    DateTime
@@ -312,10 +372,14 @@ model TimeOffRequest {
   @@index([userId, startDate])
 }
 
+// ============================================================
+// ShiftSwap
+// ============================================================
+
 model ShiftSwap {
   id           String     @id @default(cuid())
-  tenantId     String?    // TRANSITIONAL: nullable
-  tenant       Tenant?    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenantId     String
+  tenant       Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   shiftId      String     @unique
   shift        Shift      @relation(fields: [shiftId], references: [id], onDelete: Cascade)
   offeredById  String
@@ -332,6 +396,10 @@ model ShiftSwap {
   @@index([tenantId, status])
 }
 
+// ============================================================
+// PasswordReset (no tenant scoping needed; one-time tokens)
+// ============================================================
+
 model PasswordReset {
   id        String   @id @default(cuid())
   userId    String
@@ -344,18 +412,26 @@ model PasswordReset {
   @@index([token])
 }
 
+// ============================================================
+// PAYROLL — new in v12
+// ============================================================
+
 model PayPeriod {
   id            String          @id @default(cuid())
   tenantId      String
   tenant        Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  periodStart   DateTime
-  periodEnd     DateTime
-  payDate       DateTime
+  periodStart   DateTime        // Inclusive
+  periodEnd     DateTime        // Inclusive
+  payDate       DateTime        // Date employees are paid (typically a few days after periodEnd)
   status        PayPeriodStatus @default(DRAFT)
   finalizedAt   DateTime?
-  finalizedBy   String?
+  finalizedBy   String?         // userId of admin who finalized
   notes         String?         @db.Text
+
+  // Year-to-date snapshot AT the time of finalization (for accurate Additional Medicare,
+  // Social Security wage cap enforcement, etc.). Nullable until finalized.
   ytdGrossSnapshotJson Json?
+
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
 
@@ -373,33 +449,51 @@ model PayStub {
   employeeId      String
   employee        User      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
-  regularHours    Float
-  overtimeHours   Float
-  hourlyRate      Float
+  // Hours
+  regularHours    Float     // <= 40 hrs per week summed across the pay period
+  overtimeHours   Float     // > 40 hrs per week
+  // Note: KY follows federal FLSA — OT is computed per workweek, not per pay period.
+
+  // Pay
+  hourlyRate      Float     // Snapshot at time of stub generation
   regularPay      Float
   overtimePay     Float
   grossPay        Float
 
+  // Federal taxes
   federalIncomeTax        Float
   socialSecurityTax       Float
   medicareTax             Float
-  additionalMedicareTax   Float
+  additionalMedicareTax   Float    // 0 unless YTD wages > $200k
 
+  // State taxes (KY)
   stateIncomeTax          Float
+
+  // Local taxes (placeholder for future; 0 in v12)
   localIncomeTax          Float    @default(0)
+
+  // Pre-tax deductions (placeholder for future; 0 in v12)
   preTaxDeductions        Float    @default(0)
-  extraWithholding        Float
-  totalDeductions         Float
+
+  // Post-tax deductions
+  extraWithholding        Float    // From W-4 step 4c
+
+  totalDeductions         Float    // sum of all taxes + deductions
   netPay                  Float
 
+  // Snapshot of W-4 settings at stub time (for audit / explanation)
   filingStatusSnapshot         FilingStatus
   multipleJobsCheckboxSnapshot Boolean
   dependentsCreditSnapshot     Float
   otherIncomeSnapshot          Float
   deductionsAdjustmentSnapshot Float
 
+  // PDF storage (base64 or external URL — TBD; for v12 we generate on-demand, no storage)
   pdfUrl          String?   @db.Text
+
   generatedAt     DateTime  @default(now())
+
+  // Optional notes / corrections
   notes           String?   @db.Text
 
   @@unique([payPeriodId, employeeId])
