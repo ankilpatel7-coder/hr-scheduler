@@ -18,7 +18,7 @@ export default function AddAdminPage() {
     e.preventDefault();
     setSubmitting(true); setError(null);
     try {
-      const res = await fetch(`/api/_admin/tenants/${id}/admins`, {
+      const res = await fetch(`/api/superadmin/tenants/${id}/admins`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, email }),
@@ -40,7 +40,7 @@ export default function AddAdminPage() {
   if (tempPassword) {
     return (
       <div className="space-y-6 max-w-2xl">
-        <Link href={`/_admin/tenants/${id}`} className="text-smoke hover:text-ink text-sm inline-flex items-center gap-1">
+        <Link href={`/superadmin/tenants/${id}`} className="text-smoke hover:text-ink text-sm inline-flex items-center gap-1">
           <ArrowLeft size={14} /> Back to tenant
         </Link>
         <div className="card p-6 border-l-4" style={{ borderLeftColor: "#10b981" }}>
@@ -53,7 +53,7 @@ export default function AddAdminPage() {
               <div><span className="text-smoke">Password:</span> <span className="bg-ink/5 px-2 py-0.5 rounded">{tempPassword}</span></div>
             </div>
           </div>
-          <Link href={`/_admin/tenants/${id}`} className="btn btn-primary">Back to tenant</Link>
+          <Link href={`/superadmin/tenants/${id}`} className="btn btn-primary">Back to tenant</Link>
         </div>
       </div>
     );
@@ -61,7 +61,7 @@ export default function AddAdminPage() {
 
   return (
     <div className="space-y-6 max-w-md">
-      <Link href={`/_admin/tenants/${id}`} className="text-smoke hover:text-ink text-sm inline-flex items-center gap-1">
+      <Link href={`/superadmin/tenants/${id}`} className="text-smoke hover:text-ink text-sm inline-flex items-center gap-1">
         <ArrowLeft size={14} /> Back to tenant
       </Link>
       <div>
@@ -79,7 +79,7 @@ export default function AddAdminPage() {
         </div>
         {error && <div className="text-sm text-rose bg-rose/10 px-3 py-2 rounded border border-rose/30">{error}</div>}
         <div className="flex justify-end gap-2 pt-2 border-t border-dust">
-          <Link href={`/_admin/tenants/${id}`} className="btn btn-secondary">Cancel</Link>
+          <Link href={`/superadmin/tenants/${id}`} className="btn btn-secondary">Cancel</Link>
           <button type="submit" disabled={submitting} className="btn btn-primary">
             {submitting ? "Creating…" : "Create admin"}
           </button>

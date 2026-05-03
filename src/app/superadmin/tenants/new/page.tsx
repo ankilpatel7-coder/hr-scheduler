@@ -55,7 +55,7 @@ export default function NewTenantPage() {
     setError(null);
 
     try {
-      const res = await fetch("/api/_admin/tenants", {
+      const res = await fetch("/api/superadmin/tenants", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
@@ -79,7 +79,7 @@ export default function NewTenantPage() {
   if (createdSlug && tempPassword) {
     return (
       <div className="space-y-6 max-w-2xl">
-        <Link href="/_admin/tenants" className="text-smoke hover:text-ink text-sm inline-flex items-center gap-1">
+        <Link href="/superadmin/tenants" className="text-smoke hover:text-ink text-sm inline-flex items-center gap-1">
           <ArrowLeft size={14} /> Back to businesses
         </Link>
         <div className="card p-6 border-l-4" style={{ borderLeftColor: "#10b981" }}>
@@ -101,7 +101,7 @@ export default function NewTenantPage() {
             </div>
           </div>
           <div className="flex gap-2">
-            <Link href={`/_admin/tenants`} className="btn btn-secondary">Back to list</Link>
+            <Link href={`/superadmin/tenants`} className="btn btn-secondary">Back to list</Link>
             <Link href={`/${createdSlug}`} target="_blank" className="btn btn-primary">Open dashboard →</Link>
           </div>
         </div>
@@ -112,7 +112,7 @@ export default function NewTenantPage() {
   // Form state
   return (
     <div className="space-y-6 max-w-2xl">
-      <Link href="/_admin/tenants" className="text-smoke hover:text-ink text-sm inline-flex items-center gap-1">
+      <Link href="/superadmin/tenants" className="text-smoke hover:text-ink text-sm inline-flex items-center gap-1">
         <ArrowLeft size={14} /> Back to businesses
       </Link>
       <div>
@@ -202,7 +202,7 @@ export default function NewTenantPage() {
         )}
 
         <div className="flex justify-end gap-2 pt-2 border-t border-dust">
-          <Link href="/_admin/tenants" className="btn btn-secondary">Cancel</Link>
+          <Link href="/superadmin/tenants" className="btn btn-secondary">Cancel</Link>
           <button type="submit" disabled={submitting} className="btn btn-primary">
             {submitting ? "Creating…" : "Create business"}
           </button>

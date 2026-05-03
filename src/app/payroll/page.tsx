@@ -22,10 +22,10 @@ export default async function PayrollPage() {
   const role = (session.user as any).role;
   const tenantId = (session.user as any).tenantId;
   if (role !== "ADMIN") redirect("/dashboard");
-  if (!tenantId) redirect("/_admin");
+  if (!tenantId) redirect("/superadmin");
 
   const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
-  if (!tenant) redirect("/_admin");
+  if (!tenant) redirect("/superadmin");
 
   const periods = await prisma.payPeriod.findMany({
     where: { tenantId },

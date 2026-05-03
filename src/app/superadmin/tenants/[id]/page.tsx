@@ -28,7 +28,7 @@ export default async function TenantDetailPage({
 
   return (
     <div className="space-y-6 max-w-3xl">
-      <Link href="/_admin/tenants" className="text-smoke hover:text-ink text-sm inline-flex items-center gap-1">
+      <Link href="/superadmin/tenants" className="text-smoke hover:text-ink text-sm inline-flex items-center gap-1">
         <ArrowLeft size={14} /> Back to businesses
       </Link>
 
@@ -81,7 +81,7 @@ export default async function TenantDetailPage({
         )}
         <div className="mt-4 pt-4 border-t border-dust">
           <Link
-            href={`/_admin/tenants/${tenant.id}/admins/new`}
+            href={`/superadmin/tenants/${tenant.id}/admins/new`}
             className="text-sm text-rust hover:underline"
           >
             + Add another admin

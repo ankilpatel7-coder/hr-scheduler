@@ -15,7 +15,7 @@ export default async function AdminLayout({
 
   // Not logged in → login
   if (!session) {
-    redirect("/login?from=/_admin");
+    redirect("/login?from=/superadmin");
   }
 
   // Logged in but not a super-admin → kick to root

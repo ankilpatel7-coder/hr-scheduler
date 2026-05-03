@@ -20,7 +20,7 @@ export default async function TenantsListPage() {
           <div className="label-eyebrow mb-1">All businesses</div>
           <h1 className="display text-4xl text-ink">Tenants</h1>
         </div>
-        <Link href="/_admin/tenants/new" className="btn btn-primary">
+        <Link href="/superadmin/tenants/new" className="btn btn-primary">
           <Plus size={14} /> Add business
         </Link>
       </div>
@@ -43,14 +43,14 @@ export default async function TenantsListPage() {
             {tenants.length === 0 && (
               <tr>
                 <td colSpan={8} className="px-4 py-12 text-center text-sm text-smoke italic">
-                  No businesses yet. <Link href="/_admin/tenants/new" className="text-rust underline">Add the first one →</Link>
+                  No businesses yet. <Link href="/superadmin/tenants/new" className="text-rust underline">Add the first one →</Link>
                 </td>
               </tr>
             )}
             {tenants.map((t) => (
               <tr key={t.id} className="border-b border-dust last:border-0 hover:bg-ink/5">
                 <td className="px-4 py-3">
-                  <Link href={`/_admin/tenants/${t.id}`} className="font-medium text-ink hover:underline">
+                  <Link href={`/superadmin/tenants/${t.id}`} className="font-medium text-ink hover:underline">
                     {t.businessName}
                   </Link>
                   {t.legalName && t.legalName !== t.businessName && (

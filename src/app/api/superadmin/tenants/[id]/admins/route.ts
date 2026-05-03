@@ -1,5 +1,5 @@
 /**
- * POST /api/_admin/tenants/[id]/admins
+ * POST /api/superadmin/tenants/[id]/admins
  *
  * Creates a new ADMIN user for a tenant. Generates a temporary password.
  */

@@ -54,7 +54,7 @@ export default function TenantEditForm({ tenant }: { tenant: Tenant }) {
     setError(null);
     setMsg(null);
     try {
-      const res = await fetch(`/api/_admin/tenants/${tenant.id}`, {
+      const res = await fetch(`/api/superadmin/tenants/${tenant.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
@@ -81,7 +81,7 @@ export default function TenantEditForm({ tenant }: { tenant: Tenant }) {
     // Save immediately
     setSaving(true);
     try {
-      await fetch(`/api/_admin/tenants/${tenant.id}`, {
+      await fetch(`/api/superadmin/tenants/${tenant.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ active: !form.active }),

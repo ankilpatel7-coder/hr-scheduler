@@ -32,7 +32,7 @@ export default async function AdminHome() {
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Link
-            href="/_admin/tenants"
+            href="/superadmin/tenants"
             className="border border-dust rounded p-4 hover:border-ink/30 hover:bg-ink/5 transition flex items-start gap-3"
           >
             <Building2 size={20} className="text-rust mt-0.5" />
@@ -42,7 +42,7 @@ export default async function AdminHome() {
             </div>
           </Link>
           <Link
-            href="/_admin/tenants/new"
+            href="/superadmin/tenants/new"
             className="border border-dust rounded p-4 hover:border-ink/30 hover:bg-ink/5 transition flex items-start gap-3"
           >
             <Plus size={20} className="text-rust mt-0.5" />

@@ -9,8 +9,8 @@ export default function AdminNav({ userName }: { userName: string }) {
   const pathname = usePathname();
 
   const links = [
-    { href: "/_admin", label: "Overview", icon: LayoutDashboard },
-    { href: "/_admin/tenants", label: "Businesses", icon: Building2 },
+    { href: "/superadmin", label: "Overview", icon: LayoutDashboard },
+    { href: "/superadmin/tenants", label: "Businesses", icon: Building2 },
   ];
 
   return (
@@ -18,7 +18,7 @@ export default function AdminNav({ userName }: { userName: string }) {
       <div className="max-w-[1200px] mx-auto px-6 py-3 flex items-center justify-between gap-6">
         <div className="flex items-center gap-2">
           <Shield size={18} className="text-rust" />
-          <Link href="/_admin" className="display text-lg text-ink">
+          <Link href="/superadmin" className="display text-lg text-ink">
             Shiftwork <span className="text-smoke">Super Admin</span>
           </Link>
         </div>
@@ -26,7 +26,7 @@ export default function AdminNav({ userName }: { userName: string }) {
           {links.map((l) => {
             const active =
               pathname === l.href ||
-              (l.href !== "/_admin" && pathname?.startsWith(l.href));
+              (l.href !== "/superadmin" && pathname?.startsWith(l.href));
             const Icon = l.icon;
             return (
               <Link

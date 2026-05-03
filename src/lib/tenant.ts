@@ -105,7 +105,7 @@ export async function requireTenantContext() {
 
 /**
  * API route helper: super-admin only. No tenant context needed.
- * Used for /api/_admin/* routes.
+ * Used for /api/superadmin/* routes.
  */
 export async function requireSuperAdmin() {
   const session = await getServerAuth();

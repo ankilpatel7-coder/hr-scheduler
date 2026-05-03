@@ -1,8 +1,8 @@
 /**
  * Super-admin tenants API.
  *
- * GET  /api/_admin/tenants     → list all tenants
- * POST /api/_admin/tenants     → create new tenant + initial admin user
+ * GET  /api/superadmin/tenants     → list all tenants
+ * POST /api/superadmin/tenants     → create new tenant + initial admin user
  *
  * Both require super-admin authentication.
  */
@@ -15,7 +15,7 @@ import { requireSuperAdmin } from "@/lib/tenant";
 
 const SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$/;
 const RESERVED_SLUGS = new Set([
-  "_admin", "_next", "api", "login", "signup", "signout", "logout",
+  "superadmin", "_next", "api", "login", "signup", "signout", "logout",
   "favicon.ico", "robots.txt", "sitemap.xml", "admin", "settings",
   "dashboard", "schedule", "timesheets", "employees", "profile",
 ]);

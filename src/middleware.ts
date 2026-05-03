@@ -7,8 +7,8 @@
  *   /                           → redirect to /login (or to user's tenant home if logged in)
  *   /login, /signup             → auth pages, no tenant context
  *   /api/auth/*                 → NextAuth, no tenant context
- *   /api/_admin/*               → super-admin API, gated by superAdmin flag
- *   /_admin, /_admin/*          → super-admin console pages, no tenant context
+ *   /api/superadmin/*               → super-admin API, gated by superAdmin flag
+ *   /superadmin, /superadmin/*          → super-admin console pages, no tenant context
  *   /_next/*, /favicon.ico, etc → static assets, pass through
  *   /<slug>/*                   → tenant pages; <slug> looked up by tenantId in DB
  *   /api/<slug>/*               → tenant API routes (slug + path)
@@ -22,13 +22,13 @@
  *   - Validates slug shape (lowercase letters, numbers, hyphens; 2-32 chars).
  *
  * Reserved top-level path segments — cannot be tenant slugs:
- *   _admin, _next, api, login, signup, signout, logout, favicon.ico, robots.txt, sitemap.xml
+ *   superadmin, _next, api, login, signup, signout, logout, favicon.ico, robots.txt, sitemap.xml
  */
 
 import { NextResponse, type NextRequest } from "next/server";
 
 const RESERVED_PATHS = new Set([
-  "_admin", "_next", "api", "login", "signup", "signout", "logout",
+  "superadmin", "_next", "api", "login", "signup", "signout", "logout",
   "favicon.ico", "robots.txt", "sitemap.xml",
 ]);
 
@@ -54,7 +54,7 @@ export function middleware(req: NextRequest) {
   // For /api/<slug>/*: extract slug from second segment
   // (api routes shaped as /api/<tenant-slug>/<resource> for tenant-scoped APIs;
   //  legacy /api/<resource> routes resolve tenant via session instead)
-  if (first === "api" && segments.length >= 2 && !["auth", "_admin"].includes(segments[1])) {
+  if (first === "api" && segments.length >= 2 && !["auth", "superadmin"].includes(segments[1])) {
     const apiSlug = segments[1];
     if (SLUG_RE.test(apiSlug)) {
       const headers = new Headers(req.headers);

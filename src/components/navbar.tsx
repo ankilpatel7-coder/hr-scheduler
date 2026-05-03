@@ -67,7 +67,7 @@ export default function Navbar() {
         <div className="flex items-center gap-3">
           {isSuperAdmin && (
             <Link
-              href="/_admin"
+              href="/superadmin"
               className="flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium border border-rust/30 text-rust hover:bg-rust/5"
               title="Super-admin console"
             >

@@ -1,9 +1,9 @@
 /**
  * Super-admin single-tenant API.
  *
- * GET    /api/_admin/tenants/[id]   → tenant detail
- * PATCH  /api/_admin/tenants/[id]   → update mutable fields
- * DELETE /api/_admin/tenants/[id]   → soft-delete (sets active=false)
+ * GET    /api/superadmin/tenants/[id]   → tenant detail
+ * PATCH  /api/superadmin/tenants/[id]   → update mutable fields
+ * DELETE /api/superadmin/tenants/[id]   → soft-delete (sets active=false)
  *
  * All require super-admin authentication.
  *
