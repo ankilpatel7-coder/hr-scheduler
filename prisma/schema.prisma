@@ -326,6 +326,11 @@ model ClockEntry {
   lngIn       Float?
   latOut      Float?
   lngOut      Float?
+  // Reverse-geocoded human-readable address at clock-in/out time (v12.3)
+  // Captured server-side from lat/lng via OpenStreetMap Nominatim. Stored as a
+  // snapshot so admins see the actual address even if geocoding service changes.
+  addressIn   String?   @db.Text
+  addressOut  String?   @db.Text
   editedBy    String?
   editNote    String?
   createdAt   DateTime  @default(now())
