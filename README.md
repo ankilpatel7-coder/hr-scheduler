@@ -1,4 +1,10 @@
-# Shiftwork — HR Scheduler v11
+# Shiftwork — HR Scheduler
+
+[![Version](https://img.shields.io/github/v/release/ankilpatel7-coder/hr-scheduler?label=version&color=blue)](https://github.com/ankilpatel7-coder/hr-scheduler/releases)
+[![Next.js](https://img.shields.io/badge/Next.js-14-black)](https://nextjs.org/)
+[![License](https://img.shields.io/badge/license-Proprietary-lightgrey)](#license)
+
+**Live demo:** <https://hr-scheduler-2r1u.vercel.app>
 
 A scheduling, clock-in, and HR app for small-to-mid-size operations.
 Multi-location, selfie-verified clock-in with GPS, draft/publish workflow,
@@ -105,6 +111,24 @@ schedules):
 - **Resend** for email
 - **ExcelJS** for .xlsx, **jsPDF** + **jspdf-autotable** for .pdf
 - **Recharts** for dashboard analytics
+
+## Changelog
+
+### v11.0.0
+Selfie & GPS verification on `/timesheets` and `/dashboard`. New
+`/api/clock-entries/[id]/selfie` endpoint. Optional worksite geofencing via
+`WORKSITE_LAT` / `WORKSITE_LNG` / `WORKSITE_RADIUS_METERS`. No DB migration.
+
+### v10
+Schedule features, archive, hours, time-off edit, light theme.
+
+### v2 — v9
+Multi-location, time-off, shift swaps, exports, dashboard analytics, email
+notifications, role hierarchy, photo upload (later replaced in v11), cron-based
+shift reminders and overtime alerts.
+
+### v1
+Initial release: schedules, clock-in, employees, basic auth.
 
 ## License
 
