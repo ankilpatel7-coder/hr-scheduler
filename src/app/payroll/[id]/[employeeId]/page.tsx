@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import Navbar from "@/components/navbar";
 import { ArrowLeft, Printer } from "lucide-react";
 import { format } from "date-fns";
+import PdfButton from "./pdf-button";
 
 export const dynamic = "force-dynamic";
 
@@ -37,18 +38,16 @@ export default async function PaystubPage({
     <div className="min-h-screen">
       <Navbar />
       <main className="max-w-[800px] mx-auto px-6 py-10 space-y-6">
-        <div className="flex items-center justify-between print:hidden">
+        <div className="flex items-center justify-between flex-wrap gap-2 print:hidden">
           <Link href={`/payroll/${params.id}`} className="text-smoke hover:text-ink text-sm inline-flex items-center gap-1">
             <ArrowLeft size={14} /> Back to period
           </Link>
-          <button onClick={() => {
-            if (typeof window !== "undefined") window.print();
-          }} className="btn btn-secondary">
-            <Printer size={14} /> Print stub
-          </button>
+          <div className="flex items-center gap-2">
+            <PdfButton filename={`paystub-${stub.employee.name.replace(/\s+/g, "-")}-${format(stub.payPeriod.payDate, "yyyy-MM-dd")}.pdf`} />
+          </div>
         </div>
 
-        <div className="card p-8 space-y-6 print:shadow-none print:border-0">
+        <div id="paystub-printable" className="card p-8 space-y-6 print:shadow-none print:border-0" style={{ background: "#ffffff" }}>
           {/* Header */}
           <div className="flex items-start justify-between border-b border-dust pb-4">
             <div>

@@ -1,3 +1,8 @@
+/**
+ * v12.1: TENANT-SCOPED clock-in/out API.
+ * Uses session.user.tenantId; staff users always belong to their tenant.
+ */
+
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
@@ -30,6 +35,11 @@ export async function POST(req: Request) {
   const session = await getServerAuth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const userId = (session.user as any).id;
+  const tenantId = (session.user as any).tenantId;
+  const isSuperAdmin = (session.user as any).superAdmin === true;
+  if (isSuperAdmin || !tenantId) {
+    return NextResponse.json({ error: "No tenant context" }, { status: 400 });
+  }
 
   const body = await req.json();
   const parsed = schema.safeParse(body);
@@ -45,17 +55,15 @@ export async function POST(req: Request) {
 
   if (action === "in") {
     const open = await prisma.clockEntry.findFirst({
-      where: { userId, clockOut: null },
+      where: { userId, tenantId, clockOut: null },
     });
     if (open) {
-      return NextResponse.json(
-        { error: "You already have an open shift. Clock out first." },
-        { status: 409 }
-      );
+      return NextResponse.json({ error: "You already have an open shift. Clock out first." }, { status: 409 });
     }
     const entry = await prisma.clockEntry.create({
       data: {
         userId,
+        tenantId,
         clockIn: new Date(),
         selfieIn: selfie,
         latIn: lat,
@@ -65,14 +73,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ entry });
   } else {
     const open = await prisma.clockEntry.findFirst({
-      where: { userId, clockOut: null },
+      where: { userId, tenantId, clockOut: null },
       orderBy: { clockIn: "desc" },
     });
     if (!open) {
-      return NextResponse.json(
-        { error: "No open shift to clock out of" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "No open shift to clock out of" }, { status: 404 });
     }
     const entry = await prisma.clockEntry.update({
       where: { id: open.id },
@@ -91,8 +96,12 @@ export async function GET() {
   const session = await getServerAuth();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const userId = (session.user as any).id;
+  const tenantId = (session.user as any).tenantId;
+  if (!tenantId) {
+    return NextResponse.json({ open: null });
+  }
   const open = await prisma.clockEntry.findFirst({
-    where: { userId, clockOut: null },
+    where: { userId, tenantId, clockOut: null },
     orderBy: { clockIn: "desc" },
   });
   return NextResponse.json({ open });

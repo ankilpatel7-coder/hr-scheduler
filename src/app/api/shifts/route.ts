@@ -1,3 +1,7 @@
+/**
+ * v12.1: TENANT-SCOPED shifts API.
+ */
+
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
@@ -21,12 +25,17 @@ const createSchema = z.object({
 export async function GET(req: Request) {
   const auth = await requireAuth();
   if ("error" in auth) return auth.error;
+  if (auth.isSuperAdmin || !auth.tenantId) {
+    return NextResponse.json({ error: "No tenant context" }, { status: 400 });
+  }
+  const tenantId = auth.tenantId;
+
   const { searchParams } = new URL(req.url);
   const from = searchParams.get("from");
   const to = searchParams.get("to");
   const locationId = searchParams.get("locationId");
 
-  const where: any = {};
+  const where: any = { tenantId }; // CRITICAL
   if (from || to) {
     where.startTime = {};
     if (from) where.startTime.gte = new Date(from);
@@ -42,7 +51,6 @@ export async function GET(req: Request) {
     where.employeeId = { in: scopedIds ?? [] };
     const scopedLocs = await getScopedLocationIds(auth.userId, auth.role);
     if (scopedLocs && scopedLocs.length > 0) {
-      // Restrict to manager's locations OR shifts with no location set yet
       where.OR = [
         { locationId: { in: scopedLocs } },
         { locationId: null, employeeId: { in: scopedIds ?? [] } },
@@ -54,27 +62,15 @@ export async function GET(req: Request) {
     where,
     orderBy: { startTime: "asc" },
     include: {
-      employee: {
-        select: {
-          id: true,
-          name: true,
-          department: true,
-          hourlyWage: true,
-        },
-      },
+      employee: { select: { id: true, name: true, department: true, hourlyWage: true } },
       location: { select: { id: true, name: true } },
       swap: true,
     },
   });
 
-  // Strip wage for non-admins
-  const safe =
-    auth.role === "ADMIN"
-      ? shifts
-      : shifts.map((s) => ({
-          ...s,
-          employee: { ...s.employee, hourlyWage: 0 },
-        }));
+  const safe = auth.role === "ADMIN"
+    ? shifts
+    : shifts.map((s) => ({ ...s, employee: { ...s.employee, hourlyWage: 0 } }));
 
   return NextResponse.json({ shifts: safe, viewerRole: auth.role });
 }
@@ -82,42 +78,50 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const auth = await requireRole(["ADMIN", "MANAGER"]);
   if ("error" in auth) return auth.error;
+  if (auth.isSuperAdmin || !auth.tenantId) {
+    return NextResponse.json({ error: "No tenant context" }, { status: 400 });
+  }
+  const tenantId = auth.tenantId;
+
   const body = await req.json();
   const parsed = createSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid input" }, { status: 400 });
   }
-  const { employeeId, locationId, startTime, endTime, role: shiftRole, notes } =
-    parsed.data;
+  const { employeeId, locationId, startTime, endTime, role: shiftRole, notes } = parsed.data;
 
-  // Manager can only schedule employees at their locations
+  // Verify employee in same tenant
+  const emp = await prisma.user.findUnique({ where: { id: employeeId }, select: { tenantId: true } });
+  if (!emp || emp.tenantId !== tenantId) {
+    return NextResponse.json({ error: "Employee not in your tenant" }, { status: 403 });
+  }
+  if (locationId) {
+    const loc = await prisma.location.findUnique({ where: { id: locationId }, select: { tenantId: true } });
+    if (!loc || loc.tenantId !== tenantId) {
+      return NextResponse.json({ error: "Location not in your tenant" }, { status: 403 });
+    }
+  }
+
   if (auth.role === "MANAGER") {
     const scopedIds = await getScopedEmployeeIds(auth.userId, auth.role);
     if (!scopedIds || !scopedIds.includes(employeeId)) {
-      return NextResponse.json(
-        { error: "You can only schedule employees at your assigned location(s)." },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: "You can only schedule employees at your assigned location(s)." }, { status: 403 });
     }
     if (locationId) {
       const scopedLocs = await getScopedLocationIds(auth.userId, auth.role);
       if (!scopedLocs || !scopedLocs.includes(locationId)) {
-        return NextResponse.json(
-          { error: "You can only schedule shifts at your assigned location(s)." },
-          { status: 403 }
-        );
+        return NextResponse.json({ error: "You can only schedule shifts at your assigned location(s)." }, { status: 403 });
       }
     }
   }
 
   if (new Date(endTime) <= new Date(startTime)) {
-    return NextResponse.json(
-      { error: "End time must be after start time" },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: "End time must be after start time" }, { status: 400 });
   }
+
   const shift = await prisma.shift.create({
     data: {
+      tenantId,
       employeeId,
       managerId: auth.userId,
       locationId: locationId || null,
@@ -134,13 +138,22 @@ export async function POST(req: Request) {
 export async function PATCH(req: Request) {
   const auth = await requireRole(["ADMIN", "MANAGER"]);
   if ("error" in auth) return auth.error;
+  if (auth.isSuperAdmin || !auth.tenantId) {
+    return NextResponse.json({ error: "No tenant context" }, { status: 400 });
+  }
+  const tenantId = auth.tenantId;
+
   const body = await req.json();
   const { id, ...rest } = body;
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
 
+  const existing = await prisma.shift.findUnique({ where: { id } });
+  if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (existing.tenantId !== tenantId) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   if (auth.role === "MANAGER") {
-    const existing = await prisma.shift.findUnique({ where: { id } });
-    if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
     const scopedIds = await getScopedEmployeeIds(auth.userId, auth.role);
     if (!scopedIds || !scopedIds.includes(existing.employeeId)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -160,13 +173,22 @@ export async function PATCH(req: Request) {
 export async function DELETE(req: Request) {
   const auth = await requireRole(["ADMIN", "MANAGER"]);
   if ("error" in auth) return auth.error;
+  if (auth.isSuperAdmin || !auth.tenantId) {
+    return NextResponse.json({ error: "No tenant context" }, { status: 400 });
+  }
+  const tenantId = auth.tenantId;
+
   const { searchParams } = new URL(req.url);
   const id = searchParams.get("id");
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
 
+  const existing = await prisma.shift.findUnique({ where: { id } });
+  if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (existing.tenantId !== tenantId) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   if (auth.role === "MANAGER") {
-    const existing = await prisma.shift.findUnique({ where: { id } });
-    if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
     const scopedIds = await getScopedEmployeeIds(auth.userId, auth.role);
     if (!scopedIds || !scopedIds.includes(existing.employeeId)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });

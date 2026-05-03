@@ -1,3 +1,7 @@
+/**
+ * v12.1: TENANT-SCOPED locations API.
+ */
+
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
@@ -12,11 +16,18 @@ const createSchema = z.object({
 export async function GET() {
   const auth = await requireAuth();
   if ("error" in auth) return auth.error;
+  if (auth.isSuperAdmin || !auth.tenantId) {
+    return NextResponse.json({ error: "No tenant context" }, { status: 400 });
+  }
+  const tenantId = auth.tenantId;
 
   const scoped = await getScopedLocationIds(auth.userId, auth.role);
 
+  const where: any = { tenantId };
+  if (scoped) where.id = { in: scoped };
+
   const locations = await prisma.location.findMany({
-    where: scoped ? { id: { in: scoped } } : undefined,
+    where,
     orderBy: { name: "asc" },
     include: { _count: { select: { employees: true } } },
   });
@@ -26,12 +37,19 @@ export async function GET() {
 export async function POST(req: Request) {
   const auth = await requireRole(["ADMIN"]);
   if ("error" in auth) return auth.error;
+  if (auth.isSuperAdmin || !auth.tenantId) {
+    return NextResponse.json({ error: "No tenant context" }, { status: 400 });
+  }
+  const tenantId = auth.tenantId;
+
   const body = await req.json();
   const parsed = createSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid input" }, { status: 400 });
   }
-  const loc = await prisma.location.create({ data: parsed.data });
+  const loc = await prisma.location.create({
+    data: { ...parsed.data, tenantId },
+  });
   return NextResponse.json({ location: loc });
 }
 
@@ -63,12 +81,25 @@ const patchSchema = z.object({
 export async function PATCH(req: Request) {
   const auth = await requireRole(["ADMIN"]);
   if ("error" in auth) return auth.error;
+  if (auth.isSuperAdmin || !auth.tenantId) {
+    return NextResponse.json({ error: "No tenant context" }, { status: 400 });
+  }
+  const tenantId = auth.tenantId;
+
   const body = await req.json();
   const parsed = patchSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid input" }, { status: 400 });
   }
   const { id, ...rest } = parsed.data;
+
+  // Verify location belongs to this tenant
+  const existing = await prisma.location.findUnique({ where: { id }, select: { tenantId: true } });
+  if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (existing.tenantId !== tenantId) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   const loc = await prisma.location.update({ where: { id }, data: rest as any });
   return NextResponse.json({ location: loc });
 }
@@ -76,10 +107,21 @@ export async function PATCH(req: Request) {
 export async function DELETE(req: Request) {
   const auth = await requireRole(["ADMIN"]);
   if ("error" in auth) return auth.error;
+  if (auth.isSuperAdmin || !auth.tenantId) {
+    return NextResponse.json({ error: "No tenant context" }, { status: 400 });
+  }
+  const tenantId = auth.tenantId;
+
   const { searchParams } = new URL(req.url);
   const id = searchParams.get("id");
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
-  // Soft delete by setting inactive
+
+  const existing = await prisma.location.findUnique({ where: { id }, select: { tenantId: true } });
+  if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (existing.tenantId !== tenantId) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   await prisma.location.update({ where: { id }, data: { active: false } });
   return NextResponse.json({ ok: true });
 }

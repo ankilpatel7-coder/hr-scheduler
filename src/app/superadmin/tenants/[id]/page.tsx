@@ -4,6 +4,8 @@ import { prisma } from "@/lib/db";
 import { ArrowLeft, ExternalLink } from "lucide-react";
 import { format } from "date-fns";
 import TenantEditForm from "./tenant-edit-form";
+import LoginLink from "./login-link";
+import AdminsList from "./admins-list";
 
 export default async function TenantDetailPage({
   params,
@@ -57,28 +59,17 @@ export default async function TenantDetailPage({
         <Stat label="Pay periods" value={tenant._count.payPeriods} />
       </div>
 
+      <LoginLink
+        slug={tenant.slug}
+        businessName={tenant.businessName}
+        adminEmail={tenant.users[0]?.email ?? null}
+      />
+
       <TenantEditForm tenant={JSON.parse(JSON.stringify(tenant))} />
 
       <div className="card p-6">
         <h2 className="display text-2xl text-ink mb-4">Admins ({tenant.users.length})</h2>
-        {tenant.users.length === 0 ? (
-          <div className="text-sm text-smoke italic">No admin users for this tenant. Use the &quot;Add admin&quot; button below.</div>
-        ) : (
-          <ul className="divide-y divide-dust">
-            {tenant.users.map((u) => (
-              <li key={u.id} className="py-3 flex items-center justify-between">
-                <div>
-                  <div className="font-medium text-ink text-sm">
-                    {u.name}
-                    {u.superAdmin && <span className="ml-2 chip" style={{ color: "#7c3aed", borderColor: "rgba(139,92,246,0.3)", background: "rgba(139,92,246,0.08)" }}>Super-admin</span>}
-                    {!u.active && <span className="ml-2 chip" style={{ color: "#dc2626" }}>Inactive</span>}
-                  </div>
-                  <div className="text-xs text-smoke">{u.email}</div>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
+        <AdminsList admins={tenant.users} />
         <div className="mt-4 pt-4 border-t border-dust">
           <Link
             href={`/superadmin/tenants/${tenant.id}/admins/new`}
