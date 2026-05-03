@@ -470,7 +470,7 @@ export default function SchedulePage() {
 
                       return (
                         <td
-                          key={d.toISOString()}
+                          key={d.toISOString()} onContextMenu={(e) => { e.preventDefault(); if (clipboardShift) { setMenu({ x: e.clientX, y: e.clientY, employeeId: emp.id, day: d }); } }}
                           className={`border-l border-dust p-2 align-top min-w-[130px] ${
                             isClosed ? "bg-rose/5" : ""
                           }`}
@@ -502,7 +502,7 @@ export default function SchedulePage() {
                                 key={s.id}
                                 onContextMenu={(e) => {
                                   e.preventDefault();
-                                  setMenu({ x: e.clientX, y: e.clientY, shift: s });
+                                  e.stopPropagation(); setMenu({ x: e.clientX, y: e.clientY, shift: s });
                                 }}
                                 className={`px-2 py-1.5 rounded text-xs group relative ${
                                   s.published
