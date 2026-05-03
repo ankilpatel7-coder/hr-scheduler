@@ -5,16 +5,15 @@ import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import { addDays, format } from "date-fns";
 
-export default function NewPeriodForm() {
+export default function NewPeriodForm({ tenantSlug }: { tenantSlug: string }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Default: most recent Sunday → +13 days, pay 5 days after period end
   const defaultStart = (() => {
     const d = new Date();
-    d.setDate(d.getDate() - ((d.getDay() + 0) % 7) - 14); // 2 weeks ago Sunday
+    d.setDate(d.getDate() - ((d.getDay() + 0) % 7) - 14);
     return format(d, "yyyy-MM-dd");
   })();
 
@@ -47,7 +46,7 @@ export default function NewPeriodForm() {
         setSubmitting(false);
         return;
       }
-      router.push(`/payroll/${data.period.id}`);
+      router.push(`/${tenantSlug}/payroll/${data.period.id}`);
     } catch (err: any) {
       setError(err?.message ?? "Network error");
       setSubmitting(false);

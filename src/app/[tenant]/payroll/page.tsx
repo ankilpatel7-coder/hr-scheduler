@@ -1,8 +1,6 @@
 /**
- * Pay periods list page.
- *
- * NOTE: Lives at /payroll for v12.0 (single-tenant URL routing).
- * In v12.1 this becomes /[tenant]/payroll.
+ * v12.2 tenant-aware payroll list page.
+ * All Link hrefs include the [tenant] segment.
  */
 
 import Link from "next/link";
@@ -10,25 +8,27 @@ import { redirect } from "next/navigation";
 import { getServerAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import Navbar from "@/components/navbar";
-import { Plus, FileText } from "lucide-react";
+import { FileText } from "lucide-react";
 import { format } from "date-fns";
 import NewPeriodForm from "./new-period-form";
 
 export const dynamic = "force-dynamic";
 
-export default async function PayrollPage() {
+export default async function PayrollPage({ params }: { params: { tenant: string } }) {
   const session = await getServerAuth();
-  if (!session) redirect("/login?from=/payroll");
+  if (!session) redirect(`/login?from=/${params.tenant}/payroll`);
   const role = (session.user as any).role;
   const tenantId = (session.user as any).tenantId;
-  if (role !== "ADMIN") redirect("/dashboard");
-  if (!tenantId) redirect("/superadmin");
+  const isSuperAdmin = (session.user as any).superAdmin === true;
+  if (isSuperAdmin) redirect("/superadmin");
+  if (role !== "ADMIN") redirect(`/${params.tenant}/dashboard`);
 
-  const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+  const tenant = await prisma.tenant.findUnique({ where: { slug: params.tenant } });
   if (!tenant) redirect("/superadmin");
+  if (tenant.id !== tenantId) redirect(`/${params.tenant}/dashboard`);
 
   const periods = await prisma.payPeriod.findMany({
-    where: { tenantId },
+    where: { tenantId: tenant.id },
     orderBy: { periodStart: "desc" },
     include: { _count: { select: { payStubs: true } } },
   });
@@ -47,7 +47,7 @@ export default async function PayrollPage() {
           </div>
         </div>
 
-        <NewPeriodForm />
+        <NewPeriodForm tenantSlug={params.tenant} />
 
         <div className="card overflow-hidden">
           <table className="w-full text-sm">
@@ -67,7 +67,7 @@ export default async function PayrollPage() {
               {periods.map((p) => (
                 <tr key={p.id} className="border-b border-dust last:border-0 hover:bg-ink/5">
                   <td className="px-4 py-3">
-                    <Link href={`/payroll/${p.id}`} className="font-medium text-ink hover:underline">
+                    <Link href={`/${params.tenant}/payroll/${p.id}`} className="font-medium text-ink hover:underline">
                       {format(p.periodStart, "MMM d")} – {format(p.periodEnd, "MMM d, yyyy")}
                     </Link>
                   </td>
@@ -81,7 +81,7 @@ export default async function PayrollPage() {
                   </td>
                   <td className="px-4 py-3 text-right font-mono">{p._count.payStubs}</td>
                   <td className="px-4 py-3 text-right">
-                    <Link href={`/payroll/${p.id}`} className="text-rust hover:underline text-xs inline-flex items-center gap-1">
+                    <Link href={`/${params.tenant}/payroll/${p.id}`} className="text-rust hover:underline text-xs inline-flex items-center gap-1">
                       <FileText size={11} /> View
                     </Link>
                   </td>

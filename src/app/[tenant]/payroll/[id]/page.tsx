@@ -1,3 +1,8 @@
+/**
+ * v12.2 tenant-aware pay period detail page.
+ * Internal Link hrefs include the [tenant] segment.
+ */
+
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getServerAuth } from "@/lib/auth";
@@ -9,12 +14,17 @@ import PeriodActions from "./period-actions";
 
 export const dynamic = "force-dynamic";
 
-export default async function PeriodDetailPage({ params }: { params: { id: string } }) {
+export default async function PeriodDetailPage({
+  params,
+}: {
+  params: { tenant: string; id: string };
+}) {
   const session = await getServerAuth();
-  if (!session) redirect("/login");
+  if (!session) redirect(`/login?from=/${params.tenant}/payroll/${params.id}`);
   const role = (session.user as any).role;
   const tenantId = (session.user as any).tenantId;
-  if (role !== "ADMIN") redirect("/dashboard");
+  const isSuperAdmin = (session.user as any).superAdmin === true;
+  if (role !== "ADMIN" && !isSuperAdmin) redirect(`/${params.tenant}/dashboard`);
 
   const period = await prisma.payPeriod.findUnique({
     where: { id: params.id },
@@ -25,7 +35,8 @@ export default async function PeriodDetailPage({ params }: { params: { id: strin
       },
     },
   });
-  if (!period || period.tenantId !== tenantId) notFound();
+  if (!period) notFound();
+  if (!isSuperAdmin && period.tenantId !== tenantId) notFound();
 
   const totals = period.payStubs.reduce(
     (acc, s) => ({
@@ -42,7 +53,7 @@ export default async function PeriodDetailPage({ params }: { params: { id: strin
     <div className="min-h-screen">
       <Navbar />
       <main className="max-w-[1200px] mx-auto px-6 py-10 space-y-6">
-        <Link href="/payroll" className="text-smoke hover:text-ink text-sm inline-flex items-center gap-1">
+        <Link href={`/${params.tenant}/payroll`} className="text-smoke hover:text-ink text-sm inline-flex items-center gap-1">
           <ArrowLeft size={14} /> All periods
         </Link>
 
@@ -111,7 +122,7 @@ export default async function PeriodDetailPage({ params }: { params: { id: strin
                       <td className="px-3 py-3 text-right text-rose">${s.stateIncomeTax.toFixed(2)}</td>
                       <td className="px-3 py-3 text-right font-semibold text-ink">${s.netPay.toFixed(2)}</td>
                       <td className="px-3 py-3">
-                        <Link href={`/payroll/${period.id}/${s.employeeId}`} className="text-rust hover:underline text-xs font-sans">
+                        <Link href={`/${params.tenant}/payroll/${period.id}/${s.employeeId}`} className="text-rust hover:underline text-xs font-sans">
                           View stub
                         </Link>
                       </td>
