@@ -614,7 +614,7 @@ export default function SchedulePage() {
       {menu && (
         <div
           className="fixed z-50 card p-1 min-w-[180px] shadow-lift"
-          style={{ left: menu.x, top: menu.y }}
+          style={{ position: 'fixed', left: menu.x, top: menu.y }}
           onClick={(e) => e.stopPropagation()}
         >
           {menu.shift && (
