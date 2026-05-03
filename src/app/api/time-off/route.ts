@@ -74,6 +74,7 @@ export async function POST(req: Request) {
 
   const request = await prisma.timeOffRequest.create({
     data: {
+      tenantId: auth.tenantId!,
       userId: auth.userId,
       startDate: new Date(startDate),
       endDate: new Date(endDate),

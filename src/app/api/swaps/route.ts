@@ -68,7 +68,7 @@ export async function POST(req: Request) {
   if (shift.startTime < new Date()) return NextResponse.json({ error: "Can't offer past shifts" }, { status: 400 });
 
   const swap = await prisma.shiftSwap.create({
-    data: { shiftId, offeredById: auth.userId, note, status: "OFFERED" },
+    data: { tenantId: auth.tenantId!, shiftId, offeredById: auth.userId, note, status: "OFFERED" },
   });
   return NextResponse.json({ swap });
 }
