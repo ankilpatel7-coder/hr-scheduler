@@ -1,30 +1,28 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Share, Plus, X } from "lucide-react";
+import { Share, Plus, X, Download } from "lucide-react";
 
 const INSTALL_DISMISSED_KEY = "shiftwork_install_prompt_dismissed";
 
 /**
- * Install prompt overlay shown on first visit when the page is NOT running
- * in standalone (PWA) mode. Visually instructs iOS users to "Add to Home Screen".
- * On Android, listens for beforeinstallprompt and offers a one-tap install.
+ * Install hint — small bottom banner (not blocking) shown when NOT in standalone PWA mode.
+ * Tapping it expands to show install instructions. App is fully usable without dismissing.
  *
- * Once installed, the page opens in standalone mode and this prompt never shows.
+ * Once installed (display-mode: standalone), this never shows.
  */
 export default function InstallPrompt({ tenantSlug, businessName }: { tenantSlug: string; businessName: string }) {
   const [show, setShow] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const [platform, setPlatform] = useState<"ios" | "android" | "other">("other");
   const [androidPromptEvent, setAndroidPromptEvent] = useState<any>(null);
 
   useEffect(() => {
-    // Already installed (standalone mode)?
     const isStandalone =
       window.matchMedia("(display-mode: standalone)").matches ||
       (window.navigator as any).standalone === true;
     if (isStandalone) return;
 
-    // User dismissed previously?
     try {
       if (sessionStorage.getItem(INSTALL_DISMISSED_KEY)) return;
     } catch {}
@@ -38,7 +36,6 @@ export default function InstallPrompt({ tenantSlug, businessName }: { tenantSlug
       setShow(true);
     }
 
-    // Android: capture the install prompt event
     const handler = (e: any) => {
       e.preventDefault();
       setAndroidPromptEvent(e);
@@ -50,6 +47,7 @@ export default function InstallPrompt({ tenantSlug, businessName }: { tenantSlug
   function dismiss() {
     try { sessionStorage.setItem(INSTALL_DISMISSED_KEY, "1"); } catch {}
     setShow(false);
+    setExpanded(false);
   }
 
   async function androidInstall() {
@@ -61,99 +59,80 @@ export default function InstallPrompt({ tenantSlug, businessName }: { tenantSlug
 
   if (!show) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 bg-ink/60 backdrop-blur-sm flex flex-col items-center justify-center p-6">
-      <div className="bg-paper rounded-2xl max-w-sm w-full p-6 relative">
-        <button
-          onClick={dismiss}
-          className="absolute top-3 right-3 text-smoke hover:text-ink p-1"
-          aria-label="Close"
-        >
-          <X size={20} />
-        </button>
-
-        <div className="text-center mb-4">
-          <div className="inline-block w-16 h-16 rounded-2xl bg-rust flex items-center justify-center mb-3">
-            <span className="display text-3xl font-bold text-white">S</span>
+  // Expanded view (after user taps the banner) — shows full install instructions
+  if (expanded) {
+    return (
+      <div className="fixed inset-x-0 bottom-0 z-50 bg-paper border-t border-dust shadow-2xl rounded-t-2xl p-5" style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 1rem)" }}>
+        <div className="flex items-start justify-between mb-3">
+          <div>
+            <div className="font-medium text-ink text-sm">Install {businessName}</div>
+            <div className="text-[11px] text-smoke">One-tap access from your home screen</div>
           </div>
-          <h2 className="display text-xl text-ink">Install {businessName} clock-in</h2>
-          <p className="text-xs text-smoke mt-1">
-            Add to your home screen so you can clock in with one tap.
-          </p>
+          <button onClick={() => setExpanded(false)} className="text-smoke p-1" aria-label="Collapse">
+            <X size={18} />
+          </button>
         </div>
 
         {platform === "ios" && (
-          <ol className="space-y-3 my-6 text-sm text-ink">
-            <li className="flex items-start gap-3">
-              <span className="shrink-0 w-6 h-6 rounded-full bg-rust text-white text-xs flex items-center justify-center font-bold">1</span>
-              <div>
-                Tap the <span className="inline-flex items-center gap-1 font-medium">Share <Share size={14} className="inline" /></span> button at the bottom of Safari
-              </div>
+          <ol className="space-y-2 text-sm text-ink">
+            <li className="flex items-start gap-2">
+              <span className="shrink-0 w-5 h-5 rounded-full bg-rust text-white text-[11px] flex items-center justify-center font-bold">1</span>
+              <div>Tap <Share size={13} className="inline" /> Share at the bottom of Safari</div>
             </li>
-            <li className="flex items-start gap-3">
-              <span className="shrink-0 w-6 h-6 rounded-full bg-rust text-white text-xs flex items-center justify-center font-bold">2</span>
-              <div>
-                Scroll down and tap <span className="inline-flex items-center gap-1 font-medium"><Plus size={14} className="inline" /> &quot;Add to Home Screen&quot;</span>
-              </div>
+            <li className="flex items-start gap-2">
+              <span className="shrink-0 w-5 h-5 rounded-full bg-rust text-white text-[11px] flex items-center justify-center font-bold">2</span>
+              <div>Tap <Plus size={13} className="inline" /> &quot;Add to Home Screen&quot;</div>
             </li>
-            <li className="flex items-start gap-3">
-              <span className="shrink-0 w-6 h-6 rounded-full bg-rust text-white text-xs flex items-center justify-center font-bold">3</span>
-              <div>
-                Tap <span className="font-medium">&quot;Add&quot;</span> in the top-right corner
-              </div>
-            </li>
-            <li className="flex items-start gap-3">
-              <span className="shrink-0 w-6 h-6 rounded-full bg-rust text-white text-xs flex items-center justify-center font-bold">4</span>
-              <div>
-                Open the new icon from your home screen — done!
-              </div>
+            <li className="flex items-start gap-2">
+              <span className="shrink-0 w-5 h-5 rounded-full bg-rust text-white text-[11px] flex items-center justify-center font-bold">3</span>
+              <div>Tap &quot;Add&quot; in top-right corner</div>
             </li>
           </ol>
         )}
 
         {platform === "android" && (
-          <div className="my-6">
+          <>
             {androidPromptEvent ? (
-              <button
-                onClick={androidInstall}
-                className="w-full btn btn-primary !py-3"
-              >
-                Install app
+              <button onClick={androidInstall} className="w-full btn btn-primary !py-3">
+                <Download size={16} /> Install now
               </button>
             ) : (
-              <ol className="space-y-3 text-sm text-ink">
-                <li className="flex items-start gap-3">
-                  <span className="shrink-0 w-6 h-6 rounded-full bg-rust text-white text-xs flex items-center justify-center font-bold">1</span>
-                  <div>Tap the menu (⋮) in the top-right of Chrome</div>
+              <ol className="space-y-2 text-sm text-ink">
+                <li className="flex items-start gap-2">
+                  <span className="shrink-0 w-5 h-5 rounded-full bg-rust text-white text-[11px] flex items-center justify-center font-bold">1</span>
+                  <div>Tap menu (⋮) in Chrome</div>
                 </li>
-                <li className="flex items-start gap-3">
-                  <span className="shrink-0 w-6 h-6 rounded-full bg-rust text-white text-xs flex items-center justify-center font-bold">2</span>
-                  <div>Tap <span className="font-medium">&quot;Install app&quot;</span> or <span className="font-medium">&quot;Add to Home screen&quot;</span></div>
-                </li>
-                <li className="flex items-start gap-3">
-                  <span className="shrink-0 w-6 h-6 rounded-full bg-rust text-white text-xs flex items-center justify-center font-bold">3</span>
-                  <div>Open the new icon from your home screen</div>
+                <li className="flex items-start gap-2">
+                  <span className="shrink-0 w-5 h-5 rounded-full bg-rust text-white text-[11px] flex items-center justify-center font-bold">2</span>
+                  <div>Tap &quot;Install app&quot;</div>
                 </li>
               </ol>
             )}
-          </div>
+          </>
         )}
 
-        <button
-          onClick={dismiss}
-          className="w-full text-xs text-smoke hover:text-ink py-2"
-        >
-          Skip for now (use in browser)
+        <button onClick={dismiss} className="w-full text-[11px] text-smoke hover:text-ink py-2 mt-3">
+          Don&apos;t install — use in browser
         </button>
       </div>
+    );
+  }
 
-      {/* Visual arrow pointing to bottom share button on iOS */}
-      {platform === "ios" && (
-        <div className="absolute bottom-12 left-1/2 -translate-x-1/2 text-white text-center">
-          <div className="text-3xl animate-bounce">↓</div>
-          <div className="text-xs">Tap Share to begin</div>
-        </div>
-      )}
+  // Collapsed bottom banner — small strip, doesn't block the app
+  return (
+    <div
+      className="fixed inset-x-0 bottom-0 z-40 bg-rust text-white px-4 py-2 flex items-center justify-between shadow-lg"
+      style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 0.5rem)" }}
+    >
+      <button
+        onClick={() => setExpanded(true)}
+        className="flex items-center gap-2 text-sm font-medium flex-1 text-left active:opacity-80"
+      >
+        <Download size={16} /> Install {businessName} for one-tap access
+      </button>
+      <button onClick={dismiss} className="text-white/80 hover:text-white p-1" aria-label="Dismiss">
+        <X size={18} />
+      </button>
     </div>
   );
 }

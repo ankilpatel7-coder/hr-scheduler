@@ -20,6 +20,9 @@ export async function generateMetadata({ params }: { params: { tenant: string } 
   });
   return {
     title: tenant ? `${tenant.businessName} — Clock-in` : "Shiftwork Clock-in",
+    // Per-tenant manifest so the installed PWA icon opens at /m/kiosk/<tenant>,
+    // NOT the generic /m (which would show the email login page).
+    manifest: `/api/manifest/${params.tenant}`,
     appleWebApp: {
       capable: true,
       statusBarStyle: "default",
