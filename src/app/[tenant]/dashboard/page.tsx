@@ -488,6 +488,58 @@ function AlertCard({
   href: string;
   warn?: boolean;
 }) {
+  // Slick light-theme alert card. Solid colored accent bar on the left,
+  // soft tinted background, bold colored count, muted label. Replaces the
+  // old dark-gradient design that clashed with the light dashboard.
+  const accent = warn ? "#d97706" : "#b8551c";
+  const accentText = warn ? "#92400e" : "#7c3a17";
+  const accentBg = warn ? "rgba(245, 158, 11, 0.06)" : "rgba(184, 85, 28, 0.05)";
+  const iconBg = warn ? "rgba(245, 158, 11, 0.16)" : "rgba(184, 85, 28, 0.14)";
+  const borderColor = warn ? "rgba(245, 158, 11, 0.30)" : "rgba(184, 85, 28, 0.25)";
+  return (
+    <Link
+      href={href}
+      className="group flex items-center gap-3 rounded-xl px-4 py-3.5 transition-all hover:shadow-sm hover:-translate-y-px animate-slide-up relative overflow-hidden"
+      style={{
+        background: accentBg,
+        border: `1px solid ${borderColor}`,
+        borderLeft: `4px solid ${accent}`,
+      }}
+    >
+      <div
+        className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 transition-transform group-hover:scale-105"
+        style={{ background: iconBg, color: accent }}
+      >
+        {icon}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div
+          className="display text-3xl leading-none tabular-nums"
+          style={{ color: accent }}
+        >
+          {count}
+        </div>
+        <div
+          className="text-[11px] mt-1.5 truncate font-medium uppercase tracking-wider"
+          style={{ color: accentText, opacity: 0.85 }}
+        >
+          {label}
+        </div>
+      </div>
+      <ArrowUpRight
+        size={16}
+        className="opacity-50 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all flex-shrink-0"
+        style={{ color: accent }}
+      />
+    </Link>
+  );
+}: {
+  icon: React.ReactNode;
+  count: number;
+  label: string;
+  href: string;
+  warn?: boolean;
+}) {
   return (
     <Link
       href={href}
