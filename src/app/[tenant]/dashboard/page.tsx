@@ -122,7 +122,7 @@ export default async function Dashboard() {
       tot.set(s.employeeId, (tot.get(s.employeeId) ?? 0) + durationHours(s.startTime, s.endTime));
     }
     for (const v of tot.values()) {
-      if (v >= 36) otAtRisk++;
+      if (v >= 40) otAtRisk++;
     }
   }
 
@@ -284,8 +284,8 @@ export default async function Dashboard() {
                   <AlertCard
                     icon={<AlertTriangle size={16} />}
                     count={otAtRisk}
-                    label="At/near 40 hrs"
-                    href="/timesheets"
+                    label="Projected ≥ 40 hrs"
+                    href="/projected-hours"
                     warn
                   />
                 )}
