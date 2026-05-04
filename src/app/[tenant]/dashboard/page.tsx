@@ -3,7 +3,8 @@ import Link from "next/link";
 import { getServerAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import Navbar from "@/components/navbar";
-import DashboardAnalytics from "@/components/dashboard-analytics";
+import TodayTimelineWidget from "@/components/today-timeline-widget";
+import OvertimeRiskWidget from "@/components/overtime-risk-widget";
 import { fmtDate, fmtTime, durationHours } from "@/lib/utils";
 import { isStaff } from "@/lib/guards";
 import {
@@ -26,6 +27,9 @@ export default async function Dashboard() {
   if (!session) redirect("/login");
   const role = (session.user as any).role;
   const userId = (session.user as any).id;
+  const tenantId = (session.user as any).tenantId as string | null;
+  const tenantInfo = tenantId ? await prisma.tenant.findUnique({ where: { id: tenantId }, select: { slug: true } }) : null;
+  const tenantSlug = tenantInfo?.slug ?? "";
 
   const now = new Date();
   const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -316,7 +320,7 @@ export default async function Dashboard() {
             </div>
 
             {/* Analytics: today's roster, charts */}
-            <DashboardAnalytics />
+            {tenantId && tenantSlug && (<div className="grid md:grid-cols-2 gap-6"><TodayTimelineWidget tenantId={tenantId} tenantSlug={tenantSlug} /><OvertimeRiskWidget tenantId={tenantId} tenantSlug={tenantSlug} /></div>)}
 
             {/* Labor cost panel */}
             {weekLaborCost > 0 && (
