@@ -20,18 +20,58 @@ export const authOptions: NextAuthOptions = {
       credentials: {
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
+        kioskTenantSlug: { label: "Kiosk Tenant Slug", type: "text" },
       },
       async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) return null;
+        if (!credentials?.password) return null;
+
+        // KIOSK MODE (v13.1): PIN-only login within a specific tenant.
+        // Caller passes kioskTenantSlug + 4-digit PIN. We find any user in that
+        // tenant whose PIN matches. Requires unique PINs within the tenant
+        // (if 2+ users have same PIN, login is rejected for safety).
+        if (credentials.kioskTenantSlug && /^\d{4}$/.test(credentials.password)) {
+          const tenant = await prisma.tenant.findUnique({
+            where: { slug: credentials.kioskTenantSlug },
+            select: { id: true, active: true },
+          });
+          if (!tenant || !tenant.active) return null;
+
+          const candidates = await prisma.user.findMany({
+            where: {
+              tenantId: tenant.id,
+              active: true,
+              pinHash: { not: null },
+            },
+          });
+
+          const matches = [];
+          for (const u of candidates) {
+            if (u.pinHash && await bcrypt.compare(credentials.password, u.pinHash)) {
+              matches.push(u);
+            }
+          }
+
+          if (matches.length === 0) return null;
+          if (matches.length > 1) {
+            // PIN collision — reject to avoid signing in the wrong person.
+            // Both employees should change to unique PINs via /change-pin.
+            console.warn(`[kiosk] PIN collision in tenant ${credentials.kioskTenantSlug}: ${matches.length} matches`);
+            return null;
+          }
+          const user = matches[0];
+          return {
+            id: user.id, email: user.email, name: user.name,
+            role: user.role, tenantId: user.tenantId, superAdmin: user.superAdmin,
+          } as any;
+        }
+
+        // REGULAR LOGIN: email + password (or 4-digit PIN as fallback)
+        if (!credentials.email) return null;
         const user = await prisma.user.findUnique({
           where: { email: credentials.email.toLowerCase() },
         });
         if (!user || !user.active) return null;
 
-        // v12.3: Accept password OR PIN. PIN is exactly 4 digits.
-        // This lets the same login form serve both desktop (password) and
-        // mobile/PWA (PIN keypad). Try password first; fall back to PIN if
-        // input is exactly 4 digits and user has a PIN set.
         let ok = await bcrypt.compare(credentials.password, user.passwordHash);
         if (!ok && /^\d{4}$/.test(credentials.password) && user.pinHash) {
           ok = await bcrypt.compare(credentials.password, user.pinHash);
@@ -39,12 +79,8 @@ export const authOptions: NextAuthOptions = {
         if (!ok) return null;
 
         return {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          role: user.role,
-          tenantId: user.tenantId,
-          superAdmin: user.superAdmin,
+          id: user.id, email: user.email, name: user.name,
+          role: user.role, tenantId: user.tenantId, superAdmin: user.superAdmin,
         } as any;
       },
     }),
