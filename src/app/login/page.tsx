@@ -1,5 +1,5 @@
 "use client";
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -11,6 +11,18 @@ function LoginForm() {
   const [password, setPassword] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  // v13: if a mobile user lands here (e.g. via a stale link), bounce them to
+  // the PIN keypad at /m/login instead of showing the desktop email+password form.
+  useEffect(() => {
+    if (typeof navigator !== "undefined") {
+      const ua = navigator.userAgent;
+      if (/iPhone|iPad|iPod|Android|Mobile|webOS|BlackBerry|Windows Phone/i.test(ua)) {
+        router.replace("/m/login");
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
