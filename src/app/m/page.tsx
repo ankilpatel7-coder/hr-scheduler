@@ -7,6 +7,7 @@ import { redirect } from "next/navigation";
 import { getServerAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import MobileClockScreen from "./clock-screen";
+import AutoSignout from "./auto-signout";
 
 export const dynamic = "force-dynamic";
 
@@ -20,11 +21,12 @@ export default async function MobileHome() {
 
   if (isSuperAdmin) redirect("/superadmin");
 
-  // Defensive: if logged in but no tenant context, force sign-out via NextAuth
-  // route so the cookie clears, then back to login. This breaks the /m → /m/login
-  // → /m bounce loop that "too many redirects" came from.
+  // Stale/partial session (e.g. old JWT without tenantId field):
+  // render the auto-signout recovery component instead of redirecting to
+  // NextAuth's confirmation page. This silently clears the cookie and sends
+  // the user to /m/login — no clicks needed.
   if (!tenantId) {
-    redirect("/api/auth/signout?callbackUrl=/m/login");
+    return <AutoSignout />;
   }
 
   const open = await prisma.clockEntry.findFirst({
