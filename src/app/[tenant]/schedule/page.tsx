@@ -106,7 +106,7 @@ export default function SchedulePage() {
     const weekEnd = addDays(weekStart, 7);
     const locQuery = locationFilter ? `&locationId=${locationFilter}` : "";
     const [eRes, sRes, lRes] = await Promise.all([
-      fetch("/api/employees"),
+      fetch("/api/employees?schedulableOnly=true"),
       fetch(
         `/api/shifts?from=${weekStart.toISOString()}&to=${weekEnd.toISOString()}${locQuery}`
       ),

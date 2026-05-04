@@ -29,6 +29,7 @@ export async function GET(req: Request) {
   const locationFilter = searchParams.get("locationId");
   const includeArchived = searchParams.get("includeArchived") === "true";
   const schedulableOnly = searchParams.get("schedulableOnly") === "true";
+  const schedulableOnly = searchParams.get("schedulableOnly") === "true";
 
   const scopedIds = await getScopedEmployeeIds(auth.userId, auth.role);
 
