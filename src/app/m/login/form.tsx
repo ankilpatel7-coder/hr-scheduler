@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Delete } from "lucide-react";
+
+const REMEMBERED_EMAIL_KEY = "shiftwork_mobile_email";
 
 export default function MobileLoginForm() {
   const router = useRouter();
@@ -12,16 +14,26 @@ export default function MobileLoginForm() {
   const [pin, setPin] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hydrated, setHydrated] = useState(false);
+
+  // On first render: if email is remembered from previous login, skip directly to PIN keypad
+  useEffect(() => {
+    try {
+      const remembered = localStorage.getItem(REMEMBERED_EMAIL_KEY);
+      if (remembered) {
+        setEmail(remembered);
+        setStep("pin");
+      }
+    } catch {}
+    setHydrated(true);
+  }, []);
 
   function pressDigit(d: string) {
     setError(null);
     if (pin.length < 4) {
       const next = pin + d;
       setPin(next);
-      if (next.length === 4) {
-        // Auto-submit when 4 digits entered
-        submit(next);
-      }
+      if (next.length === 4) submit(next);
     }
   }
 
@@ -30,13 +42,21 @@ export default function MobileLoginForm() {
     setPin((p) => p.slice(0, -1));
   }
 
+  function forgetEmail() {
+    try { localStorage.removeItem(REMEMBERED_EMAIL_KEY); } catch {}
+    setEmail("");
+    setPin("");
+    setError(null);
+    setStep("email");
+  }
+
   async function submit(pinValue: string) {
     setSubmitting(true);
     setError(null);
     try {
       const res = await signIn("credentials", {
         email: email.toLowerCase().trim(),
-        password: pinValue, // PIN goes in the password field; auth.ts auto-detects
+        password: pinValue,
         redirect: false,
       });
       if (res?.error) {
@@ -45,6 +65,8 @@ export default function MobileLoginForm() {
         setSubmitting(false);
         return;
       }
+      // Remember email for next time
+      try { localStorage.setItem(REMEMBERED_EMAIL_KEY, email.toLowerCase().trim()); } catch {}
       router.push("/m");
       router.refresh();
     } catch (err: any) {
@@ -54,6 +76,12 @@ export default function MobileLoginForm() {
     }
   }
 
+  // Don't render anything until we've checked localStorage (avoids flash of email screen)
+  if (!hydrated) {
+    return <div className="min-h-screen flex items-center justify-center text-smoke text-sm">Loading…</div>;
+  }
+
+  // EMAIL ENTRY STEP (first-ever login on this device)
   if (step === "email") {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6">
@@ -63,7 +91,7 @@ export default function MobileLoginForm() {
               <span className="display text-3xl font-bold text-white">S</span>
             </div>
             <h1 className="display text-3xl text-ink">Shiftwork</h1>
-            <p className="text-sm text-smoke mt-1">Sign in</p>
+            <p className="text-sm text-smoke mt-1">Enter your email to begin</p>
           </div>
           <form
             onSubmit={(e) => {
@@ -97,12 +125,12 @@ export default function MobileLoginForm() {
     );
   }
 
-  // PIN keypad
+  // PIN KEYPAD STEP
   const digits = ["1","2","3","4","5","6","7","8","9","","0",""];
   return (
     <div className="min-h-screen flex flex-col items-center justify-between p-6 select-none">
       <div className="w-full max-w-xs mt-8">
-        <button onClick={() => { setStep("email"); setPin(""); setError(null); }} className="text-xs text-smoke hover:text-ink">
+        <button onClick={forgetEmail} className="text-xs text-smoke hover:text-ink">
           ← Use a different email
         </button>
         <div className="text-center mt-6">
@@ -110,7 +138,6 @@ export default function MobileLoginForm() {
           <h2 className="display text-2xl text-ink mt-2">Enter your 4-digit PIN</h2>
         </div>
 
-        {/* PIN dots */}
         <div className="flex justify-center gap-4 my-8">
           {[0,1,2,3].map((i) => (
             <div
@@ -126,12 +153,9 @@ export default function MobileLoginForm() {
         {submitting && <div className="text-sm text-smoke text-center">Signing in…</div>}
       </div>
 
-      {/* Numeric keypad */}
       <div className="grid grid-cols-3 gap-3 w-full max-w-xs mb-8">
         {digits.map((d, i) => {
-          if (d === "" && i === 9) {
-            return <div key={i} />; // empty cell
-          }
+          if (d === "" && i === 9) return <div key={i} />;
           if (d === "" && i === 11) {
             return (
               <button
