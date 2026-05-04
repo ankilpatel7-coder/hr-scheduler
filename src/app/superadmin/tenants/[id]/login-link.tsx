@@ -12,7 +12,7 @@ export default function LoginLink({
   businessName: string;
   adminEmail: string | null;
 }) {
-  const [copied, setCopied] = useState<"link" | "email" | null>(null);
+  const [copied, setCopied] = useState<"link" | "email" | "kiosk" | null>(null);
 
   // For v12.0 (no per-tenant URL routing yet), all tenants share the global /login.
   // For v12.1 with /[tenant]/ routing, this becomes /<slug>/login.
