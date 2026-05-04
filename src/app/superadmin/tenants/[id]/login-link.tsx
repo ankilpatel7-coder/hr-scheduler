@@ -19,6 +19,7 @@ export default function LoginLink({
   // We add ?tenant=<slug> as a hint the login page can use for branding.
   const origin = typeof window !== "undefined" ? window.location.origin : "https://hr-scheduler-2r1u.vercel.app";
   const loginUrl = `${origin}/login?tenant=${slug}`;
+  const kioskUrl = `${origin}/m/kiosk/${slug}`;
 
   const emailSubject = `Your ${businessName} Shiftwork login`;
   const emailBody = `Hi,
@@ -39,6 +40,12 @@ Once logged in, please change your password immediately via the key icon in the 
   async function copyLink() {
     await navigator.clipboard.writeText(loginUrl);
     setCopied("link");
+    setTimeout(() => setCopied(null), 2000);
+  }
+
+  async function copyKiosk() {
+    await navigator.clipboard.writeText(kioskUrl);
+    setCopied("kiosk");
     setTimeout(() => setCopied(null), 2000);
   }
 
@@ -71,7 +78,26 @@ Once logged in, please change your password immediately via the key icon in the 
             </button>
           </div>
           <div className="text-[11px] text-smoke mt-1">
-            For v12.0, all tenants share the same login page. v12.1 will add per-tenant URLs (e.g. <code>/{slug}/login</code>).
+            Admin login URL — for the admin to access the desktop dashboard.
+          </div>
+        </div>
+
+        <div className="border-t border-dust pt-3">
+          <label className="block label-eyebrow mb-1">📱 Mobile clock-in (kiosk URL for employees)</label>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={kioskUrl}
+              readOnly
+              onFocus={(e) => e.currentTarget.select()}
+              className="font-mono text-xs"
+            />
+            <button onClick={copyKiosk} className="btn btn-secondary !px-3" title="Copy kiosk URL">
+              {copied === "kiosk" ? <Check size={14} /> : <Copy size={14} />}
+            </button>
+          </div>
+          <div className="text-[11px] text-smoke mt-1">
+            Bookmark this on the shared iPad/iPhone employees use to clock in. Opens directly to a 4-digit PIN keypad. Each employee enters their PIN → takes a selfie → clocks in/out → device auto-signs-out for the next employee.
           </div>
         </div>
 
