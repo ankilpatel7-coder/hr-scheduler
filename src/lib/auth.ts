@@ -27,8 +27,17 @@ export const authOptions: NextAuthOptions = {
           where: { email: credentials.email.toLowerCase() },
         });
         if (!user || !user.active) return null;
-        const ok = await bcrypt.compare(credentials.password, user.passwordHash);
+
+        // v12.3: Accept password OR PIN. PIN is exactly 4 digits.
+        // This lets the same login form serve both desktop (password) and
+        // mobile/PWA (PIN keypad). Try password first; fall back to PIN if
+        // input is exactly 4 digits and user has a PIN set.
+        let ok = await bcrypt.compare(credentials.password, user.passwordHash);
+        if (!ok && /^\d{4}$/.test(credentials.password) && user.pinHash) {
+          ok = await bcrypt.compare(credentials.password, user.pinHash);
+        }
         if (!ok) return null;
+
         return {
           id: user.id,
           email: user.email,
