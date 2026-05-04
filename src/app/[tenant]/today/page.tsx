@@ -91,6 +91,7 @@ export default async function TodayPage({ params }: { params: { tenant: string }
         tenantId: tenant.id,
         published: true,
         startTime: { gte: dayStart, lte: dayEnd },
+        employee: { role: "EMPLOYEE" },
       },
       include: {
         employee: { select: { id: true, name: true, email: true } },

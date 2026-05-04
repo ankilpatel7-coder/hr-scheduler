@@ -51,7 +51,7 @@ export default async function ProjectedHoursPage({ params }: { params: { tenant:
 
   const [employees, entries, scheduled] = await Promise.all([
     prisma.user.findMany({
-      where: { tenantId: tenant.id, active: true, role: { in: ["EMPLOYEE", "ADMIN"] } },
+      where: { tenantId: tenant.id, active: true, role: "EMPLOYEE" },
       select: { id: true, name: true, email: true, role: true },
     }),
     prisma.clockEntry.findMany({
