@@ -41,6 +41,9 @@ export async function GET(req: Request) {
     where.archivedAt = null;
   }
 
+  if (schedulableOnly) {
+    where.role = { not: "ADMIN" };
+  }
   const employees = await prisma.user.findMany({
     where,
     orderBy: { name: "asc" },
