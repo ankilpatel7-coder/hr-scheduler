@@ -257,7 +257,14 @@ export default function KioskForm({ tenantSlug, businessName }: { tenantSlug: st
 
       {clockError && <div className="text-sm text-rose bg-rose/10 px-3 py-2 rounded mt-3 text-center">{clockError}</div>}
 
-      <div className="mt-auto pt-4">
+      <div
+        className="mt-auto pt-4"
+        style={{
+          // Push button up past iOS home indicator (the gesture bar) and add
+          // breathing room so it's never directly at the screen edge.
+          paddingBottom: "calc(env(safe-area-inset-bottom) + 1.5rem)",
+        }}
+      >
         {!selfie ? (
           <button onClick={captureSelfie} disabled={!!cameraError}
             className="w-full rounded-2xl py-5 text-white text-lg font-medium shadow-lg active:scale-95 transition disabled:opacity-50 inline-flex items-center justify-center gap-2"

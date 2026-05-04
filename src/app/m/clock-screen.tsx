@@ -181,8 +181,11 @@ export default function MobileClockScreen({
 
       {error && <div className="text-sm text-rose bg-rose/10 px-3 py-2 rounded mt-3 text-center">{error}</div>}
 
-      {/* Bottom: big colored action button */}
-      <div className="mt-auto pt-4">
+      {/* Bottom: big colored action button — pushed above iOS home indicator */}
+      <div
+        className="mt-auto pt-4"
+        style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 1.5rem)" }}
+      >
         {!selfie ? (
           <button
             onClick={captureSelfie}
