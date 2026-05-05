@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { TIMEZONES, DEFAULT_TIMEZONE } from "@/lib/timezones";
 
 const STATES = [
   "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT",
@@ -14,6 +15,7 @@ type Tenant = {
   businessName: string;
   legalName: string | null;
   state: string;
+  timezone: string | null;
   addressLine1: string | null;
   addressLine2: string | null;
   city: string | null;
@@ -34,6 +36,7 @@ export default function TenantEditForm({ tenant }: { tenant: Tenant }) {
     businessName: tenant.businessName,
     legalName: tenant.legalName ?? "",
     state: tenant.state,
+    timezone: tenant.timezone ?? DEFAULT_TIMEZONE,
     addressLine1: tenant.addressLine1 ?? "",
     addressLine2: tenant.addressLine2 ?? "",
     city: tenant.city ?? "",
@@ -119,6 +122,15 @@ export default function TenantEditForm({ tenant }: { tenant: Tenant }) {
           <select value={form.state} onChange={(e) => update("state", e.target.value)}>
             {STATES.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
+        </div>
+        <div>
+          <label>Timezone</label>
+          <select value={form.timezone} onChange={(e) => update("timezone", e.target.value)}>
+            {TIMEZONES.map((tz) => <option key={tz.value} value={tz.value}>{tz.label}</option>)}
+          </select>
+          <div className="text-[11px] text-smoke mt-1">
+            Used for &quot;today&quot;, week boundaries, payroll cutoffs. Stored as IANA tz; current value: <code className="font-mono">{form.timezone}</code>
+          </div>
         </div>
         <div>
           <label>Street address</label>

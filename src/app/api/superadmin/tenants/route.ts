@@ -12,6 +12,7 @@ import bcrypt from "bcryptjs";
 import { randomBytes } from "crypto";
 import { prisma } from "@/lib/db";
 import { requireSuperAdmin } from "@/lib/tenant";
+import { isValidTimezone, DEFAULT_TIMEZONE } from "@/lib/timezones";
 
 const SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$/;
 const RESERVED_SLUGS = new Set([
@@ -72,6 +73,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid state code." }, { status: 400 });
   }
 
+  const timezone = String(body.timezone ?? DEFAULT_TIMEZONE).trim();
+  if (!isValidTimezone(timezone)) {
+    return NextResponse.json({ error: `Invalid timezone '${timezone}'.` }, { status: 400 });
+  }
+
   const adminEmail = String(body.adminEmail ?? "").toLowerCase().trim();
   if (!adminEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(adminEmail)) {
     return NextResponse.json({ error: "Valid admin email is required." }, { status: 400 });
@@ -103,6 +109,7 @@ export async function POST(req: Request) {
         businessName,
         legalName: body.legalName?.trim() || null,
         state: state as any,
+        timezone,
         addressLine1: body.addressLine1?.trim() || null,
         city: body.city?.trim() || null,
         zip: body.zip?.trim() || null,

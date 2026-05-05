@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
+import { TIMEZONES, DEFAULT_TIMEZONE } from "@/lib/timezones";
 
 const STATES = [
   "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT",
@@ -22,6 +23,7 @@ export default function NewTenantPage() {
     businessName: "",
     legalName: "",
     state: "KY",
+    timezone: DEFAULT_TIMEZONE,
     addressLine1: "",
     city: "",
     zip: "",
@@ -156,6 +158,11 @@ export default function NewTenantPage() {
           <Field label="State *" hint="Determines payroll tax rules">
             <select required value={form.state} onChange={(e) => update("state", e.target.value)}>
               {STATES.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </Field>
+          <Field label="Timezone *" hint="Used for 'today', week boundaries, payroll cutoffs, etc.">
+            <select required value={form.timezone} onChange={(e) => update("timezone", e.target.value)}>
+              {TIMEZONES.map((tz) => <option key={tz.value} value={tz.value}>{tz.label}</option>)}
             </select>
           </Field>
         </Section>

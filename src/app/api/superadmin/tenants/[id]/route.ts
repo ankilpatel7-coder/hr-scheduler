@@ -15,6 +15,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requireSuperAdmin } from "@/lib/tenant";
+import { isValidTimezone } from "@/lib/timezones";
 
 const VALID_STATES = new Set([
   "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT",
@@ -57,6 +58,11 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     const v = String(body.state).toUpperCase();
     if (!VALID_STATES.has(v)) return NextResponse.json({ error: "Invalid state." }, { status: 400 });
     data.state = v;
+  }
+  if ("timezone" in body) {
+    const v = String(body.timezone).trim();
+    if (!isValidTimezone(v)) return NextResponse.json({ error: `Invalid timezone '${v}'.` }, { status: 400 });
+    data.timezone = v;
   }
   if ("addressLine1" in body) data.addressLine1 = String(body.addressLine1 ?? "").trim() || null;
   if ("addressLine2" in body) data.addressLine2 = String(body.addressLine2 ?? "").trim() || null;

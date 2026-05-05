@@ -128,6 +128,7 @@ model Tenant {
   businessName    String
   legalName       String?  // for tax forms; defaults to businessName
   state           USState
+  timezone        String   @default("America/New_York")  // IANA tz, e.g. "America/Chicago". Used for "today"/week boundaries on dashboard, payroll, etc.
   addressLine1    String?
   addressLine2    String?
   city            String?
