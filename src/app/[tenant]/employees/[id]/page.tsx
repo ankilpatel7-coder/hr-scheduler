@@ -47,11 +47,13 @@ export default function EmployeeProfilePage() {
   const router = useRouter();
   const params = useParams();
   const id = params?.id as string;
+  const tenantSlug = (params?.tenant as string) ?? "";
   const [profile, setProfile] = useState<Profile | null>(null);
   const [canEditAll, setCanEditAll] = useState(false);
   const [canEditSelf, setCanEditSelf] = useState(false);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
+  const [w4Filed, setW4Filed] = useState<boolean | null>(null);
   const [recent, setRecent] = useState<{ shifts: any[]; clockEntries: any[] }>({
     shifts: [],
     clockEntries: [],
@@ -80,6 +82,25 @@ export default function EmployeeProfilePage() {
       fetch(`/api/timesheets?from=${past}&to=${new Date().toISOString()}&employeeId=${id}`),
     ]);
     const sData = sRes.ok ? await sRes.json() : { shifts: [] };
+    // Fetch W-4 status (admin/manager only — endpoint requires those roles)
+    if (((session?.user as any)?.role) === "ADMIN") {
+      try {
+        const w4Res = await fetch(`/api/employees/${id}/w4`);
+        if (w4Res.ok) {
+          const w4Data = await w4Res.json();
+          const e = w4Data.employee;
+          const isDefault = e &&
+            e.filingStatus === "SINGLE" &&
+            !e.multipleJobsCheckbox &&
+            (e.dependentsCredit ?? 0) === 0 &&
+            (e.otherIncome ?? 0) === 0 &&
+            (e.deductionsAdjustment ?? 0) === 0 &&
+            (e.extraWithholding ?? 0) === 0 &&
+            (!e.kyExemptionsAllowance || e.kyExemptionsAllowance === 0);
+          setW4Filed(!isDefault);
+        }
+      } catch {}
+    }
     const cData = cRes.ok ? await cRes.json() : { entries: [] };
     setRecent({
       shifts: (sData.shifts ?? []).filter((s: any) => s.employeeId === id).slice(0, 10),
@@ -262,12 +283,30 @@ export default function EmployeeProfilePage() {
           {/* W-4 / Tax withholding (admin) */}
           {isAdmin && (
             <Card title="W-4 / Tax withholding" subtitle="Federal & state tax form settings — drives payroll withholding">
-              <Link
-                href={`/employees/${profile.id}/w4`}
-                className="inline-flex items-center gap-1.5 text-sm text-rust hover:underline font-medium"
-              >
-                <ShieldCheck size={14} /> Edit W-4 settings →
-              </Link>
+              <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+                <Link
+                  href={`/${tenantSlug}/employees/${profile.id}/w4`}
+                  className="inline-flex items-center gap-1.5 text-sm text-rust hover:underline font-medium"
+                >
+                  <ShieldCheck size={14} /> Edit W-4 settings →
+                </Link>
+                {w4Filed === true && (
+                  <span
+                    className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded font-medium"
+                    style={{ color: "#059669", background: "rgba(16,185,129,0.10)" }}
+                  >
+                    Filed
+                  </span>
+                )}
+                {w4Filed === false && (
+                  <span
+                    className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded font-medium"
+                    style={{ color: "#d97706", background: "rgba(245,158,11,0.10)" }}
+                  >
+                    Defaults
+                  </span>
+                )}
+              </div>
               <div className="text-[11px] text-smoke mt-2 leading-relaxed">
                 If unset, defaults to <span className="font-medium">Single, no adjustments</span> — the IRS-required fallback until the employee submits their W-4. Affects every paystub.
               </div>
