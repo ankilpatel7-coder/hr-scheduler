@@ -259,6 +259,20 @@ export default function EmployeeProfilePage() {
               )}
             </Card>
           )}
+          {/* W-4 / Tax withholding (admin) */}
+          {isAdmin && (
+            <Card title="W-4 / Tax withholding" subtitle="Federal & state tax form settings — drives payroll withholding">
+              <Link
+                href={`/employees/${profile.id}/w4`}
+                className="inline-flex items-center gap-1.5 text-sm text-rust hover:underline font-medium"
+              >
+                <ShieldCheck size={14} /> Edit W-4 settings →
+              </Link>
+              <div className="text-[11px] text-smoke mt-2 leading-relaxed">
+                If unset, defaults to <span className="font-medium">Single, no adjustments</span> — the IRS-required fallback until the employee submits their W-4. Affects every paystub.
+              </div>
+            </Card>
+          )}
         </div>
 
         {/* Recent shifts */}
@@ -754,8 +768,8 @@ function EditModal({
 
           <div className="text-xs text-smoke text-center pt-2">
             <ShieldCheck size={12} className="inline mr-1" />
-            SSN, tax forms, and direct deposit are managed in your payroll
-            provider (Gusto, Wave, ADP) — not here.
+            SSN and direct deposit are managed in your payroll provider
+            (Gusto, Wave, ADP). W-4 / tax withholding is managed in Shiftwork (link above).
           </div>
         </form>
       </div>
