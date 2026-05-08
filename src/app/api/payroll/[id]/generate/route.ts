@@ -33,8 +33,25 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   const employees = await prisma.user.findMany({
     where: {
       tenantId: ctx.tenant.id,
-      active: true,
-      role: { not: "ADMIN" }, // typical: don't pay admins; flip if needed
+      role: { not: "ADMIN" }, // don't pay admins
+      // Include active employees AND inactive ones who clocked in during this
+      // period — so a worker deactivated mid-period still gets paid for the
+      // hours they actually worked. Without this, deactivating an employee
+      // before payroll runs silently drops them from the period.
+      OR: [
+        { active: true },
+        {
+          clockEntries: {
+            some: {
+              clockIn: { lte: period.periodEnd },
+              OR: [
+                { clockOut: null },
+                { clockOut: { gte: period.periodStart } },
+              ],
+            },
+          },
+        },
+      ],
     },
     select: {
       id: true,
