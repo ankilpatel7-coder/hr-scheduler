@@ -102,10 +102,15 @@ export default function LlcForm({ location }: { location: Location }) {
         return;
       }
       setCoords({ lat: data.location.lat, lng: data.location.lng });
-      setMsg(data.matched ? `Geocoded: ${data.matched}` : "Geocoded.");
+      const note = data.precisionNote ? ` (${data.precisionNote})` : "";
+      setMsg(
+        data.matched
+          ? `Geocoded: ${data.matched}${note}`
+          : "Geocoded." + note,
+      );
       router.refresh();
       setGeocoding(false);
-      setTimeout(() => setMsg(null), 5000);
+      setTimeout(() => setMsg(null), 8000);
     } catch (err: any) {
       setError(err?.message ?? "Network error");
       setGeocoding(false);

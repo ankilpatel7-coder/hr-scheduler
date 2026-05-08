@@ -2,13 +2,6 @@
  * Manually re-geocode a location's address.
  *
  * POST /api/locations/[id]/geocode
- *
- * Useful when:
- *   - The auto-geocode on save failed (Nominatim was down, address was odd)
- *   - The address didn't change but the existing lat/lng is wrong
- *   - Backfilling locations created before geocoding was wired up
- *
- * Admin-only.
  */
 
 import { NextResponse } from "next/server";
@@ -38,10 +31,21 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   });
 
   if (!result) {
+    const filled = [location.addressLine1, location.city, location.locState, location.zip]
+      .filter(Boolean).length;
+    if (filled < 4) {
+      return NextResponse.json(
+        {
+          error:
+            "Couldn't geocode this address. Make sure street, city, state, and ZIP are all filled in.",
+        },
+        { status: 422 },
+      );
+    }
     return NextResponse.json(
       {
         error:
-          "Couldn't geocode this address. Make sure street, city, state, and ZIP are filled in.",
+          "OpenStreetMap couldn't find this address. Try simplifying — for example, drop 'Ext'/'Suite', use a nearby intersection, or check spelling. Then click Re-geocode again.",
       },
       { status: 422 },
     );
@@ -52,8 +56,19 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     data: { lat: result.lat, lng: result.lng },
   });
 
+  let precisionNote: string | null = null;
+  if (result.precision === "city") {
+    precisionNote =
+      "Matched the city center, not the exact street — geofence will be approximate.";
+  } else if (result.precision === "zip") {
+    precisionNote =
+      "Matched ZIP code center only — geofence will be approximate; consider widening the radius.";
+  }
+
   return NextResponse.json({
     location: updated,
     matched: result.displayName,
+    precision: result.precision,
+    precisionNote,
   });
 }
