@@ -1,20 +1,16 @@
 /**
- * Compact Today's Roster timeline for the dashboard home page.
+ * Compact "Today's Roster" timeline for the dashboard.
  *
- * Server component. Drop into the dashboard wherever the old "Today's Roster"
- * widget lived:
- *
- *   import TodayTimelineWidget from "@/components/today-timeline-widget";
- *   <TodayTimelineWidget tenantId={tenant.id} tenantSlug={tenant.slug} />
- *
- * Renders a Gantt-style bar chart of today's published shifts with a live
- * "Now" line. Links to /[tenant]/today for the full view.
+ * Server component. Accepts an optional `date` (YYYY-MM-DD) — defaults to
+ * today. Filters out admins AND inactive employees. Pairs with <DateNav />
+ * to let the admin navigate forward/back from the dashboard.
  */
 
 import Link from "next/link";
 import { prisma } from "@/lib/db";
-import { format, startOfDay, endOfDay } from "date-fns";
+import { format, startOfDay, endOfDay, parseISO, isValid } from "date-fns";
 import { ArrowRight } from "lucide-react";
+import DateNav from "./date-nav";
 
 const DAY_START_HOUR = 6;
 const DAY_END_HOUR = 24;
@@ -26,32 +22,46 @@ function pctOfDay(d: Date, dayBase: Date): number {
   return Math.max(0, Math.min(100, (fromStart / HOURS_SPAN) * 100));
 }
 
+function ymd(d: Date) {
+  return format(d, "yyyy-MM-dd");
+}
+
 export default async function TodayTimelineWidget({
   tenantId,
   tenantSlug,
+  date,
 }: {
   tenantId: string;
   tenantSlug: string;
+  date?: string;
 }) {
   const now = new Date();
-  const dayStart = startOfDay(now);
-  const dayEnd = endOfDay(now);
+  // Resolve target date — default to today if param is missing/invalid
+  const parsed = date ? parseISO(date) : now;
+  const targetDate = isValid(parsed) ? parsed : now;
+  const isViewingToday = ymd(targetDate) === ymd(now);
 
-  const [shifts, openClockIns, todayDoneEntries] = await Promise.all([
+  const dayStart = startOfDay(targetDate);
+  const dayEnd = endOfDay(targetDate);
+
+  const [shifts, openClockIns, dayDoneEntries] = await Promise.all([
     prisma.shift.findMany({
       where: {
         tenantId,
         published: true,
         startTime: { gte: dayStart, lte: dayEnd },
-        employee: { role: "EMPLOYEE" },
+        // Skip admins AND inactive employees
+        employee: { role: "EMPLOYEE", active: true },
       },
       include: { employee: { select: { id: true, name: true } } },
       orderBy: { startTime: "asc" },
     }),
-    prisma.clockEntry.findMany({
-      where: { tenantId, clockOut: null },
-      select: { userId: true, clockIn: true },
-    }),
+    isViewingToday
+      ? prisma.clockEntry.findMany({
+          where: { tenantId, clockOut: null },
+          select: { userId: true, clockIn: true },
+        })
+      : Promise.resolve([] as { userId: string; clockIn: Date }[]),
     prisma.clockEntry.findMany({
       where: {
         tenantId,
@@ -66,16 +76,16 @@ export default async function TodayTimelineWidget({
   for (const e of openClockIns) openByUser.set(e.userId, e.clockIn);
 
   const doneByUser = new Map<string, { in: Date; out: Date }>();
-  for (const e of todayDoneEntries) {
+  for (const e of dayDoneEntries) {
     if (!e.clockOut) continue;
     const cur = doneByUser.get(e.userId);
     if (!cur) doneByUser.set(e.userId, { in: e.clockIn, out: e.clockOut });
   }
 
   const liveCount = shifts.filter((s) => openByUser.has(s.employee.id)).length;
-  const endedCount = shifts.filter((s) => s.endTime < now).length;
+  const endedCount = shifts.filter((s) => s.endTime < now && isViewingToday).length;
   const upcomingCount = shifts.length - liveCount - endedCount;
-  const nowPct = pctOfDay(now, dayStart);
+  const nowPct = isViewingToday ? pctOfDay(now, dayStart) : -1;
 
   const ticks: { hour: number; pct: number; label: string }[] = [];
   for (let h = DAY_START_HOUR; h <= DAY_END_HOUR; h += 3) {
@@ -89,27 +99,34 @@ export default async function TodayTimelineWidget({
     ticks.push({ hour: h, pct, label: display });
   }
 
+  const fullViewHref = isViewingToday
+    ? `/${tenantSlug}/today`
+    : `/${tenantSlug}/today?date=${ymd(targetDate)}`;
+
   return (
     <div className="card p-5">
       {/* Header */}
       <div className="flex items-baseline justify-between mb-3 gap-3 flex-wrap">
         <div>
-          <div className="label-eyebrow">Today's roster</div>
+          <div className="label-eyebrow">{isViewingToday ? "Today's roster" : "Roster"}</div>
           <h2 className="display text-2xl text-ink mt-0.5">
-            {format(now, "EEEE, MMM d")}
+            {format(targetDate, "EEEE, MMM d")}
           </h2>
         </div>
-        <Link
-          href={`/${tenantSlug}/today`}
-          className="text-xs text-rust hover:underline inline-flex items-center gap-1"
-        >
-          Full view <ArrowRight size={12} />
-        </Link>
+        <div className="flex items-center gap-2">
+          <DateNav paramName="rosterDate" current={ymd(targetDate)} />
+          <Link
+            href={fullViewHref}
+            className="text-xs text-rust hover:underline inline-flex items-center gap-1"
+          >
+            Full view <ArrowRight size={12} />
+          </Link>
+        </div>
       </div>
 
       {/* Quick stats */}
       <div className="flex gap-2 mb-4 text-[11px] font-mono">
-        <Stat n={liveCount} label="live" color="#10b981" />
+        {isViewingToday && <Stat n={liveCount} label="live" color="#10b981" />}
         <Stat n={upcomingCount} label="upcoming" color="#6366f1" />
         <Stat n={endedCount} label="ended" color="#94a3b8" />
       </div>
@@ -117,11 +134,10 @@ export default async function TodayTimelineWidget({
       {/* Timeline */}
       {shifts.length === 0 ? (
         <div className="py-6 text-center text-smoke italic text-sm">
-          No shifts scheduled for today.
+          No shifts scheduled.
         </div>
       ) : (
         <div className="flex gap-3">
-          {/* Names column */}
           <div className="w-[100px] shrink-0">
             <div className="h-5" />
             {shifts.map((s) => (
@@ -134,9 +150,7 @@ export default async function TodayTimelineWidget({
             ))}
           </div>
 
-          {/* Timeline column */}
           <div className="flex-1 relative min-w-0">
-            {/* Hour ticks */}
             <div className="relative h-5 text-[9px] text-smoke font-mono">
               {ticks.map((t) => (
                 <div
@@ -169,11 +183,11 @@ export default async function TodayTimelineWidget({
                 color = "#10b981";
                 stripe = false;
                 label = "Done";
-              } else if (ended) {
+              } else if (ended && isViewingToday) {
                 color = "#dc2626";
                 stripe = true;
                 label = "No-show";
-              } else if (now >= shift.startTime) {
+              } else if (now >= shift.startTime && isViewingToday) {
                 color = "#d97706";
                 stripe = true;
                 label = "Late";
@@ -240,22 +254,23 @@ export default async function TodayTimelineWidget({
               );
             })}
 
-            {/* "Now" vertical line */}
-            <div
-              className="absolute pointer-events-none"
-              style={{ top: 0, bottom: 0, left: `${nowPct}%`, width: 0 }}
-            >
+            {isViewingToday && (
               <div
-                className="absolute top-5 bottom-0 w-px"
-                style={{ background: "#e11d48", left: 0 }}
-              />
-              <div
-                className="absolute -translate-x-1/2 text-[8px] font-mono font-medium px-1.5 py-0.5 rounded"
-                style={{ top: 0, background: "#e11d48", color: "white", left: 0 }}
+                className="absolute pointer-events-none"
+                style={{ top: 0, bottom: 0, left: `${nowPct}%`, width: 0 }}
               >
-                {format(now, "h:mma").toLowerCase()}
+                <div
+                  className="absolute top-5 bottom-0 w-px"
+                  style={{ background: "#e11d48", left: 0 }}
+                />
+                <div
+                  className="absolute -translate-x-1/2 text-[8px] font-mono font-medium px-1.5 py-0.5 rounded"
+                  style={{ top: 0, background: "#e11d48", color: "white", left: 0 }}
+                >
+                  {format(now, "h:mma").toLowerCase()}
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
       )}

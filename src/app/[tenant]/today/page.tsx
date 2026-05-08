@@ -1,26 +1,20 @@
 /**
- * Today's Roster — live timeline.
+ * Today's Roster — full-page timeline view.
  *
- * Horizontal Gantt-style chart of every published shift starting today.
- * Each row is one shift. The bar shows the scheduled window (striped); a
- * solid overlay shows the time the employee was actually clocked in. A
- * vertical "Now" line crosses the chart so you can see at a glance who
- * should be working right now.
+ * URL: /[tenant]/today (defaults to today)
+ *      /[tenant]/today?date=YYYY-MM-DD (any other day)
  *
- * Status colors:
- *   LIVE         green solid    currently clocked in
- *   DONE         green faded    shift ended, clocked out cleanly
- *   UPCOMING     indigo stripes shift hasn't started yet
- *   MISSED-START amber stripes  shift started, employee not clocked in
- *   NO-SHOW      red stripes    shift ended, employee never clocked in
- *   FORGOT-OUT   amber solid    shift ended, still clocked in
+ * Shows every published shift on the selected day as a horizontal timeline.
+ * Filters out admins and inactive employees.
  */
 
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { getServerAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import Navbar from "@/components/navbar";
-import { format, startOfDay, endOfDay } from "date-fns";
+import DateNav from "@/components/date-nav";
+import { format, startOfDay, endOfDay, parseISO, isValid } from "date-fns";
 
 export const dynamic = "force-dynamic";
 
@@ -34,6 +28,10 @@ function pctOfDay(d: Date, dayBase: Date): number {
   return Math.max(0, Math.min(100, (fromStart / HOURS_SPAN) * 100));
 }
 
+function ymd(d: Date) {
+  return format(d, "yyyy-MM-dd");
+}
+
 type Status =
   | "LIVE"
   | "DONE"
@@ -42,35 +40,22 @@ type Status =
   | "NO-SHOW"
   | "FORGOT-OUT";
 
-function statusFor(args: {
-  now: Date;
-  shiftStart: Date;
-  shiftEnd: Date;
-  hasOpen: boolean;
-  doneIn: Date | null;
-  doneOut: Date | null;
-}): Status {
-  const { now, shiftStart, shiftEnd, hasOpen, doneIn, doneOut } = args;
-  if (hasOpen) {
-    if (now > shiftEnd) return "FORGOT-OUT";
-    return "LIVE";
-  }
-  if (doneIn && doneOut) return "DONE";
-  if (now < shiftStart) return "UPCOMING";
-  if (now >= shiftStart && now < shiftEnd) return "MISSED-START";
-  return "NO-SHOW";
-}
-
 const STATUS_STYLE: Record<Status, { color: string; label: string; tone: "solid" | "stripe" }> = {
-  LIVE:           { color: "#10b981", label: "Live",      tone: "solid"  },
-  DONE:           { color: "#10b981", label: "Done",      tone: "solid"  },
-  UPCOMING:       { color: "#6366f1", label: "Upcoming",  tone: "stripe" },
-  "MISSED-START": { color: "#d97706", label: "Late?",     tone: "stripe" },
-  "NO-SHOW":      { color: "#dc2626", label: "No-show",   tone: "stripe" },
+  LIVE:           { color: "#10b981", label: "Live",       tone: "solid"  },
+  DONE:           { color: "#10b981", label: "Done",       tone: "solid"  },
+  UPCOMING:       { color: "#6366f1", label: "Upcoming",   tone: "stripe" },
+  "MISSED-START": { color: "#d97706", label: "Late?",      tone: "stripe" },
+  "NO-SHOW":      { color: "#dc2626", label: "No-show",    tone: "stripe" },
   "FORGOT-OUT":   { color: "#d97706", label: "Forgot out", tone: "solid"  },
 };
 
-export default async function TodayPage({ params }: { params: { tenant: string } }) {
+export default async function TodayPage({
+  params,
+  searchParams,
+}: {
+  params: { tenant: string };
+  searchParams?: { date?: string };
+}) {
   const session = await getServerAuth();
   if (!session) redirect(`/login?from=/${params.tenant}/today`);
   const tenantId = (session.user as any).tenantId as string | null;
@@ -82,16 +67,20 @@ export default async function TodayPage({ params }: { params: { tenant: string }
   if (!tenant || tenant.id !== tenantId || !tenant.active) redirect("/login");
 
   const now = new Date();
-  const dayStart = startOfDay(now);
-  const dayEnd = endOfDay(now);
+  const parsed = searchParams?.date ? parseISO(searchParams.date) : now;
+  const targetDate = isValid(parsed) ? parsed : now;
+  const isViewingToday = ymd(targetDate) === ymd(now);
 
-  const [shifts, openClockIns, todayEntries] = await Promise.all([
+  const dayStart = startOfDay(targetDate);
+  const dayEnd = endOfDay(targetDate);
+
+  const [shifts, openClockIns, dayDoneEntries] = await Promise.all([
     prisma.shift.findMany({
       where: {
         tenantId: tenant.id,
         published: true,
         startTime: { gte: dayStart, lte: dayEnd },
-        employee: { role: "EMPLOYEE" },
+        employee: { role: "EMPLOYEE", active: true },
       },
       include: {
         employee: { select: { id: true, name: true, email: true } },
@@ -99,10 +88,12 @@ export default async function TodayPage({ params }: { params: { tenant: string }
       },
       orderBy: { startTime: "asc" },
     }),
-    prisma.clockEntry.findMany({
-      where: { tenantId: tenant.id, clockOut: null },
-      select: { userId: true, clockIn: true, user: { select: { id: true, name: true, email: true } } },
-    }),
+    isViewingToday
+      ? prisma.clockEntry.findMany({
+          where: { tenantId: tenant.id, clockOut: null },
+          select: { userId: true, clockIn: true, user: { select: { id: true, name: true, email: true } } },
+        })
+      : Promise.resolve([] as any[]),
     prisma.clockEntry.findMany({
       where: {
         tenantId: tenant.id,
@@ -114,30 +105,24 @@ export default async function TodayPage({ params }: { params: { tenant: string }
   ]);
 
   const openByUser = new Map<string, Date>();
-  for (const e of openClockIns) openByUser.set(e.userId, e.clockIn);
+  for (const e of openClockIns as any[]) openByUser.set(e.userId, e.clockIn);
 
   const doneByUser = new Map<string, { in: Date; out: Date }>();
-  for (const e of todayEntries) {
+  for (const e of dayDoneEntries) {
     if (!e.clockOut) continue;
     const cur = doneByUser.get(e.userId);
-    if (!cur) {
-      doneByUser.set(e.userId, { in: e.clockIn, out: e.clockOut });
-    } else {
-      doneByUser.set(e.userId, {
-        in: e.clockIn < cur.in ? e.clockIn : cur.in,
-        out: e.clockOut > cur.out ? e.clockOut : cur.out,
-      });
-    }
+    if (!cur) doneByUser.set(e.userId, { in: e.clockIn, out: e.clockOut });
   }
 
   const scheduledUserIds = new Set(shifts.map((s) => s.employee.id));
-  const walkIns = openClockIns.filter((e) => !scheduledUserIds.has(e.userId));
+  const walkIns = (openClockIns as any[]).filter((e) => !scheduledUserIds.has(e.userId));
 
-  const liveCount = openClockIns.length;
+  const liveCount = isViewingToday ? (openClockIns as any[]).length : 0;
   const scheduledCount = shifts.length;
-  const endedCount = shifts.filter((s) => s.endTime < now).length;
+  const endedCount = isViewingToday ? shifts.filter((s) => s.endTime < now).length : 0;
+  const upcomingCount = scheduledCount - liveCount - endedCount;
 
-  const nowPct = pctOfDay(now, dayStart);
+  const nowPct = isViewingToday ? pctOfDay(now, dayStart) : -1;
 
   const ticks: { hour: number; pct: number; label: string }[] = [];
   for (let h = DAY_START_HOUR; h <= DAY_END_HOUR; h += 3) {
@@ -151,30 +136,54 @@ export default async function TodayPage({ params }: { params: { tenant: string }
     ticks.push({ hour: h, pct, label: display });
   }
 
+  function statusFor(args: {
+    now: Date;
+    shiftStart: Date;
+    shiftEnd: Date;
+    hasOpen: boolean;
+    doneIn: Date | null;
+    doneOut: Date | null;
+  }): Status {
+    if (!isViewingToday) {
+      if (args.doneIn && args.doneOut) return "DONE";
+      return "NO-SHOW";
+    }
+    const { now, shiftStart, shiftEnd, hasOpen, doneIn, doneOut } = args;
+    if (hasOpen) {
+      if (now > shiftEnd) return "FORGOT-OUT";
+      return "LIVE";
+    }
+    if (doneIn && doneOut) return "DONE";
+    if (now < shiftStart) return "UPCOMING";
+    if (now >= shiftStart && now < shiftEnd) return "MISSED-START";
+    return "NO-SHOW";
+  }
+
   return (
     <div className="min-h-screen">
       <Navbar />
       <main className="max-w-[1100px] mx-auto px-6 py-10 space-y-6">
-        {/* Header */}
-        <div>
-          <div className="label-eyebrow mb-1">Today's roster</div>
-          <h1 className="display text-4xl text-ink">{format(now, "EEEE, MMMM d")}</h1>
-          <p className="text-sm text-smoke mt-1">
-            {scheduledCount} scheduled · {liveCount} clocked in now · {endedCount} shift{endedCount === 1 ? "" : "s"} ended
-          </p>
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <div className="label-eyebrow mb-1">Roster</div>
+            <h1 className="display text-4xl text-ink">{format(targetDate, "EEEE, MMMM d")}</h1>
+            <p className="text-sm text-smoke mt-1">
+              {scheduledCount} scheduled
+              {isViewingToday && ` · ${liveCount} clocked in now · ${endedCount} ended`}
+            </p>
+          </div>
+          <DateNav paramName="date" current={ymd(targetDate)} />
         </div>
 
-        {/* Quick status tiles */}
         <div className="grid grid-cols-3 gap-3">
           <Tile count={liveCount} label="Clocked in now" color="#059669" bg="rgba(16,185,129,0.06)" />
-          <Tile count={scheduledCount - endedCount - liveCount} label="Upcoming" color="#4f46e5" bg="rgba(99,102,241,0.06)" />
+          <Tile count={Math.max(0, upcomingCount)} label="Upcoming" color="#4f46e5" bg="rgba(99,102,241,0.06)" />
           <Tile count={endedCount} label="Ended" color="#64748b" bg="rgba(100,116,139,0.06)" />
         </div>
 
         {/* Timeline */}
         <div className="card p-5">
           <div className="flex gap-3">
-            {/* Names column */}
             <div className="w-[140px] shrink-0">
               <div className="h-6" />
               {shifts.map((s) => (
@@ -187,9 +196,7 @@ export default async function TodayPage({ params }: { params: { tenant: string }
               ))}
             </div>
 
-            {/* Timeline column */}
             <div className="flex-1 relative min-w-0">
-              {/* Hour ticks */}
               <div className="relative h-6 text-[10px] text-smoke font-mono">
                 {ticks.map((t) => (
                   <div
@@ -202,10 +209,9 @@ export default async function TodayPage({ params }: { params: { tenant: string }
                 ))}
               </div>
 
-              {/* Shift rows */}
               {shifts.length === 0 ? (
                 <div className="py-12 text-center text-smoke italic text-sm">
-                  No shifts scheduled for today.
+                  No shifts scheduled for this day.
                 </div>
               ) : (
                 shifts.map((shift) => {
@@ -225,7 +231,6 @@ export default async function TodayPage({ params }: { params: { tenant: string }
                   });
                   const sty = STATUS_STYLE[status];
 
-                  // Solid overlay range — only when there's actual clock data
                   let solidStart: number | null = null;
                   let solidWidth = 0;
                   if (hasOpen) {
@@ -241,7 +246,6 @@ export default async function TodayPage({ params }: { params: { tenant: string }
 
                   return (
                     <div key={shift.id} className="relative h-9 mt-2 rounded-md bg-ink/[0.04]">
-                      {/* hour grid lines */}
                       {ticks.map((t) => (
                         <div
                           key={t.hour}
@@ -249,8 +253,6 @@ export default async function TodayPage({ params }: { params: { tenant: string }
                           style={{ left: `${t.pct}%` }}
                         />
                       ))}
-
-                      {/* scheduled bar */}
                       <div
                         className="absolute inset-y-1 rounded"
                         style={{
@@ -264,8 +266,6 @@ export default async function TodayPage({ params }: { params: { tenant: string }
                           border: `1px solid ${sty.color}55`,
                         }}
                       />
-
-                      {/* solid clocked-in overlay */}
                       {solidStart !== null && solidWidth > 0 && (
                         <div
                           className="absolute top-1.5 bottom-1.5 rounded"
@@ -277,8 +277,6 @@ export default async function TodayPage({ params }: { params: { tenant: string }
                           }}
                         />
                       )}
-
-                      {/* status pill */}
                       <div
                         className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded font-medium pointer-events-none"
                         style={{
@@ -294,44 +292,44 @@ export default async function TodayPage({ params }: { params: { tenant: string }
                 })
               )}
 
-              {/* "Now" vertical line — overlaid on the whole timeline column */}
-              <div
-                className="absolute pointer-events-none"
-                style={{
-                  top: 0,
-                  bottom: 0,
-                  left: `${nowPct}%`,
-                  width: 0,
-                }}
-              >
+              {isViewingToday && (
                 <div
-                  className="absolute top-6 bottom-0 w-px"
-                  style={{ background: "#e11d48", left: 0 }}
-                />
-                <div
-                  className="absolute -translate-x-1/2 text-[9px] font-mono font-medium px-1.5 py-0.5 rounded"
+                  className="absolute pointer-events-none"
                   style={{
                     top: 0,
-                    background: "#e11d48",
-                    color: "white",
-                    left: 0,
+                    bottom: 0,
+                    left: `${nowPct}%`,
+                    width: 0,
                   }}
                 >
-                  NOW {format(now, "h:mma").toLowerCase()}
+                  <div
+                    className="absolute top-6 bottom-0 w-px"
+                    style={{ background: "#e11d48", left: 0 }}
+                  />
+                  <div
+                    className="absolute -translate-x-1/2 text-[9px] font-mono font-medium px-1.5 py-0.5 rounded"
+                    style={{
+                      top: 0,
+                      background: "#e11d48",
+                      color: "white",
+                      left: 0,
+                    }}
+                  >
+                    NOW {format(now, "h:mma").toLowerCase()}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
         </div>
 
-        {/* Walk-ins (clocked in but no shift today) */}
-        {walkIns.length > 0 && (
+        {walkIns.length > 0 && isViewingToday && (
           <div className="card p-5">
             <div className="label-eyebrow mb-2">Clocked in without a scheduled shift</div>
             <div className="space-y-2">
-              {walkIns.map((e) => (
+              {walkIns.map((e: any) => (
                 <div key={e.userId} className="flex items-center justify-between text-sm">
-                  <span className="text-ink font-medium">{e.user.name}</span>
+                  <span className="text-ink font-medium">{e.user?.name ?? e.userId}</span>
                   <span className="font-mono text-xs text-smoke">
                     in at {format(e.clockIn, "h:mma").toLowerCase()}
                   </span>
@@ -340,17 +338,6 @@ export default async function TodayPage({ params }: { params: { tenant: string }
             </div>
           </div>
         )}
-
-        {/* Legend */}
-        <div className="text-[11px] text-smoke flex items-center gap-4 flex-wrap">
-          <LegendChip color="#10b981" label="Clocked in (live or done)" />
-          <LegendChip color="#6366f1" label="Upcoming" stripe />
-          <LegendChip color="#d97706" label="Late or forgot to clock out" stripe />
-          <LegendChip color="#dc2626" label="No-show" stripe />
-          <span className="inline-flex items-center gap-1.5">
-            <span className="w-px h-3" style={{ background: "#e11d48" }} /> Now
-          </span>
-        </div>
       </main>
     </div>
   );
@@ -367,7 +354,6 @@ function Tile({
   color: string;
   bg: string;
 }) {
-  const safeCount = Number.isFinite(count) && count >= 0 ? count : 0;
   return (
     <div
       className="card p-5 border-l-4"
@@ -377,32 +363,8 @@ function Tile({
         {label}
       </div>
       <div className="display text-4xl mt-1" style={{ color }}>
-        {safeCount}
+        {count}
       </div>
     </div>
-  );
-}
-
-function LegendChip({
-  color,
-  label,
-  stripe = false,
-}: {
-  color: string;
-  label: string;
-  stripe?: boolean;
-}) {
-  return (
-    <span className="inline-flex items-center gap-1.5">
-      <span
-        className="w-4 h-2 rounded-sm"
-        style={{
-          background: stripe
-            ? `repeating-linear-gradient(45deg, ${color} 0 3px, transparent 3px 6px)`
-            : color,
-        }}
-      />{" "}
-      {label}
-    </span>
   );
 }

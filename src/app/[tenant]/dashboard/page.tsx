@@ -5,6 +5,10 @@ import { prisma } from "@/lib/db";
 import Navbar from "@/components/navbar";
 import TodayTimelineWidget from "@/components/today-timeline-widget";
 import OvertimeRiskWidget from "@/components/overtime-risk-widget";
+import KpiStrip from "@/components/kpi-strip";
+import LaborWowChart from "@/components/labor-wow-chart";
+import TopHoursLeaderboard from "@/components/top-hours-leaderboard";
+import CoverageForecast from "@/components/coverage-forecast";
 import { fmtDate, fmtTime, durationHours } from "@/lib/utils";
 import { isStaff } from "@/lib/guards";
 import {
@@ -22,7 +26,7 @@ import {
 } from "lucide-react";
 import AnimatedNumber from "@/components/animated-number";
 
-export default async function Dashboard() {
+export default async function Dashboard({ searchParams }: { searchParams?: { rosterDate?: string } }) {
   const session = await getServerAuth();
   if (!session) redirect("/login");
   const role = (session.user as any).role;
@@ -296,65 +300,20 @@ export default async function Dashboard() {
               </div>
             )}
 
-            {/* Stats grid */}
-            <div className="grid md:grid-cols-3 gap-6 stagger">
-              <StatCard
-                icon={<Users size={22} />}
-                label="Active employees"
-                value={totalEmployees}
-                href="/employees"
-              />
-              <StatCard
-                icon={<CalendarDays size={22} />}
-                label="Shifts today"
-                value={todayShifts}
-                href="/schedule"
-              />
-              <StatCard
-                icon={<Activity size={22} />}
-                label="Clocked in now"
-                value={currentlyClockedIn}
-                href="/timesheets"
-                live={currentlyClockedIn > 0}
-              />
-            </div>
+            {/* KPI strip */}
+            <KpiStrip tenantId={tenantId!} />
 
             {/* Analytics: today's roster, charts */}
-            {tenantId && tenantSlug && (<div className="grid md:grid-cols-2 gap-6"><TodayTimelineWidget tenantId={tenantId} tenantSlug={tenantSlug} /><OvertimeRiskWidget tenantId={tenantId} tenantSlug={tenantSlug} /></div>)}
+            {tenantId && tenantSlug && (<div className="grid md:grid-cols-2 gap-6"><TodayTimelineWidget tenantId={tenantId} tenantSlug={tenantSlug} date={searchParams?.rosterDate} /><OvertimeRiskWidget tenantId={tenantId} tenantSlug={tenantSlug} /></div>)}
 
             {/* Labor cost panel */}
-            {weekLaborCost > 0 && (
-              <div className="card p-6 animate-slide-up">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-rust/15 border border-rust/30 flex items-center justify-center">
-                      <TrendingUp size={18} className="text-glow" />
-                    </div>
-                    <div>
-                      <div className="label-eyebrow">Week to date</div>
-                      <div className="display text-xl text-ink">Labor</div>
-                    </div>
-                  </div>
-                  <Link href="/timesheets" className="label-eyebrow hover:text-rust transition-colors flex items-center gap-1">
-                    Open <ArrowUpRight size={12} />
-                  </Link>
-                </div>
-                <div className="grid grid-cols-2 gap-6">
-                  <div>
-                    <div className="label-eyebrow mb-1">Hours</div>
-                    <div className="display text-3xl tabular-nums text-ink">
-                      <AnimatedNumber value={weekLaborHours} decimals={1} />
-                    </div>
-                  </div>
-                  <div>
-                    <div className="label-eyebrow mb-1">Cost</div>
-                    <div className="display text-3xl tabular-nums text-glow text-glow">
-                      $<AnimatedNumber value={weekLaborCost} decimals={2} />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
+            <LaborWowChart tenantId={tenantId!} />
+
+            {/* Top hours + coverage forecast */}
+            <div className="grid md:grid-cols-2 gap-6">
+              <TopHoursLeaderboard tenantId={tenantId!} tenantSlug={tenantSlug} />
+              <CoverageForecast tenantId={tenantId!} tenantSlug={tenantSlug} />
+            </div>
 
             {/* Action grid */}
             <div className="grid md:grid-cols-3 gap-6 stagger">
