@@ -43,6 +43,7 @@ export async function GET(req: Request) {
 
   if (schedulableOnly) {
     where.role = { not: "ADMIN" };
+    where.active = true;
   }
   const employees = await prisma.user.findMany({
     where,
