@@ -5,8 +5,22 @@ import { useRouter } from "next/navigation";
 import Navbar from "@/components/navbar";
 import LocationFilter from "@/components/location-filter";
 import SelfieVerifyModal from "@/components/selfie-verify-modal";
-import { Download, Pencil, Trash2, X, ChevronDown, Plus, Camera } from "lucide-react";
+import ClockEntryMapPopup from "@/components/clock-entry-map-popup";
+import { Download, Pencil, Trash2, X, ChevronDown, Plus, Camera, MapPin, AlertTriangle } from "lucide-react";
 import { format, startOfWeek, endOfWeek, subDays } from "date-fns";
+
+type GeoSide = {
+  closestLocation: {
+    id: string;
+    name: string;
+    lat: number | null;
+    lng: number | null;
+    geofenceRadiusMeters: number;
+  } | null;
+  distanceMeters: number | null;
+  distanceMiles: number | null;
+  isInside: boolean | null;
+};
 
 type Entry = {
   id: string;
@@ -15,6 +29,12 @@ type Entry = {
   clockOut: string | null;
   selfieIn: string | null;
   selfieOut: string | null;
+  latIn: number | null;
+  lngIn: number | null;
+  latOut: number | null;
+  lngOut: number | null;
+  addressIn: string | null;
+  addressOut: string | null;
   editedBy: string | null;
   editNote: string | null;
   user: {
@@ -24,6 +44,7 @@ type Entry = {
     department: string | null;
     hourlyWage: number;
   };
+  geofence?: { in: GeoSide; out: GeoSide };
 };
 
 type Employee = { id: string; name: string };
@@ -47,6 +68,8 @@ export default function TimesheetsPage() {
   );
   const [editing, setEditing] = useState<Entry | null>(null);
   const [verifying, setVerifying] = useState<Entry | null>(null);
+  const [mapPopup, setMapPopup] = useState<{ entry: Entry; which: "in" | "out" } | null>(null);
+  const [outsideOnly, setOutsideOnly] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [locationFilter, setLocationFilter] = useState("");
@@ -130,6 +153,18 @@ export default function TimesheetsPage() {
     if (h > 40) overtimeHours += h - 40;
   }
 
+  const outsideCount = entries.filter(
+    (e) =>
+      e.geofence?.in?.isInside === false || e.geofence?.out?.isInside === false,
+  ).length;
+  const displayedEntries = outsideOnly
+    ? entries.filter(
+        (e) =>
+          e.geofence?.in?.isInside === false ||
+          e.geofence?.out?.isInside === false,
+      )
+    : entries;
+
   return (
     <div className="min-h-screen">
       <Navbar />
@@ -141,6 +176,15 @@ export default function TimesheetsPage() {
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <LocationFilter value={locationFilter} onChange={setLocationFilter} />
+            {outsideCount > 0 && (
+              <button
+                onClick={() => setOutsideOnly((v) => !v)}
+                className={"btn !py-1.5 inline-flex items-center gap-1.5 " + (outsideOnly ? "btn-primary" : "btn-secondary")}
+                title="Filter to clock-ins / outs outside the store geofence"
+              >
+                <AlertTriangle size={13} /> Outside location · {outsideCount}
+              </button>
+            )}
             {isAdmin && (
               <button
                 onClick={() => setShowAdd(true)}
@@ -261,12 +305,13 @@ export default function TimesheetsPage() {
                   <th className="px-4 py-3 font-medium">Clock Out</th>
                   <th className="px-4 py-3 font-medium text-right">Hours</th>
                   {isAdmin && <th className="px-4 py-3 font-medium text-right">Pay</th>}
+                  <th className="px-4 py-3 font-medium">Location</th>
                   <th className="px-4 py-3 font-medium">Edited</th>
                   <th className="px-4 py-3 font-medium" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-dust">
-                {entries.map((e) => {
+                {displayedEntries.map((e) => {
                   const h = hours(e.clockIn, e.clockOut);
                   const pay = h * (e.user.hourlyWage ?? 0);
                   return (
@@ -303,6 +348,9 @@ export default function TimesheetsPage() {
                           ${pay.toFixed(2)}
                         </td>
                       )}
+                      <td className="px-4 py-3 align-top">
+                        <LocationCell entry={e} onOpenMap={(which) => setMapPopup({ entry: e, which })} />
+                      </td>
                       <td className="px-4 py-3 text-xs">
                         {e.editedBy ? (
                           <span className="chip chip-rust" title={e.editNote ?? ""}>
@@ -314,6 +362,20 @@ export default function TimesheetsPage() {
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex justify-end gap-1">
+                          {(e.latIn != null || e.latOut != null) && (
+                            <button
+                              onClick={() =>
+                                setMapPopup({
+                                  entry: e,
+                                  which: e.latIn != null ? "in" : "out",
+                                })
+                              }
+                              className="btn btn-ghost !p-1.5"
+                              title="View clock-in/out location"
+                            >
+                              <MapPin size={14} />
+                            </button>
+                          )}
                           {(e.selfieIn || e.selfieOut) && (
                             <button
                               onClick={() => setVerifying(e)}
@@ -348,7 +410,7 @@ export default function TimesheetsPage() {
                 })}
               </tbody>
             </table>
-            {entries.length === 0 && (
+            {displayedEntries.length === 0 && (
               <div className="p-8 text-center text-sm text-smoke italic">
                 No clock entries in this date range.
               </div>
@@ -365,6 +427,13 @@ export default function TimesheetsPage() {
             setEditing(null);
             load();
           }}
+        />
+      )}
+      {mapPopup && (
+        <ClockEntryMapPopup
+          entry={mapPopup.entry as any}
+          initial={mapPopup.which}
+          onClose={() => setMapPopup(null)}
         />
       )}
       {verifying && (
@@ -385,6 +454,66 @@ export default function TimesheetsPage() {
         />
       )}
     </div>
+  );
+}
+
+function LocationCell({
+  entry,
+  onOpenMap,
+}: {
+  entry: Entry;
+  onOpenMap: (which: "in" | "out") => void;
+}) {
+  const inGeo = entry.geofence?.in;
+  const outGeo = entry.geofence?.out;
+  // Pick the side to summarize: prefer "out" if outside, else "in" if outside, else "in"
+  const showOut =
+    outGeo?.isInside === false ||
+    (inGeo?.isInside !== false && entry.clockOut && outGeo);
+  const side = showOut && outGeo ? outGeo : inGeo;
+  const which: "in" | "out" = showOut && outGeo ? "out" : "in";
+  const address = which === "in" ? entry.addressIn : entry.addressOut;
+  const status = side?.isInside;
+  const dist = side?.distanceMiles;
+
+  if (!side || (entry.latIn == null && entry.latOut == null)) {
+    return <span className="text-xs text-smoke italic">No GPS</span>;
+  }
+
+  return (
+    <button
+      onClick={() => onOpenMap(which)}
+      className="text-left flex flex-col gap-1 group"
+      style={{ maxWidth: 200 }}
+    >
+      {status === true && (
+        <span
+          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium w-fit"
+          style={{ color: "#059669", background: "rgba(16,185,129,0.10)" }}
+        >
+          <MapPin size={10} /> At location
+        </span>
+      )}
+      {status === false && (
+        <span
+          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium w-fit"
+          style={{ color: "#92400e", background: "rgba(245,158,11,0.14)" }}
+        >
+          <AlertTriangle size={10} /> Outside · {dist != null ? dist.toFixed(2) : "?"} mi
+        </span>
+      )}
+      {status == null && (
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] text-smoke bg-ink/5 w-fit">
+          <MapPin size={10} /> Unknown
+        </span>
+      )}
+      <span
+        className="text-[11px] text-smoke leading-tight truncate group-hover:text-ink"
+        title={address ?? ""}
+      >
+        {address ?? "—"}
+      </span>
+    </button>
   );
 }
 
