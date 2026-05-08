@@ -5,13 +5,22 @@ import { Share, Plus, X, Download } from "lucide-react";
 
 const INSTALL_DISMISSED_KEY = "shiftwork_install_prompt_dismissed";
 
+const NAVY = "#0B1B33";
+const NAVY_MUTED = "#6b7a90";
+
 /**
- * Install hint — small bottom banner (not blocking) shown when NOT in standalone PWA mode.
- * Tapping it expands to show install instructions. App is fully usable without dismissing.
- *
- * Once installed (display-mode: standalone), this never shows.
+ * Install hint — slim navy bar at the bottom shown when NOT in standalone PWA
+ * mode. Tapping it expands to show install instructions. App stays fully
+ * usable behind the bar; once installed (display-mode: standalone) or
+ * dismissed for the session, the bar never shows.
  */
-export default function InstallPrompt({ tenantSlug, businessName }: { tenantSlug: string; businessName: string }) {
+export default function InstallPrompt({
+  tenantSlug,
+  businessName,
+}: {
+  tenantSlug: string;
+  businessName: string;
+}) {
   const [show, setShow] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [platform, setPlatform] = useState<"ios" | "android" | "other">("other");
@@ -45,7 +54,9 @@ export default function InstallPrompt({ tenantSlug, businessName }: { tenantSlug
   }, []);
 
   function dismiss() {
-    try { sessionStorage.setItem(INSTALL_DISMISSED_KEY, "1"); } catch {}
+    try {
+      sessionStorage.setItem(INSTALL_DISMISSED_KEY, "1");
+    } catch {}
     setShow(false);
     setExpanded(false);
   }
@@ -59,80 +70,217 @@ export default function InstallPrompt({ tenantSlug, businessName }: { tenantSlug
 
   if (!show) return null;
 
-  // Expanded view (after user taps the banner) — shows full install instructions
+  // Expanded — sheet rises from bottom with numbered install steps
   if (expanded) {
     return (
-      <div className="fixed inset-x-0 bottom-0 z-50 bg-paper border-t border-dust shadow-2xl rounded-t-2xl p-5" style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 1rem)" }}>
-        <div className="flex items-start justify-between mb-3">
+      <div
+        className="fixed inset-x-0 bottom-0 z-50"
+        style={{
+          background: "white",
+          border: "0.5px solid rgba(11,27,51,0.10)",
+          borderTopLeftRadius: 24,
+          borderTopRightRadius: 24,
+          padding: "24px 22px",
+          paddingBottom: "calc(env(safe-area-inset-bottom) + 18px)",
+          fontFamily:
+            "-apple-system, BlinkMacSystemFont, Inter, 'Segoe UI', sans-serif",
+          color: NAVY,
+        }}
+      >
+        <div className="flex items-start justify-between mb-4">
           <div>
-            <div className="font-medium text-ink text-sm">Install {businessName}</div>
-            <div className="text-[11px] text-smoke">One-tap access from your home screen</div>
+            <div style={{ fontSize: 16, fontWeight: 600, letterSpacing: "-0.02em" }}>
+              Install {businessName}
+            </div>
+            <div style={{ fontSize: 12, color: NAVY_MUTED, marginTop: 3 }}>
+              One-tap access from your home screen
+            </div>
           </div>
-          <button onClick={() => setExpanded(false)} className="text-smoke p-1" aria-label="Collapse">
-            <X size={18} />
+          <button
+            onClick={() => setExpanded(false)}
+            aria-label="Collapse"
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: "50%",
+              border: 0,
+              background: "rgba(11,27,51,0.05)",
+              color: NAVY_MUTED,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+              cursor: "pointer",
+            }}
+          >
+            <X size={14} strokeWidth={2} />
           </button>
         </div>
 
         {platform === "ios" && (
-          <ol className="space-y-2 text-sm text-ink">
-            <li className="flex items-start gap-2">
-              <span className="shrink-0 w-5 h-5 rounded-full bg-rust text-white text-[11px] flex items-center justify-center font-bold">1</span>
-              <div>Tap <Share size={13} className="inline" /> Share at the bottom of Safari</div>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="shrink-0 w-5 h-5 rounded-full bg-rust text-white text-[11px] flex items-center justify-center font-bold">2</span>
-              <div>Tap <Plus size={13} className="inline" /> &quot;Add to Home Screen&quot;</div>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="shrink-0 w-5 h-5 rounded-full bg-rust text-white text-[11px] flex items-center justify-center font-bold">3</span>
-              <div>Tap &quot;Add&quot; in top-right corner</div>
-            </li>
-          </ol>
+          <div className="flex flex-col gap-3">
+            <Step n={1}>
+              Tap <Share size={13} className="inline" style={{ verticalAlign: "-2px" }} /> Share at the bottom of Safari
+            </Step>
+            <Step n={2}>
+              Tap <Plus size={13} className="inline" style={{ verticalAlign: "-2px" }} /> &quot;Add to Home Screen&quot;
+            </Step>
+            <Step n={3}>Tap &quot;Add&quot; — done.</Step>
+          </div>
         )}
 
         {platform === "android" && (
           <>
             {androidPromptEvent ? (
-              <button onClick={androidInstall} className="w-full btn btn-primary !py-3">
+              <button
+                onClick={androidInstall}
+                style={{
+                  width: "100%",
+                  marginTop: 4,
+                  height: 44,
+                  borderRadius: 12,
+                  border: 0,
+                  background: NAVY,
+                  color: "white",
+                  fontSize: 14,
+                  fontWeight: 500,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                  cursor: "pointer",
+                }}
+              >
                 <Download size={16} /> Install now
               </button>
             ) : (
-              <ol className="space-y-2 text-sm text-ink">
-                <li className="flex items-start gap-2">
-                  <span className="shrink-0 w-5 h-5 rounded-full bg-rust text-white text-[11px] flex items-center justify-center font-bold">1</span>
-                  <div>Tap menu (⋮) in Chrome</div>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="shrink-0 w-5 h-5 rounded-full bg-rust text-white text-[11px] flex items-center justify-center font-bold">2</span>
-                  <div>Tap &quot;Install app&quot;</div>
-                </li>
-              </ol>
+              <div className="flex flex-col gap-3">
+                <Step n={1}>Tap menu (⋮) in Chrome</Step>
+                <Step n={2}>Tap &quot;Install app&quot;</Step>
+              </div>
             )}
           </>
         )}
 
-        <button onClick={dismiss} className="w-full text-[11px] text-smoke hover:text-ink py-2 mt-3">
+        <button
+          onClick={dismiss}
+          style={{
+            width: "100%",
+            marginTop: 18,
+            height: 36,
+            borderRadius: 12,
+            border: 0,
+            background: "transparent",
+            color: NAVY_MUTED,
+            fontSize: 12,
+            fontWeight: 500,
+            cursor: "pointer",
+          }}
+        >
           Don&apos;t install — use in browser
         </button>
       </div>
     );
   }
 
-  // Collapsed bottom banner — small strip, doesn't block the app
+  // Collapsed — slim navy bar at the bottom
   return (
     <div
-      className="fixed inset-x-0 bottom-0 z-40 bg-rust text-white px-4 py-2 flex items-center justify-between shadow-lg"
-      style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 0.5rem)" }}
+      className="fixed inset-x-0 bottom-0 z-40"
+      style={{
+        background: NAVY,
+        color: "white",
+        padding: "12px 16px",
+        paddingBottom: "calc(env(safe-area-inset-bottom) + 12px)",
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        fontFamily:
+          "-apple-system, BlinkMacSystemFont, Inter, 'Segoe UI', sans-serif",
+      }}
     >
       <button
         onClick={() => setExpanded(true)}
-        className="flex items-center gap-2 text-sm font-medium flex-1 text-left active:opacity-80"
+        style={{
+          flex: 1,
+          textAlign: "left",
+          background: "transparent",
+          border: 0,
+          color: "white",
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          cursor: "pointer",
+          padding: 0,
+        }}
       >
-        <Download size={16} /> Install {businessName} for one-tap access
+        <div
+          style={{
+            width: 32,
+            height: 32,
+            borderRadius: 9,
+            background: "rgba(255,255,255,0.10)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+          }}
+        >
+          <Download size={16} />
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 500, lineHeight: 1.2 }}>
+            Install {businessName}
+          </div>
+          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.55)", marginTop: 2 }}>
+            One-tap access from your home screen
+          </div>
+        </div>
       </button>
-      <button onClick={dismiss} className="text-white/80 hover:text-white p-1" aria-label="Dismiss">
-        <X size={18} />
+      <button
+        onClick={dismiss}
+        aria-label="Dismiss"
+        style={{
+          width: 28,
+          height: 28,
+          borderRadius: "50%",
+          border: 0,
+          background: "rgba(255,255,255,0.08)",
+          color: "white",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          flexShrink: 0,
+          cursor: "pointer",
+        }}
+      >
+        <X size={14} strokeWidth={2} />
       </button>
+    </div>
+  );
+}
+
+function Step({ n, children }: { n: number; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-3">
+      <div
+        style={{
+          width: 26,
+          height: 26,
+          borderRadius: "50%",
+          background: NAVY,
+          color: "white",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: 12,
+          fontWeight: 600,
+          flexShrink: 0,
+        }}
+      >
+        {n}
+      </div>
+      <div style={{ fontSize: 13, color: NAVY, lineHeight: 1.4 }}>{children}</div>
     </div>
   );
 }
