@@ -2,12 +2,18 @@
  * Last 8 weeks: bars for hours + line for cost. Server component.
  *
  *   <LaborWowChart tenantId={tenantId} />
+ *
+ * Layout: bar area + cost-line overlay sit in one relatively-positioned
+ * container; labels live in a separate grid row underneath. This keeps the
+ * SVG overlay aligned to the bar tops and prevents stray dots/lines from
+ * leaking into the label area.
  */
 
 import { prisma } from "@/lib/db";
 import { startOfWeek, endOfWeek, subWeeks, format } from "date-fns";
 
 const SPARK_WEEKS = 8;
+const CHART_HEIGHT = 140;
 
 function durationHours(a: Date, b: Date) {
   return Math.max(0, (b.getTime() - a.getTime()) / 36e5);
@@ -51,14 +57,25 @@ export default async function LaborWowChart({ tenantId }: { tenantId: string }) 
   const maxHours = Math.max(0.0001, ...buckets.map((b) => b.hours));
   const maxCost = Math.max(0.0001, ...buckets.map((b) => b.cost));
 
-  // Build cost line points relative to a 0..100 svg viewBox
-  const costPoints = buckets
-    .map((b, i) => {
-      const x = (i / (SPARK_WEEKS - 1)) * 100;
-      const y = 100 - (b.cost / maxCost) * 90;
-      return `${x.toFixed(2)},${y.toFixed(2)}`;
-    })
+  // Only build cost-line points for weeks with actual cost data — no dragging
+  // the line down to $0 for empty weeks
+  const nonZeroCost = buckets
+    .map((b, i) => ({ idx: i, cost: b.cost, isCurrent: i === SPARK_WEEKS - 1 }))
+    .filter((d) => d.cost > 0);
+
+  // Bar centers as a fraction of total chart width: (i + 0.5) / SPARK_WEEKS
+  function xOf(i: number): number {
+    return ((i + 0.5) / SPARK_WEEKS) * 100;
+  }
+  function yOfCost(c: number): number {
+    return 100 - (c / maxCost) * 90;
+  }
+
+  const costPoints = nonZeroCost
+    .map((d) => `${xOf(d.idx).toFixed(2)},${yOfCost(d.cost).toFixed(2)}`)
     .join(" ");
+
+  const thisWk = buckets[SPARK_WEEKS - 1];
 
   return (
     <div className="card p-5">
@@ -79,69 +96,83 @@ export default async function LaborWowChart({ tenantId }: { tenantId: string }) 
         </div>
       </div>
 
-      <div className="relative" style={{ height: 160 }}>
-        <div className="grid h-full" style={{ gridTemplateColumns: `repeat(${SPARK_WEEKS}, 1fr)`, gap: 12, alignItems: "end" }}>
+      {/* Bar area + cost overlay */}
+      <div className="relative" style={{ height: CHART_HEIGHT }}>
+        {/* Bars */}
+        <div
+          className="absolute inset-0 grid items-end"
+          style={{ gridTemplateColumns: `repeat(${SPARK_WEEKS}, 1fr)`, gap: 12 }}
+        >
           {buckets.map((b, i) => {
             const isCurrent = i === SPARK_WEEKS - 1;
             const heightPct = (b.hours / maxHours) * 100;
             return (
-              <div key={i} className="flex flex-col items-center gap-1 h-full justify-end relative">
-                <div
-                  className="w-full rounded-t"
-                  style={{
-                    height: `${heightPct}%`,
-                    background: "#b8551c",
-                    opacity: isCurrent ? 1 : 0.55,
-                    minHeight: 2,
-                  }}
-                  title={`${b.hours.toFixed(1)}h · $${Math.round(b.cost).toLocaleString()}`}
-                />
-                <span
-                  className="font-mono"
-                  style={{
-                    fontSize: 9,
-                    color: isCurrent ? "#1a1a1a" : "#888",
-                    fontWeight: isCurrent ? 500 : 400,
-                  }}
-                >
-                  {format(b.weekStart, "MMM d")}
-                </span>
-              </div>
+              <div
+                key={i}
+                className="w-full rounded-t"
+                style={{
+                  height: b.hours > 0 ? `${heightPct}%` : "2px",
+                  background: "#b8551c",
+                  opacity: isCurrent ? 1 : 0.55,
+                }}
+                title={`${format(b.weekStart, "MMM d")}: ${b.hours.toFixed(1)}h · $${Math.round(b.cost).toLocaleString()}`}
+              />
             );
           })}
         </div>
 
-        {/* Cost line, overlaid */}
-        <svg
-          viewBox="0 0 100 100"
-          preserveAspectRatio="none"
-          className="absolute inset-0 pointer-events-none"
-          style={{ paddingBottom: 18 }}
-        >
-          <polyline
-            points={costPoints}
-            fill="none"
-            stroke="#1a1a1a"
-            strokeWidth="0.6"
-            strokeLinecap="round"
-            vectorEffect="non-scaling-stroke"
-          />
-          {buckets.map((b, i) => {
-            const x = (i / (SPARK_WEEKS - 1)) * 100;
-            const y = 100 - (b.cost / maxCost) * 90;
-            const isCurrent = i === SPARK_WEEKS - 1;
-            return (
-              <circle
-                key={i}
-                cx={x}
-                cy={y}
-                r={isCurrent ? 1.5 : 1}
-                fill={isCurrent ? "#b8551c" : "#1a1a1a"}
+        {/* Cost line + dots — only for weeks with actual cost data */}
+        {nonZeroCost.length > 0 && (
+          <svg
+            viewBox="0 0 100 100"
+            preserveAspectRatio="none"
+            className="absolute inset-0 pointer-events-none"
+          >
+            {nonZeroCost.length >= 2 && (
+              <polyline
+                points={costPoints}
+                fill="none"
+                stroke="#1a1a1a"
+                strokeWidth="0.6"
+                strokeLinecap="round"
                 vectorEffect="non-scaling-stroke"
               />
-            );
-          })}
-        </svg>
+            )}
+            {nonZeroCost.map((d) => (
+              <circle
+                key={d.idx}
+                cx={xOf(d.idx)}
+                cy={yOfCost(d.cost)}
+                r={d.isCurrent ? 1.4 : 0.9}
+                fill={d.isCurrent ? "#b8551c" : "#1a1a1a"}
+                vectorEffect="non-scaling-stroke"
+              />
+            ))}
+          </svg>
+        )}
+      </div>
+
+      {/* Labels row */}
+      <div
+        className="grid mt-2"
+        style={{ gridTemplateColumns: `repeat(${SPARK_WEEKS}, 1fr)`, gap: 12 }}
+      >
+        {buckets.map((b, i) => {
+          const isCurrent = i === SPARK_WEEKS - 1;
+          return (
+            <span
+              key={i}
+              className="text-center font-mono"
+              style={{
+                fontSize: 9,
+                color: isCurrent ? "#1a1a1a" : "#888",
+                fontWeight: isCurrent ? 500 : 400,
+              }}
+            >
+              {format(b.weekStart, "MMM d")}
+            </span>
+          );
+        })}
       </div>
 
       {/* This-week summary */}
@@ -149,13 +180,13 @@ export default async function LaborWowChart({ tenantId }: { tenantId: string }) 
         <div>
           <div className="label-eyebrow">This week · hours</div>
           <div className="display text-2xl text-ink mt-1 tabular-nums">
-            {buckets[SPARK_WEEKS - 1].hours.toFixed(1)}
+            {thisWk.hours.toFixed(1)}
           </div>
         </div>
         <div>
           <div className="label-eyebrow">This week · cost</div>
           <div className="display text-2xl text-ink mt-1 tabular-nums">
-            ${Math.round(buckets[SPARK_WEEKS - 1].cost).toLocaleString()}
+            ${Math.round(thisWk.cost).toLocaleString()}
           </div>
         </div>
       </div>
