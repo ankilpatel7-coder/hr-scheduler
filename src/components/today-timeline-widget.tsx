@@ -1,20 +1,26 @@
 /**
  * Compact "Today's Roster" timeline for the dashboard.
  *
- * Each row now shows TWO stacked sub-bars:
- *   - Top: striped scheduled bar (when they were supposed to work)
- *   - Bottom: solid actual worked segments (one per clock entry, including
- *             breaks visible as gaps; live entries pulse in brighter green)
+ * Each row shows two stacked sub-bars:
+ *   - Top: striped scheduled bar (when supposed to work)
+ *   - Bottom: solid actual worked segments (one per clock entry)
  *
  * Filters out admins and inactive employees. Accepts an optional `date`
- * (YYYY-MM-DD) — defaults to today.
+ * (YYYY-MM-DD) — defaults to today in the tenant's timezone.
  */
 
 import Link from "next/link";
 import { prisma } from "@/lib/db";
-import { format, startOfDay, endOfDay, parseISO, isValid } from "date-fns";
+import { parseISO, isValid } from "date-fns";
 import { ArrowRight } from "lucide-react";
 import DateNav from "./date-nav";
+import {
+  tzStartOfDay,
+  tzEndOfDay,
+  tzFormat,
+  tzYmd,
+  DEFAULT_TZ,
+} from "@/lib/tz";
 
 const DAY_START_HOUR = 6;
 const DAY_END_HOUR = 24;
@@ -26,28 +32,28 @@ function pctOfDay(d: Date, dayBase: Date): number {
   return Math.max(0, Math.min(100, (fromStart / HOURS_SPAN) * 100));
 }
 
-function ymd(d: Date) {
-  return format(d, "yyyy-MM-dd");
-}
-
 type Entry = { in: Date; out: Date | null };
 
 export default async function TodayTimelineWidget({
   tenantId,
   tenantSlug,
+  timezone,
   date,
 }: {
   tenantId: string;
   tenantSlug: string;
+  timezone?: string;
   date?: string;
 }) {
+  const tz = timezone || DEFAULT_TZ;
   const now = new Date();
+  // Resolve target date in the tenant's tz — default to today
   const parsed = date ? parseISO(date) : now;
   const targetDate = isValid(parsed) ? parsed : now;
-  const isViewingToday = ymd(targetDate) === ymd(now);
+  const isViewingToday = tzYmd(targetDate, tz) === tzYmd(now, tz);
 
-  const dayStart = startOfDay(targetDate);
-  const dayEnd = endOfDay(targetDate);
+  const dayStart = tzStartOfDay(targetDate, tz);
+  const dayEnd = tzEndOfDay(targetDate, tz);
 
   const [shifts, dayEntries] = await Promise.all([
     prisma.shift.findMany({
@@ -70,7 +76,6 @@ export default async function TodayTimelineWidget({
     }),
   ]);
 
-  // Group all entries (closed + open) per user
   const entriesByUser = new Map<string, Entry[]>();
   for (const e of dayEntries) {
     const list = entriesByUser.get(e.userId) ?? [];
@@ -78,7 +83,6 @@ export default async function TodayTimelineWidget({
     entriesByUser.set(e.userId, list);
   }
 
-  // Counts
   const liveCount = isViewingToday
     ? Array.from(entriesByUser.values()).filter((es) => es.some((e) => e.out === null)).length
     : 0;
@@ -100,7 +104,7 @@ export default async function TodayTimelineWidget({
 
   const fullViewHref = isViewingToday
     ? `/${tenantSlug}/today`
-    : `/${tenantSlug}/today?date=${ymd(targetDate)}`;
+    : `/${tenantSlug}/today?date=${tzYmd(targetDate, tz)}`;
 
   return (
     <div className="card p-5">
@@ -108,11 +112,11 @@ export default async function TodayTimelineWidget({
         <div>
           <div className="label-eyebrow">{isViewingToday ? "Today's roster" : "Roster"}</div>
           <h2 className="display text-2xl text-ink mt-0.5">
-            {format(targetDate, "EEEE, MMM d")}
+            {tzFormat(targetDate, "EEEE, MMM d", tz)}
           </h2>
         </div>
         <div className="flex items-center gap-2">
-          <DateNav paramName="rosterDate" current={ymd(targetDate)} />
+          <DateNav paramName="rosterDate" current={tzYmd(targetDate, tz)} />
           <Link
             href={fullViewHref}
             className="text-xs text-rust hover:underline inline-flex items-center gap-1"
@@ -128,7 +132,6 @@ export default async function TodayTimelineWidget({
         <Stat n={endedCount} label="ended" color="#94a3b8" />
       </div>
 
-      {/* Mini legend */}
       <div className="flex gap-3 text-[10px] text-smoke mb-2 ml-[100px]">
         <span className="inline-flex items-center gap-1.5">
           <span
@@ -142,10 +145,7 @@ export default async function TodayTimelineWidget({
           Scheduled
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span
-            className="w-3 h-1.5 rounded-sm"
-            style={{ background: "#10b981" }}
-          />
+          <span className="w-3 h-1.5 rounded-sm" style={{ background: "#10b981" }} />
           Worked
         </span>
       </div>
@@ -166,7 +166,8 @@ export default async function TodayTimelineWidget({
               >
                 <div className="text-[12px] text-ink font-medium truncate">{s.employee.name}</div>
                 <div className="text-[9px] text-smoke font-mono whitespace-nowrap">
-                  {format(s.startTime, "h:mma").toLowerCase()}–{format(s.endTime, "h:mma").toLowerCase()}
+                  {tzFormat(s.startTime, "h:mma", tz).toLowerCase()}–
+                  {tzFormat(s.endTime, "h:mma", tz).toLowerCase()}
                 </div>
               </div>
             ))}
@@ -195,8 +196,7 @@ export default async function TodayTimelineWidget({
               const hasAny = userEntries.length > 0;
               const ended = shift.endTime < now;
 
-              // Status / scheduled-bar color
-              let scheduledColor = "#6366f1"; // upcoming default (indigo)
+              let scheduledColor = "#6366f1";
               let statusLabel: string | null = null;
               if (hasOpen) {
                 scheduledColor = "#10b981";
@@ -226,7 +226,6 @@ export default async function TodayTimelineWidget({
                     />
                   ))}
 
-                  {/* Top: scheduled bar (striped) */}
                   <div
                     className="absolute"
                     style={{
@@ -238,13 +237,12 @@ export default async function TodayTimelineWidget({
                       border: `1px solid ${scheduledColor}55`,
                       borderRadius: 3,
                     }}
-                    title={`Scheduled ${format(shift.startTime, "h:mma").toLowerCase()}–${format(shift.endTime, "h:mma").toLowerCase()}`}
+                    title={`Scheduled ${tzFormat(shift.startTime, "h:mma", tz).toLowerCase()}–${tzFormat(shift.endTime, "h:mma", tz).toLowerCase()}`}
                   />
 
-                  {/* Bottom: each clock entry as a solid segment */}
                   {userEntries.map((seg, i) => {
                     const segIn = seg.in;
-                    const segOut = seg.out ?? (isViewingToday ? now : endOfDay(targetDate));
+                    const segOut = seg.out ?? (isViewingToday ? now : tzEndOfDay(targetDate, tz));
                     const segStartPct = pctOfDay(segIn, dayStart);
                     const segEndPct = pctOfDay(segOut, dayStart);
                     const segWidthPct = Math.max(0.5, segEndPct - segStartPct);
@@ -261,7 +259,7 @@ export default async function TodayTimelineWidget({
                           background: isOpen ? "#10b981" : "rgba(16,185,129,0.85)",
                           borderRadius: 3,
                         }}
-                        title={`Worked ${format(segIn, "h:mma").toLowerCase()}–${seg.out ? format(seg.out, "h:mma").toLowerCase() : "now"}`}
+                        title={`Worked ${tzFormat(segIn, "h:mma", tz).toLowerCase()}–${seg.out ? tzFormat(seg.out, "h:mma", tz).toLowerCase() : "now"}`}
                       />
                     );
                   })}
@@ -295,7 +293,7 @@ export default async function TodayTimelineWidget({
                   className="absolute -translate-x-1/2 text-[8px] font-mono font-medium px-1.5 py-0.5 rounded"
                   style={{ top: 0, background: "#e11d48", color: "white", left: 0 }}
                 >
-                  {format(now, "h:mma").toLowerCase()}
+                  {tzFormat(now, "h:mma", tz).toLowerCase()}
                 </div>
               </div>
             )}

@@ -32,8 +32,9 @@ export default async function Dashboard({ searchParams }: { searchParams?: { ros
   const role = (session.user as any).role;
   const userId = (session.user as any).id;
   const tenantId = (session.user as any).tenantId as string | null;
-  const tenantInfo = tenantId ? await prisma.tenant.findUnique({ where: { id: tenantId }, select: { slug: true } }) : null;
+  const tenantInfo = tenantId ? await prisma.tenant.findUnique({ where: { id: tenantId }, select: { slug: true, timezone: true } }) : null;
   const tenantSlug = tenantInfo?.slug ?? "";
+  const tenantTimezone = tenantInfo?.timezone ?? "America/New_York";
 
   const now = new Date();
   const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -304,7 +305,7 @@ export default async function Dashboard({ searchParams }: { searchParams?: { ros
             <KpiStrip tenantId={tenantId!} />
 
             {/* Analytics: today's roster, charts */}
-            {tenantId && tenantSlug && (<div className="grid md:grid-cols-2 gap-6"><TodayTimelineWidget tenantId={tenantId} tenantSlug={tenantSlug} date={searchParams?.rosterDate} /><OvertimeRiskWidget tenantId={tenantId} tenantSlug={tenantSlug} /></div>)}
+            {tenantId && tenantSlug && (<div className="grid md:grid-cols-2 gap-6"><TodayTimelineWidget tenantId={tenantId} tenantSlug={tenantSlug} timezone={tenantTimezone} date={searchParams?.rosterDate} /><OvertimeRiskWidget tenantId={tenantId} tenantSlug={tenantSlug} /></div>)}
 
             {/* Labor cost panel */}
             <LaborWowChart tenantId={tenantId!} />

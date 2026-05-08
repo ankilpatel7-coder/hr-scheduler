@@ -1,12 +1,8 @@
 /**
- * Today's Roster — full-page timeline view.
+ * Today's Roster — full-page timeline view, timezone-aware.
  *
- * URL: /[tenant]/today (defaults to today)
- *      /[tenant]/today?date=YYYY-MM-DD (any other day)
- *
- * Each row: striped scheduled bar (top) + solid worked segments (bottom),
- * with all clock entries shown including breaks. Plus a per-row summary
- * line below: "Sched 9a–5p (8h) · Worked 9:55a–3:23p, 3:55p–now (6h so far)".
+ * URL: /[tenant]/today (defaults to today in the tenant's timezone)
+ *      /[tenant]/today?date=YYYY-MM-DD
  */
 
 import { redirect } from "next/navigation";
@@ -14,7 +10,14 @@ import { getServerAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import Navbar from "@/components/navbar";
 import DateNav from "@/components/date-nav";
-import { format, startOfDay, endOfDay, parseISO, isValid } from "date-fns";
+import { parseISO, isValid } from "date-fns";
+import {
+  tzStartOfDay,
+  tzEndOfDay,
+  tzFormat,
+  tzYmd,
+  DEFAULT_TZ,
+} from "@/lib/tz";
 
 export const dynamic = "force-dynamic";
 
@@ -28,17 +31,26 @@ function pctOfDay(d: Date, dayBase: Date): number {
   return Math.max(0, Math.min(100, (fromStart / HOURS_SPAN) * 100));
 }
 
-function ymd(d: Date) {
-  return format(d, "yyyy-MM-dd");
-}
-
 function durationHours(a: Date, b: Date) {
   return Math.max(0, (b.getTime() - a.getTime()) / 36e5);
 }
 
-function fmt(t: Date) {
-  return format(t, "h:mma").toLowerCase().replace(":00", "");
-}
+type Status =
+  | "LIVE"
+  | "DONE"
+  | "UPCOMING"
+  | "MISSED-START"
+  | "NO-SHOW"
+  | "FORGOT-OUT";
+
+const STATUS_STYLE: Record<Status, { color: string; label: string; tone: "solid" | "stripe" }> = {
+  LIVE:           { color: "#10b981", label: "Live",       tone: "solid"  },
+  DONE:           { color: "#10b981", label: "Done",       tone: "solid"  },
+  UPCOMING:       { color: "#6366f1", label: "Upcoming",   tone: "stripe" },
+  "MISSED-START": { color: "#d97706", label: "Late?",      tone: "stripe" },
+  "NO-SHOW":      { color: "#dc2626", label: "No-show",    tone: "stripe" },
+  "FORGOT-OUT":   { color: "#d97706", label: "Forgot out", tone: "solid"  },
+};
 
 type Entry = { in: Date; out: Date | null };
 
@@ -59,13 +71,18 @@ export default async function TodayPage({
   const tenant = await prisma.tenant.findUnique({ where: { slug: params.tenant } });
   if (!tenant || tenant.id !== tenantId || !tenant.active) redirect("/login");
 
+  const tz = tenant.timezone || DEFAULT_TZ;
   const now = new Date();
   const parsed = searchParams?.date ? parseISO(searchParams.date) : now;
   const targetDate = isValid(parsed) ? parsed : now;
-  const isViewingToday = ymd(targetDate) === ymd(now);
+  const isViewingToday = tzYmd(targetDate, tz) === tzYmd(now, tz);
 
-  const dayStart = startOfDay(targetDate);
-  const dayEnd = endOfDay(targetDate);
+  const dayStart = tzStartOfDay(targetDate, tz);
+  const dayEnd = tzEndOfDay(targetDate, tz);
+
+  function fmt(t: Date) {
+    return tzFormat(t, "h:mma", tz).toLowerCase().replace(":00", "");
+  }
 
   const [shifts, dayEntries] = await Promise.all([
     prisma.shift.findMany({
@@ -103,7 +120,6 @@ export default async function TodayPage({
     entriesByUser.set(e.userId, list);
   }
 
-  // Walk-ins: clocked in users without a scheduled shift today
   const scheduledUserIds = new Set(shifts.map((s) => s.employee.id));
   const walkIns: { userId: string; name: string; entries: Entry[] }[] = [];
   for (const e of dayEntries) {
@@ -140,6 +156,29 @@ export default async function TodayPage({
     ticks.push({ hour: h, pct, label: display });
   }
 
+  function statusFor(args: {
+    now: Date;
+    shiftStart: Date;
+    shiftEnd: Date;
+    hasOpen: boolean;
+    doneIn: Date | null;
+    doneOut: Date | null;
+  }): Status {
+    if (!isViewingToday) {
+      if (args.doneIn && args.doneOut) return "DONE";
+      return "NO-SHOW";
+    }
+    const { now, shiftStart, shiftEnd, hasOpen, doneIn, doneOut } = args;
+    if (hasOpen) {
+      if (now > shiftEnd) return "FORGOT-OUT";
+      return "LIVE";
+    }
+    if (doneIn && doneOut) return "DONE";
+    if (now < shiftStart) return "UPCOMING";
+    if (now >= shiftStart && now < shiftEnd) return "MISSED-START";
+    return "NO-SHOW";
+  }
+
   return (
     <div className="min-h-screen">
       <Navbar />
@@ -147,13 +186,15 @@ export default async function TodayPage({
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
             <div className="label-eyebrow mb-1">Roster</div>
-            <h1 className="display text-4xl text-ink">{format(targetDate, "EEEE, MMMM d")}</h1>
+            <h1 className="display text-4xl text-ink">
+              {tzFormat(targetDate, "EEEE, MMMM d", tz)}
+            </h1>
             <p className="text-sm text-smoke mt-1">
               {shifts.length} scheduled
               {isViewingToday && ` · ${liveCount} clocked in now · ${endedCount} ended`}
             </p>
           </div>
-          <DateNav paramName="date" current={ymd(targetDate)} />
+          <DateNav paramName="date" current={tzYmd(targetDate, tz)} />
         </div>
 
         <div className="grid grid-cols-3 gap-3">
@@ -162,7 +203,6 @@ export default async function TodayPage({
           <Tile count={endedCount} label="Ended" color="#64748b" bg="rgba(100,116,139,0.06)" />
         </div>
 
-        {/* Legend */}
         <div className="flex gap-5 text-[11px] text-smoke">
           <span className="inline-flex items-center gap-2">
             <span
@@ -173,11 +213,11 @@ export default async function TodayPage({
                 border: "1px solid rgba(99,102,241,0.45)",
               }}
             />
-            Scheduled (when supposed to work)
+            Scheduled
           </span>
           <span className="inline-flex items-center gap-2">
             <span className="w-4 h-2 rounded-sm" style={{ background: "#10b981" }} />
-            Worked (each clock-in/out segment)
+            Worked
           </span>
           <span className="inline-flex items-center gap-2">
             <span className="w-px h-3" style={{ background: "#e11d48" }} />
@@ -185,7 +225,6 @@ export default async function TodayPage({
           </span>
         </div>
 
-        {/* Timeline */}
         <div className="card p-5">
           <div className="flex gap-4">
             <div className="w-[160px] shrink-0">
@@ -238,29 +277,23 @@ export default async function TodayPage({
                   const userEntries = entriesByUser.get(shift.employee.id) ?? [];
                   const hasOpen = userEntries.some((e) => e.out === null);
                   const hasAny = userEntries.length > 0;
-                  const ended = shift.endTime < now;
+                  const status = statusFor({
+                    now,
+                    shiftStart: shift.startTime,
+                    shiftEnd: shift.endTime,
+                    hasOpen,
+                    doneIn: hasAny ? userEntries[0].in : null,
+                    doneOut: hasAny ? userEntries[userEntries.length - 1].out : null,
+                  });
+                  const sty = STATUS_STYLE[status];
 
-                  let scheduledColor = "#6366f1";
-                  let statusLabel: string | null = null;
-                  if (hasOpen) {
-                    scheduledColor = "#10b981";
-                    statusLabel = "LIVE";
-                  } else if (hasAny && (ended || !isViewingToday)) {
-                    scheduledColor = "#10b981";
-                    statusLabel = "Done";
-                  } else if (!hasAny && ended && isViewingToday) {
-                    scheduledColor = "#dc2626";
-                    statusLabel = "No-show";
-                  } else if (!hasAny && now >= shift.startTime && isViewingToday) {
-                    scheduledColor = "#d97706";
-                    statusLabel = "Late";
-                  }
-
-                  // Compute totals for inline summary
                   const schedHours = durationHours(shift.startTime, shift.endTime);
                   let workedH = 0;
                   for (const e of userEntries) {
-                    workedH += durationHours(e.in, e.out ?? (isViewingToday ? now : endOfDay(targetDate)));
+                    workedH += durationHours(
+                      e.in,
+                      e.out ?? (isViewingToday ? now : tzEndOfDay(targetDate, tz)),
+                    );
                   }
 
                   return (
@@ -284,8 +317,8 @@ export default async function TodayPage({
                             width: `${widthPct}%`,
                             top: 5,
                             height: 13,
-                            background: `repeating-linear-gradient(45deg, ${scheduledColor}33 0 6px, ${scheduledColor}11 6px 12px)`,
-                            border: `1px solid ${scheduledColor}55`,
+                            background: `repeating-linear-gradient(45deg, ${sty.color}33 0 6px, ${sty.color}11 6px 12px)`,
+                            border: `1px solid ${sty.color}55`,
                             borderRadius: 3,
                           }}
                           title={`Scheduled ${fmt(shift.startTime)}–${fmt(shift.endTime)} (${schedHours.toFixed(1)}h)`}
@@ -294,7 +327,7 @@ export default async function TodayPage({
                         {userEntries.map((seg, i) => {
                           const segIn = seg.in;
                           const segOut =
-                            seg.out ?? (isViewingToday ? now : endOfDay(targetDate));
+                            seg.out ?? (isViewingToday ? now : tzEndOfDay(targetDate, tz));
                           const segStartPct = pctOfDay(segIn, dayStart);
                           const segEndPct = pctOfDay(segOut, dayStart);
                           const segWidthPct = Math.max(0.5, segEndPct - segStartPct);
@@ -316,21 +349,18 @@ export default async function TodayPage({
                           );
                         })}
 
-                        {statusLabel && (
-                          <div
-                            className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded font-medium pointer-events-none"
-                            style={{
-                              color: scheduledColor,
-                              background: "rgba(255,255,255,0.92)",
-                              border: `1px solid ${scheduledColor}33`,
-                            }}
-                          >
-                            {statusLabel}
-                          </div>
-                        )}
+                        <div
+                          className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded font-medium pointer-events-none"
+                          style={{
+                            color: sty.color,
+                            background: "rgba(255,255,255,0.92)",
+                            border: `1px solid ${sty.color}33`,
+                          }}
+                        >
+                          {sty.label}
+                        </div>
                       </div>
 
-                      {/* Inline summary line */}
                       <div className="text-[10px] text-smoke font-mono mt-1 ml-1">
                         <span>
                           Sched {fmt(shift.startTime)}–{fmt(shift.endTime)} ({schedHours.toFixed(1)}h)
@@ -341,10 +371,7 @@ export default async function TodayPage({
                             <span style={{ color: "#059669" }}>
                               Worked{" "}
                               {userEntries
-                                .map(
-                                  (e) =>
-                                    `${fmt(e.in)}–${e.out ? fmt(e.out) : "now"}`,
-                                )
+                                .map((e) => `${fmt(e.in)}–${e.out ? fmt(e.out) : "now"}`)
                                 .join(", ")}{" "}
                               ({workedH.toFixed(2)}h{hasOpen ? " so far" : ""})
                             </span>
@@ -374,7 +401,7 @@ export default async function TodayPage({
                     className="absolute -translate-x-1/2 text-[9px] font-mono font-medium px-1.5 py-0.5 rounded"
                     style={{ top: 0, background: "#e11d48", color: "white", left: 0 }}
                   >
-                    NOW {format(now, "h:mma").toLowerCase()}
+                    NOW {tzFormat(now, "h:mma", tz).toLowerCase()}
                   </div>
                 </div>
               )}
@@ -391,7 +418,7 @@ export default async function TodayPage({
                 for (const e of w.entries) {
                   workedH += durationHours(
                     e.in,
-                    e.out ?? (isViewingToday ? now : endOfDay(targetDate)),
+                    e.out ?? (isViewingToday ? now : tzEndOfDay(targetDate, tz)),
                   );
                 }
                 return (
