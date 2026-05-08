@@ -1,9 +1,13 @@
 /**
  * Compact "Today's Roster" timeline for the dashboard.
  *
- * Server component. Accepts an optional `date` (YYYY-MM-DD) — defaults to
- * today. Filters out admins AND inactive employees. Pairs with <DateNav />
- * to let the admin navigate forward/back from the dashboard.
+ * Each row now shows TWO stacked sub-bars:
+ *   - Top: striped scheduled bar (when they were supposed to work)
+ *   - Bottom: solid actual worked segments (one per clock entry, including
+ *             breaks visible as gaps; live entries pulse in brighter green)
+ *
+ * Filters out admins and inactive employees. Accepts an optional `date`
+ * (YYYY-MM-DD) — defaults to today.
  */
 
 import Link from "next/link";
@@ -26,6 +30,8 @@ function ymd(d: Date) {
   return format(d, "yyyy-MM-dd");
 }
 
+type Entry = { in: Date; out: Date | null };
+
 export default async function TodayTimelineWidget({
   tenantId,
   tenantSlug,
@@ -36,7 +42,6 @@ export default async function TodayTimelineWidget({
   date?: string;
 }) {
   const now = new Date();
-  // Resolve target date — default to today if param is missing/invalid
   const parsed = date ? parseISO(date) : now;
   const targetDate = isValid(parsed) ? parsed : now;
   const isViewingToday = ymd(targetDate) === ymd(now);
@@ -44,47 +49,41 @@ export default async function TodayTimelineWidget({
   const dayStart = startOfDay(targetDate);
   const dayEnd = endOfDay(targetDate);
 
-  const [shifts, openClockIns, dayDoneEntries] = await Promise.all([
+  const [shifts, dayEntries] = await Promise.all([
     prisma.shift.findMany({
       where: {
         tenantId,
         published: true,
         startTime: { gte: dayStart, lte: dayEnd },
-        // Skip admins AND inactive employees
         employee: { role: "EMPLOYEE", active: true },
       },
       include: { employee: { select: { id: true, name: true } } },
       orderBy: { startTime: "asc" },
     }),
-    isViewingToday
-      ? prisma.clockEntry.findMany({
-          where: { tenantId, clockOut: null },
-          select: { userId: true, clockIn: true },
-        })
-      : Promise.resolve([] as { userId: string; clockIn: Date }[]),
     prisma.clockEntry.findMany({
       where: {
         tenantId,
         clockIn: { gte: dayStart, lte: dayEnd },
-        NOT: { clockOut: null },
       },
       select: { userId: true, clockIn: true, clockOut: true },
+      orderBy: { clockIn: "asc" },
     }),
   ]);
 
-  const openByUser = new Map<string, Date>();
-  for (const e of openClockIns) openByUser.set(e.userId, e.clockIn);
-
-  const doneByUser = new Map<string, { in: Date; out: Date }>();
-  for (const e of dayDoneEntries) {
-    if (!e.clockOut) continue;
-    const cur = doneByUser.get(e.userId);
-    if (!cur) doneByUser.set(e.userId, { in: e.clockIn, out: e.clockOut });
+  // Group all entries (closed + open) per user
+  const entriesByUser = new Map<string, Entry[]>();
+  for (const e of dayEntries) {
+    const list = entriesByUser.get(e.userId) ?? [];
+    list.push({ in: e.clockIn, out: e.clockOut });
+    entriesByUser.set(e.userId, list);
   }
 
-  const liveCount = shifts.filter((s) => openByUser.has(s.employee.id)).length;
-  const endedCount = shifts.filter((s) => s.endTime < now && isViewingToday).length;
-  const upcomingCount = shifts.length - liveCount - endedCount;
+  // Counts
+  const liveCount = isViewingToday
+    ? Array.from(entriesByUser.values()).filter((es) => es.some((e) => e.out === null)).length
+    : 0;
+  const endedCount = isViewingToday ? shifts.filter((s) => s.endTime < now).length : 0;
+  const upcomingCount = Math.max(0, shifts.length - liveCount - endedCount);
   const nowPct = isViewingToday ? pctOfDay(now, dayStart) : -1;
 
   const ticks: { hour: number; pct: number; label: string }[] = [];
@@ -105,7 +104,6 @@ export default async function TodayTimelineWidget({
 
   return (
     <div className="card p-5">
-      {/* Header */}
       <div className="flex items-baseline justify-between mb-3 gap-3 flex-wrap">
         <div>
           <div className="label-eyebrow">{isViewingToday ? "Today's roster" : "Roster"}</div>
@@ -124,14 +122,34 @@ export default async function TodayTimelineWidget({
         </div>
       </div>
 
-      {/* Quick stats */}
       <div className="flex gap-2 mb-4 text-[11px] font-mono">
         {isViewingToday && <Stat n={liveCount} label="live" color="#10b981" />}
         <Stat n={upcomingCount} label="upcoming" color="#6366f1" />
         <Stat n={endedCount} label="ended" color="#94a3b8" />
       </div>
 
-      {/* Timeline */}
+      {/* Mini legend */}
+      <div className="flex gap-3 text-[10px] text-smoke mb-2 ml-[100px]">
+        <span className="inline-flex items-center gap-1.5">
+          <span
+            className="w-3 h-1.5 rounded-sm"
+            style={{
+              background:
+                "repeating-linear-gradient(45deg, rgba(99,102,241,0.30) 0 4px, rgba(99,102,241,0.10) 4px 8px)",
+              border: "1px solid rgba(99,102,241,0.45)",
+            }}
+          />
+          Scheduled
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span
+            className="w-3 h-1.5 rounded-sm"
+            style={{ background: "#10b981" }}
+          />
+          Worked
+        </span>
+      </div>
+
       {shifts.length === 0 ? (
         <div className="py-6 text-center text-smoke italic text-sm">
           No shifts scheduled.
@@ -143,9 +161,13 @@ export default async function TodayTimelineWidget({
             {shifts.map((s) => (
               <div
                 key={s.id}
-                className="h-7 mt-1.5 flex items-center min-w-0 text-[12px] text-ink font-medium truncate"
+                className="mt-1.5 flex flex-col justify-center min-w-0"
+                style={{ height: 40 }}
               >
-                {s.employee.name}
+                <div className="text-[12px] text-ink font-medium truncate">{s.employee.name}</div>
+                <div className="text-[9px] text-smoke font-mono whitespace-nowrap">
+                  {format(s.startTime, "h:mma").toLowerCase()}–{format(s.endTime, "h:mma").toLowerCase()}
+                </div>
               </div>
             ))}
           </div>
@@ -168,46 +190,33 @@ export default async function TodayTimelineWidget({
               const endPct = pctOfDay(shift.endTime, dayStart);
               const widthPct = Math.max(1, endPct - startPct);
 
-              const hasOpen = openByUser.has(shift.employee.id);
-              const done = doneByUser.get(shift.employee.id);
+              const userEntries = entriesByUser.get(shift.employee.id) ?? [];
+              const hasOpen = userEntries.some((e) => e.out === null);
+              const hasAny = userEntries.length > 0;
               const ended = shift.endTime < now;
 
-              let color = "#6366f1";
-              let stripe = true;
-              let label: string | null = null;
+              // Status / scheduled-bar color
+              let scheduledColor = "#6366f1"; // upcoming default (indigo)
+              let statusLabel: string | null = null;
               if (hasOpen) {
-                color = "#10b981";
-                stripe = false;
-                label = "LIVE";
-              } else if (done) {
-                color = "#10b981";
-                stripe = false;
-                label = "Done";
-              } else if (ended && isViewingToday) {
-                color = "#dc2626";
-                stripe = true;
-                label = "No-show";
-              } else if (now >= shift.startTime && isViewingToday) {
-                color = "#d97706";
-                stripe = true;
-                label = "Late";
-              }
-
-              let solidStart: number | null = null;
-              let solidWidth = 0;
-              if (hasOpen) {
-                const ci = openByUser.get(shift.employee.id)!;
-                solidStart = Math.max(pctOfDay(ci, dayStart), startPct);
-                solidWidth = Math.max(0, Math.min(nowPct, endPct + 3) - solidStart);
-              } else if (done) {
-                solidStart = Math.max(pctOfDay(done.in, dayStart), startPct);
-                solidWidth = Math.max(0, Math.min(pctOfDay(done.out, dayStart), endPct) - solidStart);
+                scheduledColor = "#10b981";
+                statusLabel = "LIVE";
+              } else if (hasAny && (ended || !isViewingToday)) {
+                scheduledColor = "#10b981";
+                statusLabel = "Done";
+              } else if (!hasAny && ended && isViewingToday) {
+                scheduledColor = "#dc2626";
+                statusLabel = "No-show";
+              } else if (!hasAny && now >= shift.startTime && isViewingToday) {
+                scheduledColor = "#d97706";
+                statusLabel = "Late";
               }
 
               return (
                 <div
                   key={shift.id}
-                  className="relative h-7 mt-1.5 rounded bg-ink/[0.04]"
+                  className="relative mt-1.5 rounded-md bg-ink/[0.04]"
+                  style={{ height: 40 }}
                 >
                   {ticks.map((t) => (
                     <div
@@ -216,38 +225,57 @@ export default async function TodayTimelineWidget({
                       style={{ left: `${t.pct}%` }}
                     />
                   ))}
+
+                  {/* Top: scheduled bar (striped) */}
                   <div
-                    className="absolute inset-y-1 rounded"
+                    className="absolute"
                     style={{
                       left: `${startPct}%`,
                       width: `${widthPct}%`,
-                      background: stripe
-                        ? `repeating-linear-gradient(45deg, ${color}33 0 5px, ${color}11 5px 10px)`
-                        : `${color}22`,
-                      border: `1px solid ${color}55`,
+                      top: 5,
+                      height: 12,
+                      background: `repeating-linear-gradient(45deg, ${scheduledColor}33 0 5px, ${scheduledColor}11 5px 10px)`,
+                      border: `1px solid ${scheduledColor}55`,
+                      borderRadius: 3,
                     }}
+                    title={`Scheduled ${format(shift.startTime, "h:mma").toLowerCase()}–${format(shift.endTime, "h:mma").toLowerCase()}`}
                   />
-                  {solidStart !== null && solidWidth > 0 && (
-                    <div
-                      className="absolute top-1.5 bottom-1.5 rounded"
-                      style={{
-                        left: `${solidStart}%`,
-                        width: `${solidWidth}%`,
-                        background: color,
-                        opacity: !hasOpen && done ? 0.7 : 1,
-                      }}
-                    />
-                  )}
-                  {label && (
+
+                  {/* Bottom: each clock entry as a solid segment */}
+                  {userEntries.map((seg, i) => {
+                    const segIn = seg.in;
+                    const segOut = seg.out ?? (isViewingToday ? now : endOfDay(targetDate));
+                    const segStartPct = pctOfDay(segIn, dayStart);
+                    const segEndPct = pctOfDay(segOut, dayStart);
+                    const segWidthPct = Math.max(0.5, segEndPct - segStartPct);
+                    const isOpen = seg.out === null;
+                    return (
+                      <div
+                        key={i}
+                        className="absolute"
+                        style={{
+                          left: `${segStartPct}%`,
+                          width: `${segWidthPct}%`,
+                          top: 23,
+                          height: 12,
+                          background: isOpen ? "#10b981" : "rgba(16,185,129,0.85)",
+                          borderRadius: 3,
+                        }}
+                        title={`Worked ${format(segIn, "h:mma").toLowerCase()}–${seg.out ? format(seg.out, "h:mma").toLowerCase() : "now"}`}
+                      />
+                    );
+                  })}
+
+                  {statusLabel && (
                     <div
                       className="absolute right-1 top-1/2 -translate-y-1/2 text-[8px] uppercase tracking-wider px-1 py-0.5 rounded font-medium pointer-events-none"
                       style={{
-                        color,
+                        color: scheduledColor,
                         background: "rgba(255,255,255,0.92)",
-                        border: `1px solid ${color}33`,
+                        border: `1px solid ${scheduledColor}33`,
                       }}
                     >
-                      {label}
+                      {statusLabel}
                     </div>
                   )}
                 </div>

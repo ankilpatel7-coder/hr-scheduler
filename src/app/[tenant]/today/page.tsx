@@ -4,12 +4,12 @@
  * URL: /[tenant]/today (defaults to today)
  *      /[tenant]/today?date=YYYY-MM-DD (any other day)
  *
- * Shows every published shift on the selected day as a horizontal timeline.
- * Filters out admins and inactive employees.
+ * Each row: striped scheduled bar (top) + solid worked segments (bottom),
+ * with all clock entries shown including breaks. Plus a per-row summary
+ * line below: "Sched 9a–5p (8h) · Worked 9:55a–3:23p, 3:55p–now (6h so far)".
  */
 
 import { redirect } from "next/navigation";
-import Link from "next/link";
 import { getServerAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import Navbar from "@/components/navbar";
@@ -32,22 +32,15 @@ function ymd(d: Date) {
   return format(d, "yyyy-MM-dd");
 }
 
-type Status =
-  | "LIVE"
-  | "DONE"
-  | "UPCOMING"
-  | "MISSED-START"
-  | "NO-SHOW"
-  | "FORGOT-OUT";
+function durationHours(a: Date, b: Date) {
+  return Math.max(0, (b.getTime() - a.getTime()) / 36e5);
+}
 
-const STATUS_STYLE: Record<Status, { color: string; label: string; tone: "solid" | "stripe" }> = {
-  LIVE:           { color: "#10b981", label: "Live",       tone: "solid"  },
-  DONE:           { color: "#10b981", label: "Done",       tone: "solid"  },
-  UPCOMING:       { color: "#6366f1", label: "Upcoming",   tone: "stripe" },
-  "MISSED-START": { color: "#d97706", label: "Late?",      tone: "stripe" },
-  "NO-SHOW":      { color: "#dc2626", label: "No-show",    tone: "stripe" },
-  "FORGOT-OUT":   { color: "#d97706", label: "Forgot out", tone: "solid"  },
-};
+function fmt(t: Date) {
+  return format(t, "h:mma").toLowerCase().replace(":00", "");
+}
+
+type Entry = { in: Date; out: Date | null };
 
 export default async function TodayPage({
   params,
@@ -74,7 +67,7 @@ export default async function TodayPage({
   const dayStart = startOfDay(targetDate);
   const dayEnd = endOfDay(targetDate);
 
-  const [shifts, openClockIns, dayDoneEntries] = await Promise.all([
+  const [shifts, dayEntries] = await Promise.all([
     prisma.shift.findMany({
       where: {
         tenantId: tenant.id,
@@ -88,40 +81,51 @@ export default async function TodayPage({
       },
       orderBy: { startTime: "asc" },
     }),
-    isViewingToday
-      ? prisma.clockEntry.findMany({
-          where: { tenantId: tenant.id, clockOut: null },
-          select: { userId: true, clockIn: true, user: { select: { id: true, name: true, email: true } } },
-        })
-      : Promise.resolve([] as any[]),
     prisma.clockEntry.findMany({
       where: {
         tenantId: tenant.id,
         clockIn: { gte: dayStart, lte: dayEnd },
-        NOT: { clockOut: null },
       },
-      select: { userId: true, clockIn: true, clockOut: true },
+      select: {
+        userId: true,
+        clockIn: true,
+        clockOut: true,
+        user: { select: { id: true, name: true, email: true } },
+      },
+      orderBy: { clockIn: "asc" },
     }),
   ]);
 
-  const openByUser = new Map<string, Date>();
-  for (const e of openClockIns as any[]) openByUser.set(e.userId, e.clockIn);
-
-  const doneByUser = new Map<string, { in: Date; out: Date }>();
-  for (const e of dayDoneEntries) {
-    if (!e.clockOut) continue;
-    const cur = doneByUser.get(e.userId);
-    if (!cur) doneByUser.set(e.userId, { in: e.clockIn, out: e.clockOut });
+  const entriesByUser = new Map<string, Entry[]>();
+  for (const e of dayEntries) {
+    const list = entriesByUser.get(e.userId) ?? [];
+    list.push({ in: e.clockIn, out: e.clockOut });
+    entriesByUser.set(e.userId, list);
   }
 
+  // Walk-ins: clocked in users without a scheduled shift today
   const scheduledUserIds = new Set(shifts.map((s) => s.employee.id));
-  const walkIns = (openClockIns as any[]).filter((e) => !scheduledUserIds.has(e.userId));
+  const walkIns: { userId: string; name: string; entries: Entry[] }[] = [];
+  for (const e of dayEntries) {
+    if (scheduledUserIds.has(e.userId)) continue;
+    const existing = walkIns.find((w) => w.userId === e.userId);
+    if (existing) {
+      existing.entries.push({ in: e.clockIn, out: e.clockOut });
+    } else {
+      walkIns.push({
+        userId: e.userId,
+        name: e.user?.name ?? e.user?.email ?? e.userId,
+        entries: [{ in: e.clockIn, out: e.clockOut }],
+      });
+    }
+  }
 
-  const liveCount = isViewingToday ? (openClockIns as any[]).length : 0;
-  const scheduledCount = shifts.length;
+  const liveCount = isViewingToday
+    ? Array.from(entriesByUser.values()).filter((es) => es.some((e) => e.out === null)).length +
+      walkIns.filter((w) => w.entries.some((e) => e.out === null)).length
+    : 0;
   const endedCount = isViewingToday ? shifts.filter((s) => s.endTime < now).length : 0;
-  const upcomingCount = scheduledCount - liveCount - endedCount;
-
+  const upcomingCount = Math.max(0, shifts.length - liveCount - endedCount);
   const nowPct = isViewingToday ? pctOfDay(now, dayStart) : -1;
 
   const ticks: { hour: number; pct: number; label: string }[] = [];
@@ -136,29 +140,6 @@ export default async function TodayPage({
     ticks.push({ hour: h, pct, label: display });
   }
 
-  function statusFor(args: {
-    now: Date;
-    shiftStart: Date;
-    shiftEnd: Date;
-    hasOpen: boolean;
-    doneIn: Date | null;
-    doneOut: Date | null;
-  }): Status {
-    if (!isViewingToday) {
-      if (args.doneIn && args.doneOut) return "DONE";
-      return "NO-SHOW";
-    }
-    const { now, shiftStart, shiftEnd, hasOpen, doneIn, doneOut } = args;
-    if (hasOpen) {
-      if (now > shiftEnd) return "FORGOT-OUT";
-      return "LIVE";
-    }
-    if (doneIn && doneOut) return "DONE";
-    if (now < shiftStart) return "UPCOMING";
-    if (now >= shiftStart && now < shiftEnd) return "MISSED-START";
-    return "NO-SHOW";
-  }
-
   return (
     <div className="min-h-screen">
       <Navbar />
@@ -168,7 +149,7 @@ export default async function TodayPage({
             <div className="label-eyebrow mb-1">Roster</div>
             <h1 className="display text-4xl text-ink">{format(targetDate, "EEEE, MMMM d")}</h1>
             <p className="text-sm text-smoke mt-1">
-              {scheduledCount} scheduled
+              {shifts.length} scheduled
               {isViewingToday && ` · ${liveCount} clocked in now · ${endedCount} ended`}
             </p>
           </div>
@@ -177,23 +158,58 @@ export default async function TodayPage({
 
         <div className="grid grid-cols-3 gap-3">
           <Tile count={liveCount} label="Clocked in now" color="#059669" bg="rgba(16,185,129,0.06)" />
-          <Tile count={Math.max(0, upcomingCount)} label="Upcoming" color="#4f46e5" bg="rgba(99,102,241,0.06)" />
+          <Tile count={upcomingCount} label="Upcoming" color="#4f46e5" bg="rgba(99,102,241,0.06)" />
           <Tile count={endedCount} label="Ended" color="#64748b" bg="rgba(100,116,139,0.06)" />
+        </div>
+
+        {/* Legend */}
+        <div className="flex gap-5 text-[11px] text-smoke">
+          <span className="inline-flex items-center gap-2">
+            <span
+              className="w-4 h-2 rounded-sm"
+              style={{
+                background:
+                  "repeating-linear-gradient(45deg, rgba(99,102,241,0.30) 0 5px, rgba(99,102,241,0.10) 5px 10px)",
+                border: "1px solid rgba(99,102,241,0.45)",
+              }}
+            />
+            Scheduled (when supposed to work)
+          </span>
+          <span className="inline-flex items-center gap-2">
+            <span className="w-4 h-2 rounded-sm" style={{ background: "#10b981" }} />
+            Worked (each clock-in/out segment)
+          </span>
+          <span className="inline-flex items-center gap-2">
+            <span className="w-px h-3" style={{ background: "#e11d48" }} />
+            Now
+          </span>
         </div>
 
         {/* Timeline */}
         <div className="card p-5">
-          <div className="flex gap-3">
-            <div className="w-[140px] shrink-0">
+          <div className="flex gap-4">
+            <div className="w-[160px] shrink-0">
               <div className="h-6" />
-              {shifts.map((s) => (
-                <div key={s.id} className="h-9 mt-2 flex flex-col justify-center min-w-0">
-                  <div className="font-medium text-sm text-ink truncate">{s.employee.name}</div>
-                  <div className="text-[10px] text-smoke font-mono whitespace-nowrap">
-                    {format(s.startTime, "h:mma").toLowerCase()}–{format(s.endTime, "h:mma").toLowerCase()}
+              {shifts.map((s) => {
+                const userEntries = entriesByUser.get(s.employee.id) ?? [];
+                return (
+                  <div
+                    key={s.id}
+                    className="mt-2 flex flex-col justify-center min-w-0"
+                    style={{ height: 56 }}
+                  >
+                    <div className="font-medium text-sm text-ink truncate">{s.employee.name}</div>
+                    <div className="text-[10px] text-smoke font-mono whitespace-nowrap">
+                      Sched {fmt(s.startTime)}–{fmt(s.endTime)}
+                    </div>
+                    {userEntries.length > 0 && (
+                      <div className="text-[10px] font-mono whitespace-nowrap" style={{ color: "#059669" }}>
+                        {userEntries.length} {userEntries.length === 1 ? "entry" : "entries"}
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             <div className="flex-1 relative min-w-0">
@@ -219,73 +235,126 @@ export default async function TodayPage({
                   const endPct = pctOfDay(shift.endTime, dayStart);
                   const widthPct = Math.max(1, endPct - startPct);
 
-                  const hasOpen = openByUser.has(shift.employee.id);
-                  const done = doneByUser.get(shift.employee.id);
-                  const status = statusFor({
-                    now,
-                    shiftStart: shift.startTime,
-                    shiftEnd: shift.endTime,
-                    hasOpen,
-                    doneIn: done?.in ?? null,
-                    doneOut: done?.out ?? null,
-                  });
-                  const sty = STATUS_STYLE[status];
+                  const userEntries = entriesByUser.get(shift.employee.id) ?? [];
+                  const hasOpen = userEntries.some((e) => e.out === null);
+                  const hasAny = userEntries.length > 0;
+                  const ended = shift.endTime < now;
 
-                  let solidStart: number | null = null;
-                  let solidWidth = 0;
+                  let scheduledColor = "#6366f1";
+                  let statusLabel: string | null = null;
                   if (hasOpen) {
-                    const ci = openByUser.get(shift.employee.id)!;
-                    solidStart = Math.max(pctOfDay(ci, dayStart), startPct);
-                    solidWidth = Math.max(0, Math.min(nowPct, endPct + 5) - solidStart);
-                  } else if (done) {
-                    solidStart = Math.max(pctOfDay(done.in, dayStart), startPct);
-                    solidWidth = Math.max(0, Math.min(pctOfDay(done.out, dayStart), endPct) - solidStart);
+                    scheduledColor = "#10b981";
+                    statusLabel = "LIVE";
+                  } else if (hasAny && (ended || !isViewingToday)) {
+                    scheduledColor = "#10b981";
+                    statusLabel = "Done";
+                  } else if (!hasAny && ended && isViewingToday) {
+                    scheduledColor = "#dc2626";
+                    statusLabel = "No-show";
+                  } else if (!hasAny && now >= shift.startTime && isViewingToday) {
+                    scheduledColor = "#d97706";
+                    statusLabel = "Late";
                   }
 
-                  const fadedScheduled = status === "DONE" ? 0.3 : 1;
+                  // Compute totals for inline summary
+                  const schedHours = durationHours(shift.startTime, shift.endTime);
+                  let workedH = 0;
+                  for (const e of userEntries) {
+                    workedH += durationHours(e.in, e.out ?? (isViewingToday ? now : endOfDay(targetDate)));
+                  }
 
                   return (
-                    <div key={shift.id} className="relative h-9 mt-2 rounded-md bg-ink/[0.04]">
-                      {ticks.map((t) => (
-                        <div
-                          key={t.hour}
-                          className="absolute inset-y-0 w-px bg-ink/[0.06]"
-                          style={{ left: `${t.pct}%` }}
-                        />
-                      ))}
+                    <div key={shift.id} className="mt-2">
                       <div
-                        className="absolute inset-y-1 rounded"
-                        style={{
-                          left: `${startPct}%`,
-                          width: `${widthPct}%`,
-                          opacity: fadedScheduled,
-                          background:
-                            sty.tone === "stripe"
-                              ? `repeating-linear-gradient(45deg, ${sty.color}33 0 6px, ${sty.color}11 6px 12px)`
-                              : `${sty.color}22`,
-                          border: `1px solid ${sty.color}55`,
-                        }}
-                      />
-                      {solidStart !== null && solidWidth > 0 && (
-                        <div
-                          className="absolute top-1.5 bottom-1.5 rounded"
-                          style={{
-                            left: `${solidStart}%`,
-                            width: `${solidWidth}%`,
-                            background: sty.color,
-                            opacity: status === "DONE" ? 0.7 : 1,
-                          }}
-                        />
-                      )}
-                      <div
-                        className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded font-medium pointer-events-none"
-                        style={{
-                          color: sty.color,
-                          background: "rgba(255,255,255,0.92)",
-                          border: `1px solid ${sty.color}33`,
-                        }}
+                        className="relative rounded-md bg-ink/[0.04]"
+                        style={{ height: 40 }}
                       >
-                        {sty.label}
+                        {ticks.map((t) => (
+                          <div
+                            key={t.hour}
+                            className="absolute inset-y-0 w-px bg-ink/[0.06]"
+                            style={{ left: `${t.pct}%` }}
+                          />
+                        ))}
+
+                        <div
+                          className="absolute"
+                          style={{
+                            left: `${startPct}%`,
+                            width: `${widthPct}%`,
+                            top: 5,
+                            height: 13,
+                            background: `repeating-linear-gradient(45deg, ${scheduledColor}33 0 6px, ${scheduledColor}11 6px 12px)`,
+                            border: `1px solid ${scheduledColor}55`,
+                            borderRadius: 3,
+                          }}
+                          title={`Scheduled ${fmt(shift.startTime)}–${fmt(shift.endTime)} (${schedHours.toFixed(1)}h)`}
+                        />
+
+                        {userEntries.map((seg, i) => {
+                          const segIn = seg.in;
+                          const segOut =
+                            seg.out ?? (isViewingToday ? now : endOfDay(targetDate));
+                          const segStartPct = pctOfDay(segIn, dayStart);
+                          const segEndPct = pctOfDay(segOut, dayStart);
+                          const segWidthPct = Math.max(0.5, segEndPct - segStartPct);
+                          const isOpen = seg.out === null;
+                          return (
+                            <div
+                              key={i}
+                              className="absolute"
+                              style={{
+                                left: `${segStartPct}%`,
+                                width: `${segWidthPct}%`,
+                                top: 22,
+                                height: 13,
+                                background: isOpen ? "#10b981" : "rgba(16,185,129,0.85)",
+                                borderRadius: 3,
+                              }}
+                              title={`Worked ${fmt(segIn)}–${seg.out ? fmt(seg.out) : "now"} (${durationHours(segIn, segOut).toFixed(2)}h)`}
+                            />
+                          );
+                        })}
+
+                        {statusLabel && (
+                          <div
+                            className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded font-medium pointer-events-none"
+                            style={{
+                              color: scheduledColor,
+                              background: "rgba(255,255,255,0.92)",
+                              border: `1px solid ${scheduledColor}33`,
+                            }}
+                          >
+                            {statusLabel}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Inline summary line */}
+                      <div className="text-[10px] text-smoke font-mono mt-1 ml-1">
+                        <span>
+                          Sched {fmt(shift.startTime)}–{fmt(shift.endTime)} ({schedHours.toFixed(1)}h)
+                        </span>
+                        {userEntries.length > 0 ? (
+                          <>
+                            <span className="mx-1.5">·</span>
+                            <span style={{ color: "#059669" }}>
+                              Worked{" "}
+                              {userEntries
+                                .map(
+                                  (e) =>
+                                    `${fmt(e.in)}–${e.out ? fmt(e.out) : "now"}`,
+                                )
+                                .join(", ")}{" "}
+                              ({workedH.toFixed(2)}h{hasOpen ? " so far" : ""})
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="mx-1.5">·</span>
+                            <span style={{ color: "#888" }}>No clock entries yet</span>
+                          </>
+                        )}
                       </div>
                     </div>
                   );
@@ -295,12 +364,7 @@ export default async function TodayPage({
               {isViewingToday && (
                 <div
                   className="absolute pointer-events-none"
-                  style={{
-                    top: 0,
-                    bottom: 0,
-                    left: `${nowPct}%`,
-                    width: 0,
-                  }}
+                  style={{ top: 0, bottom: 0, left: `${nowPct}%`, width: 0 }}
                 >
                   <div
                     className="absolute top-6 bottom-0 w-px"
@@ -308,12 +372,7 @@ export default async function TodayPage({
                   />
                   <div
                     className="absolute -translate-x-1/2 text-[9px] font-mono font-medium px-1.5 py-0.5 rounded"
-                    style={{
-                      top: 0,
-                      background: "#e11d48",
-                      color: "white",
-                      left: 0,
-                    }}
+                    style={{ top: 0, background: "#e11d48", color: "white", left: 0 }}
                   >
                     NOW {format(now, "h:mma").toLowerCase()}
                   </div>
@@ -323,18 +382,30 @@ export default async function TodayPage({
           </div>
         </div>
 
-        {walkIns.length > 0 && isViewingToday && (
+        {walkIns.length > 0 && (
           <div className="card p-5">
             <div className="label-eyebrow mb-2">Clocked in without a scheduled shift</div>
             <div className="space-y-2">
-              {walkIns.map((e: any) => (
-                <div key={e.userId} className="flex items-center justify-between text-sm">
-                  <span className="text-ink font-medium">{e.user?.name ?? e.userId}</span>
-                  <span className="font-mono text-xs text-smoke">
-                    in at {format(e.clockIn, "h:mma").toLowerCase()}
-                  </span>
-                </div>
-              ))}
+              {walkIns.map((w) => {
+                let workedH = 0;
+                for (const e of w.entries) {
+                  workedH += durationHours(
+                    e.in,
+                    e.out ?? (isViewingToday ? now : endOfDay(targetDate)),
+                  );
+                }
+                return (
+                  <div key={w.userId} className="flex items-center justify-between text-sm gap-2">
+                    <span className="text-ink font-medium">{w.name}</span>
+                    <span className="font-mono text-[11px] text-smoke">
+                      {w.entries
+                        .map((e) => `${fmt(e.in)}–${e.out ? fmt(e.out) : "now"}`)
+                        .join(", ")}{" "}
+                      ({workedH.toFixed(2)}h)
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
