@@ -20,7 +20,12 @@ type Location = {
   phone: string | null;
   federalEIN: string | null;
   stateTaxId: string | null;
+  lat: number | null;
+  lng: number | null;
+  geofenceRadiusMeters: number;
 };
+
+const METERS_PER_MILE = 1609.344;
 
 export default function LlcForm({ location }: { location: Location }) {
   const router = useRouter();
@@ -34,10 +39,18 @@ export default function LlcForm({ location }: { location: Location }) {
     phone: location.phone ?? "",
     federalEIN: location.federalEIN ?? "",
     stateTaxId: location.stateTaxId ?? "",
+    geofenceRadiusMiles: (
+      (location.geofenceRadiusMeters ?? 1609) / METERS_PER_MILE
+    ).toFixed(2),
   });
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [geocoding, setGeocoding] = useState(false);
+  const [coords, setCoords] = useState<{ lat: number | null; lng: number | null }>({
+    lat: location.lat,
+    lng: location.lng,
+  });
 
   function update<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
     setForm((f) => ({ ...f, [key]: value }));
@@ -47,16 +60,24 @@ export default function LlcForm({ location }: { location: Location }) {
     e.preventDefault();
     setSaving(true); setError(null); setMsg(null);
     try {
+      const radiusMeters = Math.round(
+        (parseFloat(form.geofenceRadiusMiles) || 1) * METERS_PER_MILE,
+      );
+      const { geofenceRadiusMiles, ...rest } = form;
       const res = await fetch(`/api/locations/${location.id}/llc`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...rest, geofenceRadiusMeters: radiusMeters }),
       });
       const data = await res.json();
       if (!res.ok) {
         setError(data.error ?? `Failed (${res.status})`);
         setSaving(false);
         return;
+      }
+      // PATCH response includes the updated location with new lat/lng if address changed
+      if (data.location) {
+        setCoords({ lat: data.location.lat, lng: data.location.lng });
       }
       setMsg("Saved. Future paystubs will use these values.");
       router.refresh();
@@ -65,6 +86,29 @@ export default function LlcForm({ location }: { location: Location }) {
     } catch (err: any) {
       setError(err?.message ?? "Network error");
       setSaving(false);
+    }
+  }
+
+  async function regeocode() {
+    setGeocoding(true);
+    setError(null);
+    setMsg(null);
+    try {
+      const res = await fetch(`/api/locations/${location.id}/geocode`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? `Failed (${res.status})`);
+        setGeocoding(false);
+        return;
+      }
+      setCoords({ lat: data.location.lat, lng: data.location.lng });
+      setMsg(data.matched ? `Geocoded: ${data.matched}` : "Geocoded.");
+      router.refresh();
+      setGeocoding(false);
+      setTimeout(() => setMsg(null), 5000);
+    } catch (err: any) {
+      setError(err?.message ?? "Network error");
+      setGeocoding(false);
     }
   }
 
@@ -132,6 +176,45 @@ export default function LlcForm({ location }: { location: Location }) {
           <label>Phone</label>
           <input type="tel" value={form.phone} onChange={(e) => update("phone", e.target.value)} />
         </div>
+      </div>
+
+      <div className="space-y-3 border-t border-dust pt-4">
+        <div className="label-eyebrow">Geofencing</div>
+        <p className="text-[11px] text-smoke -mt-1">
+          The street address above is geocoded automatically when you save. Clock-ins beyond
+          the radius below are flagged as &quot;Outside location&quot; in timesheets.
+        </p>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label>Radius (miles)</label>
+            <input
+              type="number"
+              step="0.05"
+              min="0.05"
+              max="30"
+              value={form.geofenceRadiusMiles}
+              onChange={(e) => update("geofenceRadiusMiles", e.target.value)}
+            />
+          </div>
+          <div>
+            <label>Coordinates (auto)</label>
+            <div className="text-sm text-ink font-mono px-3 py-2 rounded border border-dust bg-paper truncate">
+              {coords.lat != null && coords.lng != null
+                ? `${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)}`
+                : "Not yet geocoded"}
+            </div>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={regeocode}
+          disabled={geocoding}
+          className="text-xs text-rust hover:underline disabled:text-smoke"
+        >
+          {geocoding ? "Re-geocoding…" : "Re-geocode address now →"}
+        </button>
       </div>
 
       {error && <div className="text-sm text-rose bg-rose/10 px-3 py-2 rounded border border-rose/30">{error}</div>}

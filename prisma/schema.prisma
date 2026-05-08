@@ -247,6 +247,14 @@ model Location {
   timezone  String   @default("America/New_York")
   active    Boolean  @default(true)
   hours     Json?
+  // Geocoded lat/lng for the location's address (auto-populated on save via
+  // Nominatim) — used for clock-in/out geofencing and map popups in
+  // timesheets. Null until address is geocoded successfully.
+  lat       Float?
+  lng       Float?
+  // Geofence radius in meters. 1609 = 1 mile (default). Editable per-location
+  // for tighter (warehouse) or looser (multi-building campus) enforcement.
+  geofenceRadiusMeters Int @default(1609)
 
   // LLC / payroll-issuer info (v12.2). When set, paystubs use these instead of tenant info.
   // Each location can be a distinct LLC for tax/payroll purposes.

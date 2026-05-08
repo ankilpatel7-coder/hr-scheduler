@@ -4,10 +4,12 @@
 
 import { NextResponse } from "next/server";
 import { scopedPrisma } from "@/lib/scoped-prisma";
+import { prisma as rawPrisma } from "@/lib/db";
 import { getServerAuth } from "@/lib/auth";
 import { getScopedEmployeeIds, isStaff } from "@/lib/guards";
 import { durationHours } from "@/lib/utils";
 import { format } from "date-fns";
+import { evaluateGeofence, type LocationLike } from "@/lib/geo";
 
 export async function GET(req: Request) {
   const session = await getServerAuth();
@@ -59,10 +61,30 @@ export async function GET(req: Request) {
     },
   });
 
-  const viewable = entries.map((e) => ({
-    ...e,
-    user: { ...e.user, hourlyWage: role === "ADMIN" ? e.user.hourlyWage ?? 0 : 0 },
-  }));
+  // Load tenant's active geocoded locations for distance/geofence evaluation.
+  // Use the raw (non-scoped) prisma so we can fetch all of the tenant's
+  // locations in one shot rather than per-entry. Skips locations missing lat/lng.
+  const tenantLocations: LocationLike[] = (
+    await rawPrisma.location.findMany({
+      where: { tenantId, active: true },
+      select: { id: true, name: true, lat: true, lng: true, geofenceRadiusMeters: true },
+    })
+  ).filter((l): l is LocationLike & { lat: number; lng: number } => l.lat != null && l.lng != null);
+
+  const viewable = entries.map((e) => {
+    const inGeo = evaluateGeofence({ lat: e.latIn, lng: e.lngIn }, tenantLocations);
+    const outGeo = e.clockOut
+      ? evaluateGeofence({ lat: e.latOut, lng: e.lngOut }, tenantLocations)
+      : { closestLocation: null, distanceMeters: null, distanceMiles: null, isInside: null };
+    return {
+      ...e,
+      user: { ...e.user, hourlyWage: role === "ADMIN" ? e.user.hourlyWage ?? 0 : 0 },
+      geofence: {
+        in: inGeo,
+        out: outGeo,
+      },
+    };
+  });
 
   if (formatType === "csv") {
     if (role !== "ADMIN" && role !== "MANAGER") {

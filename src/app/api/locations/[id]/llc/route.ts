@@ -8,6 +8,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireRole } from "@/lib/guards";
+import { geocodeAddress } from "@/lib/forward-geocode";
 
 const VALID_STATES = new Set([
   "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT",
@@ -24,7 +25,13 @@ const llcSchema = z.object({
   phone: z.string().nullable().optional(),
   federalEIN: z.string().nullable().optional(),
   stateTaxId: z.string().nullable().optional(),
+  geofenceRadiusMeters: z.number().int().min(50).max(50_000).optional(),
 });
+
+const ADDRESS_FIELDS = ["addressLine1", "city", "locState", "zip"] as const;
+function addressChanged(prev: any, next: any) {
+  return ADDRESS_FIELDS.some((f) => f in next && (next[f] ?? null) !== (prev[f] ?? null));
+}
 
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
   const auth = await requireRole(["ADMIN"]);
@@ -78,7 +85,33 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       return NextResponse.json({ error: "Federal EIN must be 9 digits" }, { status: 400 });
     }
   }
+  if ("geofenceRadiusMeters" in parsed.data && parsed.data.geofenceRadiusMeters != null) {
+    data.geofenceRadiusMeters = parsed.data.geofenceRadiusMeters;
+  }
 
+  // Detect whether the address changed; if so, re-geocode after the update.
+  // We do the update first so the new fields are written even if geocoding
+  // fails or times out. Geocoding errors are non-fatal — lat/lng just stays
+  // null and geofencing falls back to "unknown" for that location.
+  const willChangeAddress = addressChanged(location, data);
   const updated = await prisma.location.update({ where: { id: params.id }, data });
-  return NextResponse.json({ location: updated });
+
+  let geocoded = updated;
+  if (willChangeAddress) {
+    const result = await geocodeAddress({
+      address: updated.address,
+      addressLine1: updated.addressLine1,
+      city: updated.city,
+      state: updated.locState,
+      zip: updated.zip,
+    });
+    if (result) {
+      geocoded = await prisma.location.update({
+        where: { id: params.id },
+        data: { lat: result.lat, lng: result.lng },
+      });
+    }
+  }
+
+  return NextResponse.json({ location: geocoded });
 }
