@@ -1,15 +1,22 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import Navbar from "@/components/navbar";
 import ClockCamera from "@/components/clock-camera";
-import { MapPin, CheckCircle2 } from "lucide-react";
+import { MapPin, CheckCircle2, AlertTriangle, RefreshCw, Loader2 } from "lucide-react";
 
 type OpenEntry = {
   id: string;
   clockIn: string;
 } | null;
+
+type LocStatus =
+  | { state: "idle" }
+  | { state: "requesting" }
+  | { state: "captured"; lat: number; lng: number; accuracyMeters: number }
+  | { state: "denied"; message: string }
+  | { state: "error"; message: string };
 
 export default function ClockPage() {
   const { data: session, status } = useSession();
@@ -20,8 +27,9 @@ export default function ClockPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [loc, setLoc] = useState<LocStatus>({ state: "idle" });
   const [now, setNow] = useState(new Date());
+  const [submitWithoutGps, setSubmitWithoutGps] = useState(false);
 
   useEffect(() => {
     if (status === "unauthenticated") router.push("/login");
@@ -41,28 +49,99 @@ export default function ClockPage() {
       });
   }, []);
 
-  useEffect(() => {
-    if (!navigator.geolocation) return;
+  const requestLocation = useCallback(() => {
+    if (!navigator.geolocation) {
+      setLoc({ state: "error", message: "Your browser doesn't support geolocation." });
+      return;
+    }
+    setLoc({ state: "requesting" });
+
+    // Two-phase strategy: ask for a fast (low-accuracy / WiFi-only) fix
+    // first so we have SOMETHING quickly, then upgrade to a high-accuracy
+    // fix in the background. If the user submits before the upgrade lands,
+    // the low-accuracy fix is still better than nothing.
+    let resolved = false;
+
+    function onSuccess(pos: GeolocationPosition) {
+      if (resolved && pos.coords.accuracy > 200) return; // ignore worse upgrade
+      resolved = true;
+      setLoc({
+        state: "captured",
+        lat: pos.coords.latitude,
+        lng: pos.coords.longitude,
+        accuracyMeters: pos.coords.accuracy,
+      });
+    }
+
+    function onError(err: GeolocationPositionError) {
+      if (resolved) return;
+      const isDenied = err.code === err.PERMISSION_DENIED;
+      const isTimeout = err.code === err.TIMEOUT;
+      if (isDenied) {
+        setLoc({
+          state: "denied",
+          message:
+            "Location permission denied. Click the location icon in your browser's address bar to allow, then click Try again.",
+        });
+      } else if (isTimeout) {
+        setLoc({
+          state: "error",
+          message: "Location lookup timed out. Click Try again, or proceed without GPS.",
+        });
+      } else {
+        setLoc({
+          state: "error",
+          message: err.message || "Couldn't get location.",
+        });
+      }
+    }
+
+    // Phase 1: fast / network-based fix
+    navigator.geolocation.getCurrentPosition(onSuccess, onError, {
+      enableHighAccuracy: false,
+      timeout: 10_000,
+      maximumAge: 60_000,
+    });
+
+    // Phase 2: high-accuracy upgrade (fires after; replaces if better)
     navigator.geolocation.getCurrentPosition(
-      (pos) =>
-        setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      onSuccess,
+      // Don't override the user-visible state with errors from the upgrade
+      // attempt — phase 1 may have already succeeded.
       () => {},
-      { enableHighAccuracy: true, timeout: 8000 }
+      {
+        enableHighAccuracy: true,
+        timeout: 25_000,
+        maximumAge: 60_000,
+      },
     );
   }, []);
 
+  // Try once on mount. If the browser silently blocks (e.g., insecure context
+  // or no recent user gesture), the user can click Try again.
+  useEffect(() => {
+    requestLocation();
+  }, [requestLocation]);
+
   async function submit() {
     if (!selfie) return;
+    if (loc.state !== "captured" && !submitWithoutGps) {
+      setError(
+        "We don't have your location yet. Wait a moment, click Try again, or check 'Submit without GPS' below.",
+      );
+      return;
+    }
     setError(null);
     setSubmitting(true);
+    const body: any = { action: open ? "out" : "in", selfie };
+    if (loc.state === "captured") {
+      body.lat = loc.lat;
+      body.lng = loc.lng;
+    }
     const res = await fetch("/api/clock", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: open ? "out" : "in",
-        selfie,
-        ...(location ?? {}),
-      }),
+      body: JSON.stringify(body),
     });
     const data = await res.json();
     setSubmitting(false);
@@ -73,6 +152,7 @@ export default function ClockPage() {
     setSuccess(open ? "Clocked out." : "Clocked in.");
     setSelfie(null);
     setOpen(open ? null : { id: data.entry.id, clockIn: data.entry.clockIn });
+    setSubmitWithoutGps(false);
     setTimeout(() => setSuccess(null), 3000);
   }
 
@@ -102,9 +182,7 @@ export default function ClockPage() {
           <div className="text-[10px] tracking-[0.3em] uppercase text-smoke mb-2">
             {open ? "On the clock" : "Ready to start"}
           </div>
-          <h1 className="display text-5xl">
-            {open ? "Clock out" : "Clock in"}
-          </h1>
+          <h1 className="display text-5xl">{open ? "Clock out" : "Clock in"}</h1>
         </div>
 
         {open && (
@@ -146,30 +224,79 @@ export default function ClockPage() {
           </div>
 
           <div className="space-y-6">
-            <div className="card p-6">
-              <div className="text-[10px] tracking-[0.3em] uppercase text-smoke mb-3">
-                Step 2 · Location
-              </div>
-              <div className="flex items-center gap-3">
-                <MapPin
-                  size={20}
-                  className={location ? "text-moss" : "text-smoke"}
-                />
-                <div className="flex-1">
-                  {location ? (
-                    <div>
-                      <div className="text-sm font-medium">Location captured</div>
-                      <div className="text-xs font-mono text-smoke">
-                        {location.lat.toFixed(5)}, {location.lng.toFixed(5)}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="text-sm text-smoke">
-                      Optional — allow location if your worksite requires it
-                    </div>
-                  )}
+            <div
+              className="card p-6"
+              style={
+                loc.state === "denied" || loc.state === "error"
+                  ? { borderColor: "rgba(245, 158, 11, 0.45)", background: "rgba(245,158,11,0.05)" }
+                  : loc.state === "captured"
+                    ? { borderColor: "rgba(16,185,129,0.30)", background: "rgba(16,185,129,0.04)" }
+                    : undefined
+              }
+            >
+              <div className="flex items-center justify-between mb-3">
+                <div className="text-[10px] tracking-[0.3em] uppercase text-smoke">
+                  Step 2 · Location
                 </div>
+                {(loc.state === "denied" || loc.state === "error") && (
+                  <button
+                    onClick={requestLocation}
+                    className="btn btn-ghost !py-1 !px-2 text-xs inline-flex items-center gap-1"
+                  >
+                    <RefreshCw size={12} /> Try again
+                  </button>
+                )}
+                {loc.state === "captured" && (
+                  <button
+                    onClick={requestLocation}
+                    className="text-xs text-smoke hover:text-ink inline-flex items-center gap-1"
+                    title="Refresh location"
+                  >
+                    <RefreshCw size={12} />
+                  </button>
+                )}
               </div>
+
+              {loc.state === "idle" && (
+                <div className="flex items-center gap-3">
+                  <MapPin size={20} className="text-smoke" />
+                  <div className="text-sm text-smoke">Preparing…</div>
+                </div>
+              )}
+
+              {loc.state === "requesting" && (
+                <div className="flex items-center gap-3">
+                  <Loader2 size={20} className="text-smoke animate-spin" />
+                  <div>
+                    <div className="text-sm font-medium">Getting your location…</div>
+                    <div className="text-xs text-smoke">
+                      If your browser asks for permission, click Allow.
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {loc.state === "captured" && (
+                <div className="flex items-center gap-3">
+                  <CheckCircle2 size={20} style={{ color: "#10b981" }} />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium">Location captured</div>
+                    <div className="text-xs font-mono text-smoke">
+                      {loc.lat.toFixed(5)}, {loc.lng.toFixed(5)}
+                      <span className="ml-2 text-[10px]">
+                        ±{Math.round(loc.accuracyMeters)}m
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {(loc.state === "denied" || loc.state === "error") && (
+                <div className="flex items-start gap-3">
+                  <AlertTriangle size={20} style={{ color: "#d97706" }} className="mt-0.5 flex-shrink-0" />
+                  <div className="text-sm text-ink leading-snug">{loc.message}</div>
+                </div>
+              )}
             </div>
 
             <div className="card p-6">
@@ -181,12 +308,20 @@ export default function ClockPage() {
                 disabled={!selfie || submitting}
                 className={`btn w-full ${open ? "btn-rust" : "btn-primary"}`}
               >
-                {submitting
-                  ? "Submitting…"
-                  : open
-                  ? "Clock out now"
-                  : "Clock in now"}
+                {submitting ? "Submitting…" : open ? "Clock out now" : "Clock in now"}
               </button>
+
+              {(loc.state === "denied" || loc.state === "error") && (
+                <label className="flex items-center gap-2 mt-3 text-xs text-smoke cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={submitWithoutGps}
+                    onChange={(e) => setSubmitWithoutGps(e.target.checked)}
+                  />
+                  <span>Submit without GPS (entry will be flagged on the timesheet)</span>
+                </label>
+              )}
+
               {error && (
                 <div className="mt-3 text-sm text-rust bg-rust/10 px-3 py-2 rounded border border-rust/20">
                   {error}
