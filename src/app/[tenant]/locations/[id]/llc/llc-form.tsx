@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { TIMEZONES, DEFAULT_TIMEZONE } from "@/lib/timezones";
 
 const STATES = [
   "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT",
@@ -23,6 +24,7 @@ type Location = {
   lat: number | null;
   lng: number | null;
   geofenceRadiusMeters: number;
+  timezone: string | null;
 };
 
 const METERS_PER_MILE = 1609.344;
@@ -39,6 +41,7 @@ export default function LlcForm({ location }: { location: Location }) {
     phone: location.phone ?? "",
     federalEIN: location.federalEIN ?? "",
     stateTaxId: location.stateTaxId ?? "",
+    timezone: location.timezone ?? DEFAULT_TIMEZONE,
     geofenceRadiusMiles: (
       (location.geofenceRadiusMeters ?? 1609) / METERS_PER_MILE
     ).toFixed(2),
@@ -180,6 +183,25 @@ export default function LlcForm({ location }: { location: Location }) {
         <div>
           <label>Phone</label>
           <input type="tel" value={form.phone} onChange={(e) => update("phone", e.target.value)} />
+        </div>
+      </div>
+
+      <div className="space-y-3 border-t border-dust pt-4">
+        <div className="label-eyebrow">Local timezone</div>
+        <p className="text-[11px] text-smoke -mt-1">
+          Used for this location&apos;s schedule, today&apos;s roster, and any payroll
+          cutoffs that depend on local time. Each location can be on a different
+          timezone.
+        </p>
+        <div>
+          <label>Timezone</label>
+          <select value={form.timezone} onChange={(e) => update("timezone", e.target.value)}>
+            {TIMEZONES.map((tz) => (
+              <option key={tz.value} value={tz.value}>
+                {tz.label}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 

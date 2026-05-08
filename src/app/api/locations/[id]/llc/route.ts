@@ -9,6 +9,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireRole } from "@/lib/guards";
 import { geocodeAddress } from "@/lib/forward-geocode";
+import { isValidTimezone } from "@/lib/timezones";
 
 const VALID_STATES = new Set([
   "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT",
@@ -26,6 +27,7 @@ const llcSchema = z.object({
   federalEIN: z.string().nullable().optional(),
   stateTaxId: z.string().nullable().optional(),
   geofenceRadiusMeters: z.number().int().min(50).max(50_000).optional(),
+  timezone: z.string().optional(),
 });
 
 const ADDRESS_FIELDS = ["addressLine1", "city", "locState", "zip"] as const;
@@ -87,6 +89,12 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   }
   if ("geofenceRadiusMeters" in parsed.data && parsed.data.geofenceRadiusMeters != null) {
     data.geofenceRadiusMeters = parsed.data.geofenceRadiusMeters;
+  }
+  if ("timezone" in parsed.data && parsed.data.timezone) {
+    if (!isValidTimezone(parsed.data.timezone)) {
+      return NextResponse.json({ error: `Invalid timezone '${parsed.data.timezone}'.` }, { status: 400 });
+    }
+    data.timezone = parsed.data.timezone;
   }
 
   // Detect whether the address changed; if so, re-geocode after the update.
