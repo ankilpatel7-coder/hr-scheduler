@@ -52,9 +52,10 @@ export async function POST(req: Request) {
   // Group by employee for emails
   const byEmployee = new Map<string, typeof unpublished>();
   for (const s of unpublished) {
-    const list = byEmployee.get(s.employee.id) ?? [];
+    if (!s.employee) continue; // skip house shifts (no assignee to notify)
+    const list = byEmployee.get(s.employee!.id) ?? [];
     list.push(s);
-    byEmployee.set(s.employee.id, list);
+    byEmployee.set(s.employee!.id, list);
   }
 
   const emailUrl = `${process.env.NEXTAUTH_URL}/my-shifts`;
