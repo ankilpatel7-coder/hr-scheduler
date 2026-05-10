@@ -128,6 +128,7 @@ export default async function Dashboard({ searchParams }: { searchParams?: { ros
       weekLaborCost += h * (e.user.hourlyWage ?? 0);
     }
     for (const s of scheduled) {
+      if (!s.employeeId) continue;
       tot.set(s.employeeId, (tot.get(s.employeeId) ?? 0) + durationHours(s.startTime, s.endTime));
     }
     for (const v of tot.values()) {
