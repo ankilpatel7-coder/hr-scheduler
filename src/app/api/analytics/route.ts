@@ -180,7 +180,7 @@ export async function GET(req: Request) {
       const inLoc = locShifts.filter((s) => s.locationId === l.id);
       const hours = inLoc.reduce((acc, s) => acc + durationHours(s.startTime, s.endTime), 0);
       const cost = inLoc.reduce((acc, s) =>
-        acc + durationHours(s.startTime, s.endTime) * (s.employee.hourlyWage ?? 0), 0);
+        acc + durationHours(s.startTime, s.endTime) * (s.employee!.hourlyWage ?? 0), 0);
       return { locationId: l.id, locationName: l.name, hours: Number(hours.toFixed(1)), cost: Number(cost.toFixed(2)) };
     });
   }
