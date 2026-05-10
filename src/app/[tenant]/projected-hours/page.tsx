@@ -82,6 +82,7 @@ export default async function ProjectedHoursPage({ params }: { params: { tenant:
     clockedMap.set(e.userId, (clockedMap.get(e.userId) ?? 0) + durationHours(e.clockIn, end));
   }
   for (const s of scheduled) {
+    if (!s.employeeId) continue; // skip house shifts (no employee)
     schedMap.set(
       s.employeeId,
       (schedMap.get(s.employeeId) ?? 0) + durationHours(s.startTime, s.endTime),

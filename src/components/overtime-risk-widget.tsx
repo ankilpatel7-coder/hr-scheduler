@@ -59,6 +59,7 @@ export default async function OvertimeRiskWidget({
     clockedMap.set(e.userId, (clockedMap.get(e.userId) ?? 0) + durationHours(e.clockIn, end));
   }
   for (const s of scheduled) {
+    if (!s.employeeId) continue; // skip house shifts
     schedMap.set(s.employeeId, (schedMap.get(s.employeeId) ?? 0) + durationHours(s.startTime, s.endTime));
   }
 

@@ -85,6 +85,7 @@ export default async function KpiStrip({ tenantId }: { tenantId: string }) {
     }
   }
   for (const s of scheduled) {
+    if (!s.employeeId) continue; // skip house shifts
     projHrs.set(
       s.employeeId,
       (projHrs.get(s.employeeId) ?? 0) + durationHours(s.startTime, s.endTime),

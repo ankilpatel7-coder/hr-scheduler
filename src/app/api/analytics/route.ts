@@ -73,7 +73,12 @@ export async function GET(req: Request) {
     },
   });
 
-  const empIds = todayShiftsRaw.map((s) => s.employeeId);
+  // Filter out house shifts (no employee assigned) — they can't have
+  // clock-ins / no-show status until someone is assigned.
+  const todayShiftsAssigned = todayShiftsRaw.filter(
+    (s): s is typeof s & { employeeId: string } => !!s.employeeId,
+  );
+  const empIds = todayShiftsAssigned.map((s) => s.employeeId);
   const openClockIns = empIds.length > 0
     ? await prisma.clockEntry.findMany({ where: { userId: { in: empIds }, clockOut: null } })
     : [];
@@ -87,7 +92,7 @@ export async function GET(req: Request) {
     if (e.clockOut) completedByUser.set(e.userId, e.clockOut);
   }
 
-  const roster = todayShiftsRaw.map((s) => {
+  const roster = todayShiftsAssigned.map((s) => {
     const open = openByUser.get(s.employeeId);
     const completed = completedByUser.get(s.employeeId);
     let status: "scheduled" | "clocked_in" | "completed" | "no_show";
