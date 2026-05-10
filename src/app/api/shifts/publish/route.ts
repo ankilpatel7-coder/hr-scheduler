@@ -49,13 +49,22 @@ export async function POST(req: Request) {
     data: { published: true, publishedAt: now },
   });
 
+  // House shifts (no assignee) have no one to email — filter them out with
+  // a type predicate so `employee` is narrowed to non-null for the entire
+  // notification path. No need for `!.` assertions downstream.
+  type AssignedShift = (typeof unpublished)[number] & {
+    employee: NonNullable<(typeof unpublished)[number]["employee"]>;
+  };
+  const assignedShifts: AssignedShift[] = unpublished.filter(
+    (s): s is AssignedShift => s.employee !== null,
+  );
+
   // Group by employee for emails
-  const byEmployee = new Map<string, typeof unpublished>();
-  for (const s of unpublished) {
-    if (!s.employee) continue; // skip house shifts (no assignee to notify)
-    const list = byEmployee.get(s.employee!.id) ?? [];
+  const byEmployee = new Map<string, AssignedShift[]>();
+  for (const s of assignedShifts) {
+    const list = byEmployee.get(s.employee.id) ?? [];
     list.push(s);
-    byEmployee.set(s.employee!.id, list);
+    byEmployee.set(s.employee.id, list);
   }
 
   const emailUrl = `${process.env.NEXTAUTH_URL}/my-shifts`;
