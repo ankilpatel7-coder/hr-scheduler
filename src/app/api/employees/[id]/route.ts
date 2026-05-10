@@ -23,6 +23,7 @@ const ADMIN_EDITABLE_FIELDS = [
   "isTipped",
   "active",
   "role",
+  "jobRole",
   "notes",
 ] as const;
 
@@ -36,6 +37,7 @@ const updateSchema = z.object({
   // Admin-only fields below
   name: z.string().min(1).optional(),
   department: z.string().nullable().optional(),
+  jobRole: z.string().nullable().optional(),
   hireDate: z.string().nullable().optional(),
   employmentType: z.enum(["W2", "CONTRACTOR_1099", "UNSPECIFIED"]).optional(),
   hourlyWage: z.number().nonnegative().optional(),
