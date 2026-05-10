@@ -23,6 +23,7 @@ type Employee = {
   name: string;
   department: string | null;
   role: string;
+  jobRole: string | null;
   active: boolean;
   hourlyWage: number;
   locations: { location: LocationRef }[];
@@ -256,28 +257,25 @@ export default function SchedulePage() {
 
   const days = Array.from({ length: 7 }).map((_, i) => addDays(weekStart, i));
 
-  function shiftsFor(employeeId: string, day: Date, roleFilter?: string) {
+  function shiftsFor(employeeId: string, day: Date) {
     return shifts.filter((s) =>
-      s.employeeId === employeeId &&
-      isSameDay(new Date(s.startTime), day) &&
-      (roleFilter === undefined ||
-        (roleFilter === UNSPEC_ROLE ? !s.role : s.role === roleFilter))
+      s.employeeId === employeeId && isSameDay(new Date(s.startTime), day)
     );
   }
 
   const displayedEmployees = locationFilter
     ? employees.filter((e) => e.locations.some((l) => l.location.id === locationFilter))
     : employees;
-  const employeeById = new Map(displayedEmployees.map((e) => [e.id, e]));
 
-  // Group shifts by role; each role section shows employees who have that role's shifts this week
+  // Group employees by their job role (User.jobRole). Each section shows
+  // EVERY employee of that role, regardless of whether they have shifts
+  // this week — so admins can add shifts straight from the section row.
   const roleColorMap = new Map(roles.map((r) => [r.name, r.color]));
-  const sectionMap = new Map<string, Set<string>>(); // roleName -> Set<employeeId>
-  for (const s of shifts) {
-    const r = s.role ?? UNSPEC_ROLE;
-    if (!employeeById.has(s.employeeId)) continue; // respect location filter
-    if (!sectionMap.has(r)) sectionMap.set(r, new Set());
-    sectionMap.get(r)!.add(s.employeeId);
+  const sectionMap = new Map<string, Employee[]>(); // roleName -> Employee[]
+  for (const e of displayedEmployees) {
+    const r = e.jobRole ?? UNSPEC_ROLE;
+    if (!sectionMap.has(r)) sectionMap.set(r, []);
+    sectionMap.get(r)!.push(e);
   }
 
   // Sort sections: known roles by sortOrder, then unknown alphabetically, then "Unspecified" last
@@ -292,9 +290,9 @@ export default function SchedulePage() {
     return a.localeCompare(b);
   });
 
-  // Employees with no shifts this week (still need to be schedulable from UI)
-  const scheduledEmpIds = new Set(shifts.map((s) => s.employeeId));
-  const unscheduled = displayedEmployees.filter((e) => !scheduledEmpIds.has(e.id));
+  // No "unscheduled" section needed anymore — every employee appears
+  // under their role section regardless of whether they have shifts.
+  const unscheduled: Employee[] = [];
 
   const draftCount = shifts.filter((s) => !s.published).length;
 
@@ -353,15 +351,15 @@ export default function SchedulePage() {
           <div className="text-smoke">Loading…</div>
         ) : (
           <div className="space-y-3">
-            {/* Role sections */}
+            {/* Role sections — grouped by employee.jobRole */}
             {sectionsList.map((roleName) => {
-              const empIds = sectionMap.get(roleName)!;
-              const sectionEmps = displayedEmployees.filter((e) => empIds.has(e.id));
+              const sectionEmps = sectionMap.get(roleName)!;
+              const empIdSet = new Set(sectionEmps.map((e) => e.id));
               const color = roleColorMap.get(roleName) || DEFAULT_SECTION_COLOR;
               const collapsed = collapsedRoles.has(roleName);
-              const sectionShiftCount = shifts.filter((s) => (s.role ?? UNSPEC_ROLE) === roleName).length;
-              const sectionHours = shifts
-                .filter((s) => (s.role ?? UNSPEC_ROLE) === roleName)
+              const sectionShifts = shifts.filter((s) => empIdSet.has(s.employeeId));
+              const sectionShiftCount = sectionShifts.length;
+              const sectionHours = sectionShifts
                 .reduce((acc, s) => acc + differenceInMinutes(new Date(s.endTime), new Date(s.startTime)) / 60, 0);
 
               return (
@@ -409,7 +407,7 @@ export default function SchedulePage() {
                                   </div>
                                 </td>
                                 {days.map((d) => {
-                                  const ss = shiftsFor(emp.id, d, roleName);
+                                  const ss = shiftsFor(emp.id, d);
                                   const empLocId = ss[0]?.location?.id ?? emp.locations[0]?.location.id;
                                   const empLoc = empLocId ? locations.find((l) => l.id === empLocId) : undefined;
                                   const dayKey = dayKeyForDate(d);
@@ -444,7 +442,7 @@ export default function SchedulePage() {
                                           />
                                         ))}
                                         <button
-                                          onClick={() => setModalSlot({ day: d, employeeId: emp.id, defaultRole: roleName === UNSPEC_ROLE ? undefined : roleName })}
+                                          onClick={() => setModalSlot({ day: d, employeeId: emp.id, defaultRole: emp.jobRole ?? (roleName === UNSPEC_ROLE ? undefined : roleName) })}
                                           onContextMenu={(e) => {
                                             e.preventDefault();
                                             if (clipboardShift) setMenu({ x: e.clientX, y: e.clientY, employeeId: emp.id, day: d });

@@ -5,18 +5,8 @@ import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import Navbar from "@/components/navbar";
 import {
-  ArrowLeft,
-  Mail,
-  Phone,
-  MapPin,
-  Calendar,
-  Briefcase,
-  DollarSign,
-  AlertTriangle,
-  Camera,
-  Edit3,
-  KeyRound,
-  ShieldCheck,
+  ArrowLeft, Mail, Phone, MapPin, Calendar, Briefcase, DollarSign,
+  AlertTriangle, Camera, Edit3, KeyRound, ShieldCheck, Tag,
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -26,6 +16,7 @@ type Profile = {
   name: string;
   role: "ADMIN" | "MANAGER" | "LEAD" | "EMPLOYEE";
   department: string | null;
+  jobRole: string | null;
   active: boolean;
   hourlyWage: number;
   isTipped: boolean;
@@ -42,6 +33,8 @@ type Profile = {
   locations: { location: { id: string; name: string } }[];
 };
 
+type ShiftRole = { id: string; name: string; color: string };
+
 export default function EmployeeProfilePage() {
   const { data: session, status } = useSession();
   const router = useRouter();
@@ -54,6 +47,7 @@ export default function EmployeeProfilePage() {
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [w4Filed, setW4Filed] = useState<boolean | null>(null);
+  const [roles, setRoles] = useState<ShiftRole[]>([]);
   const [recent, setRecent] = useState<{ shifts: any[]; clockEntries: any[] }>({
     shifts: [],
     clockEntries: [],
@@ -74,15 +68,17 @@ export default function EmployeeProfilePage() {
     } else {
       router.push("/employees");
     }
-    // Recent activity
     const past = new Date(Date.now() - 30 * 86400_000).toISOString();
     const future = new Date(Date.now() + 60 * 86400_000).toISOString();
-    const [sRes, cRes] = await Promise.all([
+    const [sRes, cRes, rRes] = await Promise.all([
       fetch(`/api/shifts?from=${past}&to=${future}`),
       fetch(`/api/timesheets?from=${past}&to=${new Date().toISOString()}&employeeId=${id}`),
+      fetch("/api/roles"),
     ]);
     const sData = sRes.ok ? await sRes.json() : { shifts: [] };
-    // Fetch W-4 status (admin/manager only — endpoint requires those roles)
+    const cData = cRes.ok ? await cRes.json() : { entries: [] };
+    const rData = rRes.ok ? await rRes.json() : { roles: [] };
+    setRoles(rData.roles ?? []);
     if (((session?.user as any)?.role) === "ADMIN") {
       try {
         const w4Res = await fetch(`/api/employees/${id}/w4`);
@@ -101,7 +97,6 @@ export default function EmployeeProfilePage() {
         }
       } catch {}
     }
-    const cData = cRes.ok ? await cRes.json() : { entries: [] };
     setRecent({
       shifts: (sData.shifts ?? []).filter((s: any) => s.employeeId === id).slice(0, 10),
       clockEntries: (cData.entries ?? []).slice(0, 10),
@@ -128,6 +123,8 @@ export default function EmployeeProfilePage() {
     );
   }
 
+  const jobRoleColor = roles.find((r) => r.name === profile.jobRole)?.color;
+
   return (
     <div className="min-h-screen">
       <Navbar />
@@ -139,34 +136,37 @@ export default function EmployeeProfilePage() {
           <ArrowLeft size={14} /> Back
         </Link>
 
-        {/* Hero */}
         <div className="card p-7 mb-6 animate-slide-up">
           <div className="flex flex-col sm:flex-row gap-6 items-start">
-            <PhotoBlock
-              profile={profile}
-              canEdit={canEditAll || canEditSelf}
-              onUpdated={load}
-            />
+            <PhotoBlock profile={profile} canEdit={canEditAll || canEditSelf} onUpdated={load} />
             <div className="flex-1 min-w-0">
-              <div className="label-eyebrow mb-2 flex items-center gap-2">
+              <div className="label-eyebrow mb-2 flex items-center gap-2 flex-wrap">
                 <span>{profile.role}</span>
                 {profile.active ? (
                   <span className="chip chip-moss text-[9px]">active</span>
                 ) : (
                   <span className="chip chip-rust text-[9px]">inactive</span>
                 )}
+                {profile.jobRole && (
+                  <span
+                    className="chip text-[9px]"
+                    style={{
+                      color: jobRoleColor ?? "#1a1a1a",
+                      borderColor: jobRoleColor ? `${jobRoleColor}55` : undefined,
+                      background: jobRoleColor ? `${jobRoleColor}14` : undefined,
+                    }}
+                  >
+                    <Tag size={9} className="inline mr-0.5" /> {profile.jobRole}
+                  </span>
+                )}
               </div>
               <h1 className="display text-4xl text-ink mb-2">{profile.name}</h1>
               <div className="text-smoke text-sm flex items-center gap-2 flex-wrap">
-                <span className="flex items-center gap-1.5">
-                  <Mail size={13} /> {profile.email}
-                </span>
+                <span className="flex items-center gap-1.5"><Mail size={13} /> {profile.email}</span>
                 {profile.phone && (
                   <>
                     <span className="text-smoke">·</span>
-                    <span className="flex items-center gap-1.5">
-                      <Phone size={13} /> {profile.phone}
-                    </span>
+                    <span className="flex items-center gap-1.5"><Phone size={13} /> {profile.phone}</span>
                   </>
                 )}
                 {profile.department && (
@@ -176,7 +176,6 @@ export default function EmployeeProfilePage() {
                   </>
                 )}
               </div>
-
               {profile.locations.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 mt-4">
                   {profile.locations.map((l) => (
@@ -188,13 +187,9 @@ export default function EmployeeProfilePage() {
                 </div>
               )}
             </div>
-
             <div className="flex gap-2 flex-shrink-0">
               {(canEditAll || canEditSelf) && (
-                <button
-                  onClick={() => setEditing(true)}
-                  className="btn btn-secondary"
-                >
+                <button onClick={() => setEditing(true)} className="btn btn-secondary">
                   <Edit3 size={14} /> Edit
                 </button>
               )}
@@ -203,84 +198,36 @@ export default function EmployeeProfilePage() {
         </div>
 
         <div className="grid lg:grid-cols-2 gap-6">
-          {/* Personal info */}
           <Card title="Personal information">
-            <Field
-              icon={<Calendar size={14} />}
-              label="Date of birth"
-              value={
-                profile.dateOfBirth
-                  ? format(new Date(profile.dateOfBirth), "MMM d, yyyy")
-                  : null
-              }
-            />
-            <Field
-              icon={<MapPin size={14} />}
-              label="Address"
-              value={profile.address}
-              multiline
-            />
+            <Field icon={<Calendar size={14} />} label="Date of birth"
+              value={profile.dateOfBirth ? format(new Date(profile.dateOfBirth), "MMM d, yyyy") : null} />
+            <Field icon={<MapPin size={14} />} label="Address" value={profile.address} multiline />
           </Card>
 
-          {/* Emergency contact */}
           <Card title="Emergency contact">
             <Field label="Name" value={profile.emergencyContactName} />
-            <Field
-              icon={<Phone size={14} />}
-              label="Phone"
-              value={profile.emergencyContactPhone}
-            />
+            <Field icon={<Phone size={14} />} label="Phone" value={profile.emergencyContactPhone} />
             <Field label="Relationship" value={profile.emergencyContactRelation} />
           </Card>
 
-          {/* Employment */}
           <Card title="Employment">
-            <Field
-              icon={<Calendar size={14} />}
-              label="Hire date"
+            <Field icon={<Calendar size={14} />} label="Hire date"
+              value={profile.hireDate ? format(new Date(profile.hireDate), "MMM d, yyyy") : null} />
+            <Field icon={<Tag size={14} />} label="Job role (schedule grouping)"
+              value={profile.jobRole} />
+            <Field icon={<Briefcase size={14} />} label="Employment type"
               value={
-                profile.hireDate
-                  ? format(new Date(profile.hireDate), "MMM d, yyyy")
-                  : null
-              }
-            />
-            <Field
-              icon={<Briefcase size={14} />}
-              label="Employment type"
-              value={
-                profile.employmentType === "W2"
-                  ? "W-2 Employee"
-                  : profile.employmentType === "CONTRACTOR_1099"
-                  ? "1099 Contractor"
-                  : null
-              }
-            />
+                profile.employmentType === "W2" ? "W-2 Employee" :
+                profile.employmentType === "CONTRACTOR_1099" ? "1099 Contractor" : null
+              } />
             {isAdmin && (
-              <Field
-                icon={<DollarSign size={14} />}
-                label="Hourly wage"
-                value={
-                  profile.hourlyWage > 0
-                    ? `$${profile.hourlyWage.toFixed(2)}/hr${profile.isTipped ? " (tipped)" : ""}`
-                    : null
-                }
-              />
+              <Field icon={<DollarSign size={14} />} label="Hourly wage"
+                value={profile.hourlyWage > 0
+                  ? `$${profile.hourlyWage.toFixed(2)}/hr${profile.isTipped ? " (tipped)" : ""}`
+                  : null} />
             )}
           </Card>
 
-          {/* Admin notes */}
-          {isAdmin && (
-            <Card title="Internal notes" subtitle="Admin only — not shown to employee">
-              {profile.notes ? (
-                <div className="text-sm text-ink whitespace-pre-wrap">
-                  {profile.notes}
-                </div>
-              ) : (
-                <div className="text-sm text-smoke italic">No notes</div>
-              )}
-            </Card>
-          )}
-          {/* W-4 / Tax withholding (admin) */}
           {isAdmin && (
             <Card title="W-4 / Tax withholding" subtitle="Federal & state tax form settings — drives payroll withholding">
               <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
@@ -291,30 +238,32 @@ export default function EmployeeProfilePage() {
                   <ShieldCheck size={14} /> Edit W-4 settings →
                 </Link>
                 {w4Filed === true && (
-                  <span
-                    className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded font-medium"
-                    style={{ color: "#059669", background: "rgba(16,185,129,0.10)" }}
-                  >
+                  <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded font-medium"
+                    style={{ color: "#059669", background: "rgba(16,185,129,0.10)" }}>
                     Filed
                   </span>
                 )}
                 {w4Filed === false && (
-                  <span
-                    className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded font-medium"
-                    style={{ color: "#d97706", background: "rgba(245,158,11,0.10)" }}
-                  >
+                  <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded font-medium"
+                    style={{ color: "#d97706", background: "rgba(245,158,11,0.10)" }}>
                     Defaults
                   </span>
                 )}
               </div>
-              <div className="text-[11px] text-smoke mt-2 leading-relaxed">
-                If unset, defaults to <span className="font-medium">Single, no adjustments</span> — the IRS-required fallback until the employee submits their W-4. Affects every paystub.
-              </div>
+            </Card>
+          )}
+
+          {isAdmin && (
+            <Card title="Internal notes" subtitle="Admin only — not shown to employee">
+              {profile.notes ? (
+                <div className="text-sm text-ink whitespace-pre-wrap">{profile.notes}</div>
+              ) : (
+                <div className="text-sm text-smoke italic">No notes</div>
+              )}
             </Card>
           )}
         </div>
 
-        {/* Recent shifts */}
         <div className="mt-6">
           <Card title="Recent shifts">
             {recent.shifts.length === 0 ? (
@@ -322,25 +271,15 @@ export default function EmployeeProfilePage() {
             ) : (
               <ul className="divide-y divide-dust">
                 {recent.shifts.map((s: any) => (
-                  <li
-                    key={s.id}
-                    className="py-2 flex items-baseline justify-between gap-2 flex-wrap"
-                  >
+                  <li key={s.id} className="py-2 flex items-baseline justify-between gap-2 flex-wrap">
                     <div>
-                      <div className="text-sm text-ink">
-                        {format(new Date(s.startTime), "EEE, MMM d")}
-                      </div>
+                      <div className="text-sm text-ink">{format(new Date(s.startTime), "EEE, MMM d")}</div>
                       <div className="font-mono text-xs text-smoke">
-                        {format(new Date(s.startTime), "h:mma")} –{" "}
-                        {format(new Date(s.endTime), "h:mma")}
+                        {format(new Date(s.startTime), "h:mma")} – {format(new Date(s.endTime), "h:mma")}
                         {s.location && ` · ${s.location.name}`}
                       </div>
                     </div>
-                    <span
-                      className={`chip text-[9px] ${
-                        s.published ? "chip-moss" : "chip-rust"
-                      }`}
-                    >
+                    <span className={`chip text-[9px] ${s.published ? "chip-moss" : "chip-rust"}`}>
                       {s.published ? "published" : "draft"}
                     </span>
                   </li>
@@ -350,7 +289,6 @@ export default function EmployeeProfilePage() {
           </Card>
         </div>
 
-        {/* Recent timesheets */}
         {(isAdmin || role === "MANAGER" || canEditSelf) && (
           <div className="mt-6">
             <Card title="Recent clock activity">
@@ -359,24 +297,14 @@ export default function EmployeeProfilePage() {
               ) : (
                 <ul className="divide-y divide-dust">
                   {recent.clockEntries.map((e: any) => (
-                    <li
-                      key={e.id}
-                      className="py-2 flex items-baseline justify-between gap-2 flex-wrap"
-                    >
+                    <li key={e.id} className="py-2 flex items-baseline justify-between gap-2 flex-wrap">
                       <div>
                         <div className="font-mono text-xs text-ink">
                           {format(new Date(e.clockIn), "MMM d, h:mma")}
-                          <span className="text-smoke">
-                            {" – "}
-                            {e.clockOut
-                              ? format(new Date(e.clockOut), "h:mma")
-                              : "..."}
-                          </span>
+                          <span className="text-smoke">{" – "}{e.clockOut ? format(new Date(e.clockOut), "h:mma") : "..."}</span>
                         </div>
                       </div>
-                      {e.editedBy && (
-                        <span className="chip chip-rust text-[9px]">edited</span>
-                      )}
+                      {e.editedBy && <span className="chip chip-rust text-[9px]">edited</span>}
                     </li>
                   ))}
                 </ul>
@@ -390,26 +318,16 @@ export default function EmployeeProfilePage() {
         <EditModal
           profile={profile}
           isAdmin={isAdmin}
+          roles={roles}
           onClose={() => setEditing(false)}
-          onSaved={() => {
-            setEditing(false);
-            load();
-          }}
+          onSaved={() => { setEditing(false); load(); }}
         />
       )}
     </div>
   );
 }
 
-function Card({
-  title,
-  subtitle,
-  children,
-}: {
-  title: string;
-  subtitle?: string;
-  children: React.ReactNode;
-}) {
+function Card({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
   return (
     <div className="card p-6 animate-slide-up">
       <div className="label-eyebrow mb-1">{title}</div>
@@ -419,27 +337,12 @@ function Card({
   );
 }
 
-function Field({
-  icon,
-  label,
-  value,
-  multiline,
-}: {
-  icon?: React.ReactNode;
-  label: string;
-  value: string | null;
-  multiline?: boolean;
-}) {
+function Field({ icon, label, value, multiline }: { icon?: React.ReactNode; label: string; value: string | null; multiline?: boolean }) {
   return (
     <div>
-      <div className="text-[11px] text-smoke mb-0.5 flex items-center gap-1.5">
-        {icon}
-        {label}
-      </div>
+      <div className="text-[11px] text-smoke mb-0.5 flex items-center gap-1.5">{icon}{label}</div>
       {value ? (
-        <div className={`text-sm text-ink ${multiline ? "whitespace-pre-wrap" : ""}`}>
-          {value}
-        </div>
+        <div className={`text-sm text-ink ${multiline ? "whitespace-pre-wrap" : ""}`}>{value}</div>
       ) : (
         <div className="text-sm text-smoke italic">Not set</div>
       )}
@@ -447,24 +350,14 @@ function Field({
   );
 }
 
-function PhotoBlock({
-  profile,
-  canEdit,
-  onUpdated,
-}: {
-  profile: Profile;
-  canEdit: boolean;
-  onUpdated: () => void;
-}) {
+function PhotoBlock({ profile, canEdit, onUpdated }: { profile: Profile; canEdit: boolean; onUpdated: () => void }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   async function handleFile(file: File) {
-    setErr(null);
-    setUploading(true);
+    setErr(null); setUploading(true);
     try {
-      // Resize / compress in browser to stay well under DB size limits
       const dataUrl = await resizeImage(file, 400, 0.85);
       const res = await fetch("/api/employees/photo", {
         method: "POST",
@@ -474,12 +367,8 @@ function PhotoBlock({
       if (!res.ok) {
         const d = await res.json();
         setErr(d.error ?? "Upload failed");
-      } else {
-        onUpdated();
-      }
-    } catch (e: any) {
-      setErr(e?.message ?? "Failed to read image");
-    }
+      } else { onUpdated(); }
+    } catch (e: any) { setErr(e?.message ?? "Failed to read image"); }
     setUploading(false);
   }
 
@@ -488,42 +377,22 @@ function PhotoBlock({
       <div className="relative">
         {profile.photoUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={profile.photoUrl}
-            alt={profile.name}
-            className="w-28 h-28 rounded-full object-cover border-2 border-dust"
-          />
+          <img src={profile.photoUrl} alt={profile.name} className="w-28 h-28 rounded-full object-cover border-2 border-dust" />
         ) : (
           <div className="w-28 h-28 rounded-full bg-rust/15 border border-rust/40 flex items-center justify-center text-3xl font-display text-ink">
-            {profile.name
-              .split(" ")
-              .map((p) => p[0])
-              .slice(0, 2)
-              .join("")
-              .toUpperCase()}
+            {profile.name.split(" ").map((p) => p[0]).slice(0, 2).join("").toUpperCase()}
           </div>
         )}
         {canEdit && (
-          <button
-            onClick={() => fileRef.current?.click()}
-            disabled={uploading}
+          <button onClick={() => fileRef.current?.click()} disabled={uploading}
             className="absolute -bottom-1 -right-1 w-9 h-9 rounded-full bg-rust text-white flex items-center justify-center hover:bg-glow transition-colors"
-            title="Change photo"
-          >
+            title="Change photo">
             <Camera size={14} />
           </button>
         )}
       </div>
-      <input
-        ref={fileRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) handleFile(f);
-        }}
-      />
+      <input ref={fileRef} type="file" accept="image/*" className="hidden"
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
       {uploading && <div className="text-xs text-smoke">Uploading…</div>}
       {err && <div className="text-xs text-rose">{err}</div>}
     </div>
@@ -537,16 +406,10 @@ async function resizeImage(file: File, maxDim: number, quality: number): Promise
       const img = new Image();
       img.onload = () => {
         let { width, height } = img;
-        if (width > height && width > maxDim) {
-          height = Math.round((height * maxDim) / width);
-          width = maxDim;
-        } else if (height > maxDim) {
-          width = Math.round((width * maxDim) / height);
-          height = maxDim;
-        }
+        if (width > height && width > maxDim) { height = Math.round((height * maxDim) / width); width = maxDim; }
+        else if (height > maxDim) { width = Math.round((width * maxDim) / height); height = maxDim; }
         const canvas = document.createElement("canvas");
-        canvas.width = width;
-        canvas.height = height;
+        canvas.width = width; canvas.height = height;
         const ctx = canvas.getContext("2d");
         if (!ctx) return reject(new Error("Canvas not supported"));
         ctx.drawImage(img, 0, 0, width, height);
@@ -561,27 +424,22 @@ async function resizeImage(file: File, maxDim: number, quality: number): Promise
 }
 
 function EditModal({
-  profile,
-  isAdmin,
-  onClose,
-  onSaved,
+  profile, isAdmin, roles, onClose, onSaved,
 }: {
   profile: Profile;
   isAdmin: boolean;
+  roles: ShiftRole[];
   onClose: () => void;
   onSaved: () => void;
 }) {
   const [form, setForm] = useState({
     name: profile.name,
     department: profile.department ?? "",
+    jobRole: profile.jobRole ?? "",
     phone: profile.phone ?? "",
     address: profile.address ?? "",
-    dateOfBirth: profile.dateOfBirth
-      ? new Date(profile.dateOfBirth).toISOString().slice(0, 10)
-      : "",
-    hireDate: profile.hireDate
-      ? new Date(profile.hireDate).toISOString().slice(0, 10)
-      : "",
+    dateOfBirth: profile.dateOfBirth ? new Date(profile.dateOfBirth).toISOString().slice(0, 10) : "",
+    hireDate: profile.hireDate ? new Date(profile.hireDate).toISOString().slice(0, 10) : "",
     employmentType: profile.employmentType,
     hourlyWage: profile.hourlyWage.toString(),
     isTipped: profile.isTipped,
@@ -595,8 +453,7 @@ function EditModal({
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    setSaving(true);
-    setErr(null);
+    setSaving(true); setErr(null);
     const body: any = {
       phone: form.phone || null,
       address: form.address || null,
@@ -608,6 +465,7 @@ function EditModal({
     if (isAdmin) {
       body.name = form.name;
       body.department = form.department || null;
+      body.jobRole = form.jobRole || null;
       body.hireDate = form.hireDate || null;
       body.employmentType = form.employmentType;
       body.hourlyWage = parseFloat(form.hourlyWage) || 0;
@@ -620,11 +478,7 @@ function EditModal({
       body: JSON.stringify(body),
     });
     setSaving(false);
-    if (!res.ok) {
-      const d = await res.json();
-      setErr(d.error ?? "Failed");
-      return;
-    }
+    if (!res.ok) { const d = await res.json(); setErr(d.error ?? "Failed"); return; }
     onSaved();
   }
 
@@ -636,118 +490,101 @@ function EditModal({
             <div className="label-eyebrow mb-1">Edit profile</div>
             <h2 className="display text-2xl text-ink">{profile.name}</h2>
           </div>
-          <button onClick={onClose} className="btn btn-ghost">
-            Cancel
-          </button>
+          <button onClick={onClose} className="btn btn-ghost">Cancel</button>
         </div>
 
         <form onSubmit={submit} className="space-y-6">
-          {/* Personal */}
           <section>
             <div className="label-eyebrow mb-3">Personal</div>
             <div className="grid grid-cols-2 gap-3">
               {isAdmin && (
                 <div className="col-span-2">
                   <label>Name</label>
-                  <input
-                    value={form.name}
-                    onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  />
+                  <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
                 </div>
               )}
               <div>
                 <label>Phone</label>
-                <input
-                  type="tel"
-                  value={form.phone}
-                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                />
+                <input type="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
               </div>
               <div>
                 <label>Date of birth</label>
-                <input
-                  type="date"
-                  value={form.dateOfBirth}
-                  onChange={(e) => setForm({ ...form, dateOfBirth: e.target.value })}
-                />
+                <input type="date" value={form.dateOfBirth} onChange={(e) => setForm({ ...form, dateOfBirth: e.target.value })} />
               </div>
               <div className="col-span-2">
                 <label>Address</label>
-                <textarea
-                  rows={2}
-                  value={form.address}
-                  onChange={(e) => setForm({ ...form, address: e.target.value })}
-                />
+                <textarea rows={2} value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
               </div>
             </div>
           </section>
 
-          {/* Emergency */}
           <section>
             <div className="label-eyebrow mb-3">Emergency contact</div>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label>Name</label>
-                <input
-                  value={form.emergencyContactName}
-                  onChange={(e) =>
-                    setForm({ ...form, emergencyContactName: e.target.value })
-                  }
-                />
+                <input value={form.emergencyContactName} onChange={(e) => setForm({ ...form, emergencyContactName: e.target.value })} />
               </div>
               <div>
                 <label>Phone</label>
-                <input
-                  type="tel"
-                  value={form.emergencyContactPhone}
-                  onChange={(e) =>
-                    setForm({ ...form, emergencyContactPhone: e.target.value })
-                  }
-                />
+                <input type="tel" value={form.emergencyContactPhone} onChange={(e) => setForm({ ...form, emergencyContactPhone: e.target.value })} />
               </div>
               <div className="col-span-2">
                 <label>Relationship</label>
-                <input
-                  value={form.emergencyContactRelation}
-                  onChange={(e) =>
-                    setForm({ ...form, emergencyContactRelation: e.target.value })
-                  }
-                  placeholder="e.g. Spouse, Parent, Sibling"
-                />
+                <input value={form.emergencyContactRelation}
+                  onChange={(e) => setForm({ ...form, emergencyContactRelation: e.target.value })}
+                  placeholder="e.g. Spouse, Parent, Sibling" />
               </div>
             </div>
           </section>
 
-          {/* Employment (admin) */}
           {isAdmin && (
             <section>
               <div className="label-eyebrow mb-3">Employment (admin only)</div>
               <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2">
+                  <label>Job role (schedule grouping)</label>
+                  {roles.length > 0 ? (
+                    <div className="flex gap-2">
+                      <select
+                        value={roles.some((r) => r.name === form.jobRole) ? form.jobRole : ""}
+                        onChange={(e) => setForm({ ...form, jobRole: e.target.value })}
+                        className="!flex-1"
+                      >
+                        <option value="">— pick one —</option>
+                        {roles.map((r) => (
+                          <option key={r.id} value={r.name}>{r.name}</option>
+                        ))}
+                      </select>
+                      <input
+                        placeholder="or custom"
+                        value={!roles.some((r) => r.name === form.jobRole) ? form.jobRole : ""}
+                        onChange={(e) => setForm({ ...form, jobRole: e.target.value })}
+                        className="!flex-1"
+                      />
+                    </div>
+                  ) : (
+                    <input
+                      value={form.jobRole}
+                      onChange={(e) => setForm({ ...form, jobRole: e.target.value })}
+                      placeholder="e.g. Budtender, Lead, Management"
+                    />
+                  )}
+                  <div className="text-[11px] text-smoke mt-1">
+                    Determines which schedule section this employee shows up in. Auto-fills the role on new shifts.
+                  </div>
+                </div>
                 <div>
                   <label>Department</label>
-                  <input
-                    value={form.department}
-                    onChange={(e) =>
-                      setForm({ ...form, department: e.target.value })
-                    }
-                  />
+                  <input value={form.department} onChange={(e) => setForm({ ...form, department: e.target.value })} />
                 </div>
                 <div>
                   <label>Hire date</label>
-                  <input
-                    type="date"
-                    value={form.hireDate}
-                    onChange={(e) => setForm({ ...form, hireDate: e.target.value })}
-                  />
+                  <input type="date" value={form.hireDate} onChange={(e) => setForm({ ...form, hireDate: e.target.value })} />
                 </div>
                 <div>
                   <label>Employment type</label>
-                  <select
-                    value={form.employmentType}
-                    onChange={(e) =>
-                      setForm({ ...form, employmentType: e.target.value as any })
-                    }
-                  >
+                  <select value={form.employmentType} onChange={(e) => setForm({ ...form, employmentType: e.target.value as any })}>
                     <option value="UNSPECIFIED">Unspecified</option>
                     <option value="W2">W-2 Employee</option>
                     <option value="CONTRACTOR_1099">1099 Contractor</option>
@@ -755,60 +592,35 @@ function EditModal({
                 </div>
                 <div>
                   <label>Hourly wage</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={form.hourlyWage}
-                    onChange={(e) =>
-                      setForm({ ...form, hourlyWage: e.target.value })
-                    }
-                  />
+                  <input type="number" step="0.01" min="0" value={form.hourlyWage}
+                    onChange={(e) => setForm({ ...form, hourlyWage: e.target.value })} />
                 </div>
                 <div className="col-span-2">
                   <label className="flex items-center gap-2 !mb-0">
-                    <input
-                      type="checkbox"
-                      checked={form.isTipped}
-                      onChange={(e) =>
-                        setForm({ ...form, isTipped: e.target.checked })
-                      }
-                    />
+                    <input type="checkbox" checked={form.isTipped}
+                      onChange={(e) => setForm({ ...form, isTipped: e.target.checked })} />
                     <span>Tipped employee</span>
                   </label>
                 </div>
                 <div className="col-span-2">
                   <label>Internal notes</label>
-                  <textarea
-                    rows={3}
-                    placeholder="Not visible to the employee"
-                    value={form.notes}
-                    onChange={(e) => setForm({ ...form, notes: e.target.value })}
-                  />
+                  <textarea rows={3} placeholder="Not visible to the employee"
+                    value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
                 </div>
               </div>
             </section>
           )}
 
-          {err && (
-            <div className="text-sm text-rose bg-rose/10 px-3 py-2 rounded border border-rose/30">
-              {err}
-            </div>
-          )}
+          {err && <div className="text-sm text-rose bg-rose/10 px-3 py-2 rounded border border-rose/30">{err}</div>}
 
           <div className="flex justify-end gap-2">
-            <button type="button" onClick={onClose} className="btn btn-secondary">
-              Cancel
-            </button>
-            <button disabled={saving} className="btn btn-primary">
-              {saving ? "Saving…" : "Save changes"}
-            </button>
+            <button type="button" onClick={onClose} className="btn btn-secondary">Cancel</button>
+            <button disabled={saving} className="btn btn-primary">{saving ? "Saving…" : "Save changes"}</button>
           </div>
 
           <div className="text-xs text-smoke text-center pt-2">
             <ShieldCheck size={12} className="inline mr-1" />
-            SSN and direct deposit are managed in your payroll provider
-            (Gusto, Wave, ADP). W-4 / tax withholding is managed in Shiftwork (link above).
+            SSN and direct deposit are managed in your payroll provider (Gusto, Wave, ADP). W-4 / tax withholding is managed in Shiftwork.
           </div>
         </form>
       </div>

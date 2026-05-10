@@ -28,7 +28,6 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const locationFilter = searchParams.get("locationId");
   const includeArchived = searchParams.get("includeArchived") === "true";
-  const schedulableOnly = searchParams.get("schedulableOnly") === "true";
 
   const scopedIds = await getScopedEmployeeIds(auth.userId, auth.role);
 
@@ -41,15 +40,12 @@ export async function GET(req: Request) {
     where.archivedAt = null;
   }
 
-  if (schedulableOnly) {
-    where.role = { not: "ADMIN" };
-    where.active = true;
-  }
   const employees = await prisma.user.findMany({
     where,
     orderBy: { name: "asc" },
     select: {
       id: true, email: true, name: true, role: true, department: true,
+      jobRole: true,
       active: true, archivedAt: true, hourlyWage: true, isTipped: true,
       photoUrl: true, createdAt: true,
       locations: { select: { location: { select: { id: true, name: true } } } },
@@ -72,7 +68,7 @@ export async function PATCH(req: Request) {
   const tenantId = auth.tenantId;
 
   const body = await req.json();
-  const { id, active, role, department, hourlyWage, isTipped, locationIds } = body;
+  const { id, active, role, department, jobRole, hourlyWage, isTipped, locationIds } = body;
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
 
   // CRITICAL: verify target is in same tenant
@@ -111,6 +107,7 @@ export async function PATCH(req: Request) {
   if (typeof active === "boolean") data.active = active;
   if (role) data.role = role;
   if (department !== undefined) data.department = department;
+  if (jobRole !== undefined) data.jobRole = jobRole || null;
   if (auth.role === "ADMIN") {
     if (typeof hourlyWage === "number") data.hourlyWage = hourlyWage;
     if (typeof isTipped === "boolean") data.isTipped = isTipped;

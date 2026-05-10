@@ -178,6 +178,11 @@ model User {
 
   role         Role         @default(EMPLOYEE)
   department   String?
+  // Job role for scheduling (matches a ShiftRole.name like "Budtender",
+  // "Lead", "Management"). Drives schedule grouping + auto-fills the role
+  // when admins create a shift for this employee. Admin-set, free-text
+  // (matches by name against ShiftRole table for color lookup).
+  jobRole      String?
   active       Boolean      @default(true)
   archivedAt   DateTime?
   hourlyWage   Float        @default(0)
