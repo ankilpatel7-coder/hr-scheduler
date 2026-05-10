@@ -152,6 +152,8 @@ model Tenant {
   timeOff         TimeOffRequest[]
   swaps           ShiftSwap[]
   payPeriods     PayPeriod[]
+  roles           ShiftRole[]
+  shiftTags       ShiftTag[]
 
   @@index([slug])
   @@index([active])
@@ -302,7 +304,9 @@ model Shift {
   location    Location? @relation(fields: [locationId], references: [id])
   startTime   DateTime
   endTime     DateTime
-  role        String?
+  role        String?  // Free-text role name; matched against ShiftRole.name for color coding. Kept as string for backward compat.
+  tagId       String?  // Optional ShiftTag — colored pill on schedule cards (e.g. "Delivery", "Sales").
+  tag         ShiftTag? @relation(fields: [tagId], references: [id], onDelete: SetNull)
   notes       String?
   published   Boolean  @default(false)
   publishedAt DateTime?
@@ -315,6 +319,44 @@ model Shift {
   @@index([employeeId, startTime])
   @@index([locationId, startTime])
   @@index([published, startTime])
+  @@index([tagId])
+}
+
+// ============================================================
+// ShiftRole — canonical role registry per tenant (with colors)
+// ============================================================
+
+model ShiftRole {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name      String   // "Budtender", "Lead", "Management", etc.
+  color     String   @default("#0f6e56") // hex; matched to Shift.role for section coloring
+  sortOrder Int      @default(0)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, name])
+  @@index([tenantId, active, sortOrder])
+}
+
+// ============================================================
+// ShiftTag — admin-defined tags applied to individual shifts
+// ============================================================
+
+model ShiftTag {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name      String   // "Delivery", "Sales", "Inventory", etc.
+  color     String   @default("#b8551c")
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  shifts    Shift[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId, active])
 }
 
 // ============================================================
