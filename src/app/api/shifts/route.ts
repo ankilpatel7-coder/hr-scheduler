@@ -1,5 +1,9 @@
 /**
  * v12.1: TENANT-SCOPED shifts API.
+ *
+ * House Shifts (employeeId: null) are open shifts admins post before
+ * assigning. Manager permissions for house shifts are gated by location
+ * scope (since there's no employee to scope by).
  */
 
 import { NextResponse } from "next/server";
@@ -22,6 +26,39 @@ const createSchema = z.object({
   notes: z.string().optional(),
   tagId: z.string().optional().nullable(),
 });
+
+/**
+ * Manager permission check for editing/deleting an existing shift.
+ * - Assigned shift (employeeId set): employee must be in manager's scope.
+ * - House shift (employeeId null): location must be in manager's scope.
+ *   If the house shift has no location either, only ADMIN can touch it.
+ *
+ * Returns null if allowed, or a NextResponse with 403 if not.
+ */
+async function checkManagerCanMutate(
+  managerId: string,
+  existing: { employeeId: string | null; locationId: string | null },
+) {
+  if (existing.employeeId) {
+    const scopedIds = await getScopedEmployeeIds(managerId, "MANAGER");
+    if (!scopedIds || !scopedIds.includes(existing.employeeId)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+    return null;
+  }
+  // House shift — gate by location.
+  if (!existing.locationId) {
+    return NextResponse.json(
+      { error: "Only admins can modify unassigned house shifts with no location." },
+      { status: 403 },
+    );
+  }
+  const scopedLocs = await getScopedLocationIds(managerId, "MANAGER");
+  if (!scopedLocs || !scopedLocs.includes(existing.locationId)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+  return null;
+}
 
 export async function GET(req: Request) {
   const auth = await requireAuth();
@@ -49,14 +86,18 @@ export async function GET(req: Request) {
     where.published = true;
   } else if (auth.role === "MANAGER") {
     const scopedIds = await getScopedEmployeeIds(auth.userId, auth.role);
-    where.employeeId = { in: scopedIds ?? [] };
     const scopedLocs = await getScopedLocationIds(auth.userId, auth.role);
+    // Manager sees:
+    //   1. Assigned shifts where employee is in their scope, OR
+    //   2. House shifts (no employee) at one of their scoped locations.
+    // Both clauses are AND-ed against the tenant + date filters above.
+    const orClauses: any[] = [
+      { employeeId: { in: scopedIds ?? [] } },
+    ];
     if (scopedLocs && scopedLocs.length > 0) {
-      where.OR = [
-        { locationId: { in: scopedLocs } },
-        { locationId: null, employeeId: { in: scopedIds ?? [] } },
-      ];
+      orClauses.push({ employeeId: null, locationId: { in: scopedLocs } });
     }
+    where.OR = orClauses;
   }
 
   const shifts = await prisma.shift.findMany({
@@ -70,9 +111,14 @@ export async function GET(req: Request) {
     },
   });
 
+  // Strip wages for non-admins. House shifts have no employee, so leave as-is.
   const safe = auth.role === "ADMIN"
     ? shifts
-    : shifts.map((s) => ({ ...s, employee: { ...s.employee, hourlyWage: 0 } }));
+    : shifts.map((s) =>
+        s.employee
+          ? { ...s, employee: { ...s.employee, hourlyWage: 0 } }
+          : s,
+      );
 
   return NextResponse.json({ shifts: safe, viewerRole: auth.role });
 }
@@ -118,6 +164,14 @@ export async function POST(req: Request) {
       if (!scopedLocs || !scopedLocs.includes(locationId)) {
         return NextResponse.json({ error: "You can only schedule shifts at your assigned location(s)." }, { status: 403 });
       }
+    }
+    // Posting a house shift requires at least a location (so we have
+    // something to scope by). Admins can post location-less house shifts.
+    if (!employeeId && !locationId) {
+      return NextResponse.json(
+        { error: "House shifts must specify a location." },
+        { status: 400 },
+      );
     }
   }
 
@@ -170,10 +224,8 @@ export async function PATCH(req: Request) {
   }
 
   if (auth.role === "MANAGER") {
-    const scopedIds = await getScopedEmployeeIds(auth.userId, auth.role);
-    if (!scopedIds || !scopedIds.includes(existing.employeeId)) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    const denied = await checkManagerCanMutate(auth.userId, existing);
+    if (denied) return denied;
   }
 
   const updates: any = {};
@@ -205,10 +257,8 @@ export async function DELETE(req: Request) {
   }
 
   if (auth.role === "MANAGER") {
-    const scopedIds = await getScopedEmployeeIds(auth.userId, auth.role);
-    if (!scopedIds || !scopedIds.includes(existing.employeeId)) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    const denied = await checkManagerCanMutate(auth.userId, existing);
+    if (denied) return denied;
   }
 
   await prisma.shift.delete({ where: { id } });
