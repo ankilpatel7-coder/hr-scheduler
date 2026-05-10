@@ -34,7 +34,7 @@ type ShiftRole = { id: string; name: string; color: string; sortOrder: number };
 
 type Shift = {
   id: string;
-  employeeId: string;
+  employeeId: string | null; // null for house / open shifts
   startTime: string;
   endTime: string;
   role: string | null;
@@ -43,7 +43,7 @@ type Shift = {
   location: LocationRef | null;
   tag: ShiftTag | null;
   tagId: string | null;
-  employee: { id: string; name: string; department: string | null; hourlyWage: number };
+  employee: { id: string; name: string; department: string | null; hourlyWage: number } | null;
 };
 
 type Location = {
@@ -385,6 +385,17 @@ export default function SchedulePage() {
     );
   }
 
+  // House shifts = shifts with no assigned employee
+  const houseShifts = shifts.filter((s) => !s.employeeId);
+  function houseShiftsForDay(day: Date) {
+    return houseShifts.filter((s) => isSameDay(new Date(s.startTime), day));
+  }
+  const houseShiftsCount = houseShifts.length;
+  const houseShiftsHours = houseShifts.reduce(
+    (acc, s) => acc + differenceInMinutes(new Date(s.endTime), new Date(s.startTime)) / 60,
+    0,
+  );
+
   // Frontend belt-and-suspenders: never show admins on the schedule, even
   // if the API forgets to filter them out. Admins manage the schedule;
   // they're not assigned to it.
@@ -529,6 +540,85 @@ export default function SchedulePage() {
           <div className="text-smoke">Loading…</div>
         ) : (
           <div className="space-y-3">
+            {/* House Shifts — open shifts not yet assigned to an employee */}
+            <div className="card overflow-hidden" style={{ borderLeft: "4px solid #d97706" }}>
+              <div
+                className="px-5 py-3 text-white flex items-center justify-between select-none"
+                style={{ background: "#d97706" }}
+              >
+                <div className="flex items-center gap-3">
+                  <span
+                    className="w-7 h-7 rounded-full flex items-center justify-center"
+                    style={{ background: "rgba(255,255,255,0.18)" }}
+                  >
+                    <span className="text-[11px] font-bold tracking-wider uppercase">!</span>
+                  </span>
+                  <div>
+                    <div className="text-sm font-medium leading-tight">House Shifts</div>
+                    <div className="text-[10px] opacity-80 font-mono leading-tight mt-0.5">
+                      {houseShiftsCount} open · {houseShiftsHours.toFixed(1)}h · anyone can be assigned
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[960px]">
+                  <thead>
+                    <tr className="border-b border-dust">
+                      <th className="sticky left-0 bg-paper px-4 py-3 text-left text-[10px] uppercase tracking-[0.15em] text-smoke font-medium w-48">
+                        Open shifts
+                      </th>
+                      {days.map((d) => (
+                        <th key={d.toISOString()} className={`px-3 py-3 text-left text-[10px] uppercase tracking-[0.15em] font-medium border-l border-dust ${isSameDay(d, new Date()) ? "bg-rust/5 text-rust" : "text-smoke"}`}>
+                          <div>{format(d, "EEE")}</div>
+                          <div className="display text-xl text-ink normal-case tracking-normal">{format(d, "d")}</div>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr className="border-b border-dust last:border-0">
+                      <td className="sticky left-0 bg-paper px-4 py-3 align-top">
+                        <div className="text-[11px] text-smoke leading-tight">
+                          Click + to post an unassigned shift. Edit to assign someone.
+                        </div>
+                      </td>
+                      {days.map((d) => {
+                        const dayHouseShifts = houseShiftsForDay(d);
+                        return (
+                          <td key={d.toISOString()} className="border-l border-dust p-2 align-top min-w-[130px]">
+                            <div className="space-y-1">
+                              {dayHouseShifts.map((s) => (
+                                <ShiftCard
+                                  key={s.id}
+                                  shift={s}
+                                  color={(s.role && colorForRole(s.role)) || "#d97706"}
+                                  dayHours={undefined}
+                                  isClosedDay={false}
+                                  onEdit={() => setEditingShift(s)}
+                                  onDelete={() => deleteShift(s.id)}
+                                  onContextMenu={(e) => {
+                                    e.preventDefault(); e.stopPropagation();
+                                    setMenu({ x: e.clientX, y: e.clientY, shift: s });
+                                  }}
+                                />
+                              ))}
+                              <button
+                                onClick={() => setModalSlot({ day: d, employeeId: "", defaultRole: undefined })}
+                                className="w-full text-xs text-smoke hover:text-ink hover:bg-dust/30 py-1 rounded border border-dashed border-dust flex items-center justify-center gap-1 print:hidden"
+                              >
+                                <Plus size={12} /> Open shift
+                              </button>
+                            </div>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
             {/* Role sections — grouped by employee.jobRole */}
             {sectionsList.map((roleName) => {
               const sectionEmps = sectionMap.get(roleName)!;
@@ -817,13 +907,18 @@ export default function SchedulePage() {
           mode={editingShift ? "edit" : "create"}
           editingShift={editingShift ?? undefined}
           day={editingShift ? new Date(editingShift.startTime) : modalSlot!.day}
-          employeeId={editingShift ? editingShift.employeeId : modalSlot!.employeeId}
-          employeeName={editingShift ? editingShift.employee.name : (employees.find((e) => e.id === modalSlot!.employeeId)?.name ?? "")}
+          employeeId={editingShift ? (editingShift.employeeId ?? "") : modalSlot!.employeeId}
+          employeeName={
+            editingShift
+              ? (editingShift.employee?.name ?? "(open shift)")
+              : (employees.find((e) => e.id === modalSlot!.employeeId)?.name ?? "(open shift)")
+          }
           employeeBaseLocationId={editingShift ? (editingShift.location?.id ?? "") : (employees.find((e) => e.id === modalSlot!.employeeId)?.locations[0]?.location.id ?? "")}
-          existingWeeklyHours={weeklyHoursFor(editingShift ? editingShift.employeeId : modalSlot!.employeeId)}
+          existingWeeklyHours={weeklyHoursFor((editingShift ? editingShift.employeeId : modalSlot!.employeeId) ?? "")}
           locations={locations}
           roles={roles}
           tags={tags}
+          allEmployees={employees}
           defaultLocationId={locationFilter}
           defaultRole={modalSlot?.defaultRole}
           onClose={() => { setModalSlot(null); setEditingShift(null); }}
@@ -934,7 +1029,7 @@ function ShiftCard({
 function ShiftModal({
   mode, editingShift,
   day, employeeId, employeeName, employeeBaseLocationId, existingWeeklyHours,
-  locations, roles, tags,
+  locations, roles, tags, allEmployees,
   defaultLocationId, defaultRole,
   onClose, onSaved,
 }: {
@@ -948,11 +1043,14 @@ function ShiftModal({
   locations: Location[];
   roles: ShiftRole[];
   tags: ShiftTag[];
+  allEmployees: Employee[];
   defaultLocationId: string;
   defaultRole?: string;
   onClose: () => void;
   onSaved: () => void;
 }) {
+  // House shift mode: no employee assigned (or being created without one)
+  const isHouseShift = !employeeId;
   const initialLocId = editingShift
     ? (editingShift.location?.id ?? "")
     : (defaultLocationId || employeeBaseLocationId || (locations[0]?.id ?? ""));
@@ -966,6 +1064,8 @@ function ShiftModal({
     tagId: editingShift ? (editingShift.tagId ?? "") : "",
     notes: editingShift ? (editingShift.notes ?? "") : "",
     locationId: initialLocId,
+    // For house shifts: optional assignment
+    assignToId: editingShift ? (editingShift.employeeId ?? "") : "",
   });
   const [err, setErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -1014,7 +1114,11 @@ function ShiftModal({
       locationId: form.locationId || null,
     };
     if (mode === "create") {
-      body.employeeId = employeeId;
+      // For house shifts (no employeeId), use assignToId from the form (which may be empty = leave open)
+      body.employeeId = isHouseShift ? (form.assignToId || null) : employeeId;
+    } else if (isHouseShift || form.assignToId !== (editingShift?.employeeId ?? "")) {
+      // Editing — only send employeeId if it's a house shift or the assignment changed
+      body.employeeId = form.assignToId || null;
     }
     const res = await fetch(
       mode === "edit" ? `/api/shifts/${editingShift!.id}` : "/api/shifts",
@@ -1044,10 +1148,28 @@ function ShiftModal({
         <div className="mb-6">
           <div className="text-[10px] tracking-[0.3em] uppercase text-smoke mb-1">{format(day, "EEEE, MMMM d")}</div>
           <h2 className="display text-2xl">
-            {mode === "edit" ? "Edit shift for" : "Shift for"} {employeeName}
+            {isHouseShift && mode === "create" ? "Open shift" : (mode === "edit" ? "Edit shift" : `Shift for ${employeeName}`)}
           </h2>
+          {isHouseShift && (
+            <p className="text-xs text-smoke mt-1">
+              House shift — leave unassigned to post as open, or pick someone to assign now.
+            </p>
+          )}
         </div>
         <form onSubmit={submit} className="space-y-3">
+          {isHouseShift && (
+            <div>
+              <label>Assign to (optional)</label>
+              <select value={form.assignToId} onChange={(e) => setForm({ ...form, assignToId: e.target.value })}>
+                <option value="">— leave open —</option>
+                {allEmployees.filter((e) => e.role !== "ADMIN").map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.name}{e.jobRole ? ` (${e.jobRole})` : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           {locations.length > 0 && (
             <div>
               <label>Location</label>

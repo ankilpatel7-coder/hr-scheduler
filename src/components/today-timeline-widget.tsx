@@ -164,7 +164,7 @@ export default async function TodayTimelineWidget({
                 className="mt-1.5 flex flex-col justify-center min-w-0"
                 style={{ height: 40 }}
               >
-                <div className="text-[12px] text-ink font-medium truncate">{s.employee.name}</div>
+                <div className="text-[12px] text-ink font-medium truncate">{s.employee!.name}</div>
                 <div className="text-[9px] text-smoke font-mono whitespace-nowrap">
                   {tzFormat(s.startTime, "h:mma", tz).toLowerCase()}–
                   {tzFormat(s.endTime, "h:mma", tz).toLowerCase()}
@@ -191,7 +191,7 @@ export default async function TodayTimelineWidget({
               const endPct = pctOfDay(shift.endTime, dayStart);
               const widthPct = Math.max(1, endPct - startPct);
 
-              const userEntries = entriesByUser.get(shift.employee.id) ?? [];
+              const userEntries = entriesByUser.get(shift.employee!.id) ?? [];
               const hasOpen = userEntries.some((e) => e.out === null);
               const hasAny = userEntries.length > 0;
               const ended = shift.endTime < now;

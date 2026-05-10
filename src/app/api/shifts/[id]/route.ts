@@ -17,6 +17,8 @@ const patchSchema = z.object({
   tagId: z.string().nullable().optional(),
   notes: z.string().nullable().optional(),
   locationId: z.string().nullable().optional(),
+  // Assigning an open shift to an employee (or unassigning) sets/clears this.
+  employeeId: z.string().nullable().optional(),
 });
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
@@ -45,6 +47,19 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if ("tagId" in parsed.data) data.tagId = parsed.data.tagId || null;
   if ("notes" in parsed.data) data.notes = parsed.data.notes || null;
   if ("locationId" in parsed.data) data.locationId = parsed.data.locationId || null;
+  if ("employeeId" in parsed.data) {
+    // Verify the new assignee is in this tenant (skip for unassign)
+    if (parsed.data.employeeId) {
+      const newEmp = await prisma.user.findUnique({
+        where: { id: parsed.data.employeeId },
+        select: { tenantId: true },
+      });
+      if (!newEmp || newEmp.tenantId !== auth.tenantId) {
+        return NextResponse.json({ error: "Employee not in your tenant" }, { status: 403 });
+      }
+    }
+    data.employeeId = parsed.data.employeeId || null;
+  }
 
   // Validate tag belongs to same tenant
   if (data.tagId) {

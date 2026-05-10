@@ -98,7 +98,7 @@ export default async function RealtimePage({
     ticks.push({ hour: h, pct, label: display });
   }
 
-  const liveCount = shifts.filter((s) => openSet.has(s.employee.id)).length;
+  const liveCount = shifts.filter((s) => openSet.has(s.employee!.id)).length;
   const nowPct = isViewingToday ? pctOfDay(now, dayStart) : -1;
 
   return (
@@ -167,7 +167,7 @@ export default async function RealtimePage({
                     key={s.id}
                     className="h-9 mt-1.5 flex items-center min-w-0 text-[13px] text-ink font-medium truncate"
                   >
-                    {s.employee.name}
+                    {s.employee!.name}
                   </div>
                 ))}
               </div>
@@ -190,7 +190,7 @@ export default async function RealtimePage({
                   const endPct = pctOfDay(shift.endTime, dayStart);
                   const widthPct = Math.max(2, endPct - startPct);
                   const color = (shift.role && roleColorMap.get(shift.role)) || DEFAULT_ROLE_COLOR;
-                  const isLive = openSet.has(shift.employee.id);
+                  const isLive = openSet.has(shift.employee!.id);
                   const tagName = shift.tag?.name;
 
                   return (

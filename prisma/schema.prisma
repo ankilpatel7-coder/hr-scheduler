@@ -301,8 +301,10 @@ model Shift {
   id          String   @id @default(cuid())
   tenantId    String
   tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  employeeId  String
-  employee    User     @relation("EmployeeShifts", fields: [employeeId], references: [id], onDelete: Cascade)
+  // employeeId is nullable to support "house shifts" / open shifts —
+  // admins can post a shift before deciding who to assign it to.
+  employeeId  String?
+  employee    User?    @relation("EmployeeShifts", fields: [employeeId], references: [id], onDelete: Cascade)
   managerId   String
   manager     User     @relation("ManagerShifts", fields: [managerId], references: [id])
   locationId  String?

@@ -14,7 +14,7 @@ import {
 } from "@/lib/guards";
 
 const createSchema = z.object({
-  employeeId: z.string(),
+  employeeId: z.string().nullable().optional(),
   locationId: z.string().optional().nullable(),
   startTime: z.string(),
   endTime: z.string(),
@@ -92,10 +92,12 @@ export async function POST(req: Request) {
   }
   const { employeeId, locationId, startTime, endTime, role: shiftRole, notes, tagId } = parsed.data;
 
-  // Verify employee in same tenant
-  const emp = await prisma.user.findUnique({ where: { id: employeeId }, select: { tenantId: true } });
-  if (!emp || emp.tenantId !== tenantId) {
-    return NextResponse.json({ error: "Employee not in your tenant" }, { status: 403 });
+  // House shift: employeeId is null. Skip employee-tenant check.
+  if (employeeId) {
+    const emp = await prisma.user.findUnique({ where: { id: employeeId }, select: { tenantId: true } });
+    if (!emp || emp.tenantId !== tenantId) {
+      return NextResponse.json({ error: "Employee not in your tenant" }, { status: 403 });
+    }
   }
   if (locationId) {
     const loc = await prisma.location.findUnique({ where: { id: locationId }, select: { tenantId: true } });
@@ -105,9 +107,11 @@ export async function POST(req: Request) {
   }
 
   if (auth.role === "MANAGER") {
-    const scopedIds = await getScopedEmployeeIds(auth.userId, auth.role);
-    if (!scopedIds || !scopedIds.includes(employeeId)) {
-      return NextResponse.json({ error: "You can only schedule employees at your assigned location(s)." }, { status: 403 });
+    if (employeeId) {
+      const scopedIds = await getScopedEmployeeIds(auth.userId, auth.role);
+      if (!scopedIds || !scopedIds.includes(employeeId)) {
+        return NextResponse.json({ error: "You can only schedule employees at your assigned location(s)." }, { status: 403 });
+      }
     }
     if (locationId) {
       const scopedLocs = await getScopedLocationIds(auth.userId, auth.role);
@@ -132,7 +136,7 @@ export async function POST(req: Request) {
   const shift = await prisma.shift.create({
     data: {
       tenantId,
-      employeeId,
+      employeeId: employeeId || null,
       managerId: auth.userId,
       locationId: locationId || null,
       startTime: new Date(startTime),

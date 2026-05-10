@@ -120,7 +120,7 @@ export default async function TodayPage({
     entriesByUser.set(e.userId, list);
   }
 
-  const scheduledUserIds = new Set(shifts.map((s) => s.employee.id));
+  const scheduledUserIds = new Set(shifts.map((s) => s.employee!.id));
   const walkIns: { userId: string; name: string; entries: Entry[] }[] = [];
   for (const e of dayEntries) {
     if (scheduledUserIds.has(e.userId)) continue;
@@ -230,14 +230,14 @@ export default async function TodayPage({
             <div className="w-[160px] shrink-0">
               <div className="h-6" />
               {shifts.map((s) => {
-                const userEntries = entriesByUser.get(s.employee.id) ?? [];
+                const userEntries = entriesByUser.get(s.employee!.id) ?? [];
                 return (
                   <div
                     key={s.id}
                     className="mt-2 flex flex-col justify-center min-w-0"
                     style={{ height: 56 }}
                   >
-                    <div className="font-medium text-sm text-ink truncate">{s.employee.name}</div>
+                    <div className="font-medium text-sm text-ink truncate">{s.employee!.name}</div>
                     <div className="text-[10px] text-smoke font-mono whitespace-nowrap">
                       Sched {fmt(s.startTime)}–{fmt(s.endTime)}
                     </div>
@@ -274,7 +274,7 @@ export default async function TodayPage({
                   const endPct = pctOfDay(shift.endTime, dayStart);
                   const widthPct = Math.max(1, endPct - startPct);
 
-                  const userEntries = entriesByUser.get(shift.employee.id) ?? [];
+                  const userEntries = entriesByUser.get(shift.employee!.id) ?? [];
                   const hasOpen = userEntries.some((e) => e.out === null);
                   const hasAny = userEntries.length > 0;
                   const status = statusFor({
