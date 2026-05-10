@@ -29,11 +29,11 @@ export async function GET(req: Request) {
   let sent = 0;
   for (const s of shifts) {
     await sendEmail({
-      to: s.employee.email,
+      to: s.employee!.email,
       subject: `Shift reminder: ${format(s.startTime, "h:mma")} at ${s.location?.name ?? "work"}`,
       html: baseEmailTemplate(
         "Your shift starts in 1 hour",
-        `<p style="margin:0 0 8px;">Hi ${s.employee.name}, a friendly reminder:</p>
+        `<p style="margin:0 0 8px;">Hi ${s.employee!.name}, a friendly reminder:</p>
 <p style="margin:8px 0;"><strong>${format(s.startTime, "h:mm a")} – ${format(
           s.endTime,
           "h:mm a"

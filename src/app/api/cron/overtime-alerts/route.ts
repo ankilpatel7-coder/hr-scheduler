@@ -43,9 +43,9 @@ export async function GET(req: Request) {
 
   for (const s of scheduled) {
     const planned = hours(s.startTime, s.endTime);
-    const cur = byUser.get(s.employee.id) ?? { user: s.employee, hours: 0 };
+    const cur = byUser.get(s.employee!.id) ?? { user: s.employee, hours: 0 };
     cur.hours += planned;
-    byUser.set(s.employee.id, cur);
+    byUser.set(s.employee!.id, cur);
   }
 
   const atRisk = Array.from(byUser.values())
