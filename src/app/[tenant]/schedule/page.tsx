@@ -180,7 +180,24 @@ export default function SchedulePage() {
         clockOut: e.clockOut,
       })),
     );
-    setAvailability(avData.availability ?? []);
+    // Defensive: tolerate different response shapes from the existing
+    // availability API (could be { availability: [...] }, { windows: [...] },
+    // { entries: [...] }, or a bare array).
+    const avArr =
+      (Array.isArray(avData) && avData) ||
+      avData.availability ||
+      avData.windows ||
+      avData.entries ||
+      [];
+    setAvailability(
+      avArr.map((a: any) => ({
+        userId: a.userId,
+        dayOfWeek: a.dayOfWeek,
+        startMinute: a.startMinute ?? 0,
+        endMinute: a.endMinute ?? 0,
+        available: a.available !== false, // default true unless explicitly false
+      })),
+    );
     setLoading(false);
   }
 
@@ -622,8 +639,8 @@ export default function SchedulePage() {
                                       )}
                                       {onTimeOff && (
                                         <div
-                                          className="text-[10px] uppercase tracking-wider font-medium text-center px-2 py-1.5 rounded mb-1 inline-flex items-center justify-center gap-1 w-full"
-                                          style={{ background: "rgba(245,158,11,0.10)", color: "#92400e", border: "1px solid rgba(245,158,11,0.30)" }}
+                                          className="text-[10px] uppercase tracking-wider font-medium text-center px-2 py-1.5 rounded mb-1"
+                                          style={{ background: "rgba(220,38,38,0.10)", color: "#991b1b", border: "1px solid rgba(220,38,38,0.25)" }}
                                           title="Approved time-off request covers this day"
                                         >
                                           Time off
