@@ -625,7 +625,7 @@ export default function SchedulePage() {
               const empIdSet = new Set(sectionEmps.map((e) => e.id));
               const color = colorForRole(roleName);
               const collapsed = collapsedRoles.has(roleName);
-              const sectionShifts = shifts.filter((s) => empIdSet.has(s.employeeId));
+              const sectionShifts = shifts.filter((s) => s.employeeId !== null && empIdSet.has(s.employeeId));
               const sectionShiftCount = sectionShifts.length;
               const sectionHours = sectionShifts
                 .reduce((acc, s) => acc + differenceInMinutes(new Date(s.endTime), new Date(s.startTime)) / 60, 0);
