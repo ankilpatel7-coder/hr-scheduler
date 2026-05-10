@@ -108,6 +108,8 @@ export default function SchedulePage() {
   const [locations, setLocations] = useState<Location[]>([]);
   const [roles, setRoles] = useState<ShiftRole[]>([]);
   const [tags, setTags] = useState<ShiftTag[]>([]);
+  const [timeOff, setTimeOff] = useState<{ userId: string; startDate: string; endDate: string; status: string }[]>([]);
+  const [clockEntries, setClockEntries] = useState<{ userId: string; clockIn: string; clockOut: string | null }[]>([]);
   const [locationFilter, setLocationFilter] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [modalSlot, setModalSlot] = useState<{ day: Date; employeeId: string; defaultRole?: string } | null>(null);
@@ -139,24 +141,76 @@ export default function SchedulePage() {
     setLoading(true);
     const weekEnd = addDays(weekStart, 7);
     const locQuery = locationFilter ? `&locationId=${locationFilter}` : "";
-    const [eRes, sRes, lRes, rRes, tRes] = await Promise.all([
+    const [eRes, sRes, lRes, rRes, tRes, toRes, ceRes] = await Promise.all([
       fetch("/api/employees?schedulableOnly=true"),
       fetch(`/api/shifts?from=${weekStart.toISOString()}&to=${weekEnd.toISOString()}${locQuery}`),
       fetch("/api/locations"),
       fetch("/api/roles"),
       fetch("/api/tags"),
+      fetch("/api/time-off?status=APPROVED"),
+      fetch(`/api/timesheets?from=${weekStart.toISOString()}&to=${weekEnd.toISOString()}${locQuery}`),
     ]);
     const eData = await eRes.json();
     const sData = await sRes.json();
     const lData = await lRes.json();
     const rData = rRes.ok ? await rRes.json() : { roles: [] };
     const tData = tRes.ok ? await tRes.json() : { tags: [] };
+    const toData = toRes.ok ? await toRes.json() : { requests: [] };
+    const ceData = ceRes.ok ? await ceRes.json() : { entries: [] };
     setEmployees((eData.employees ?? []).filter((e: Employee) => e.active));
     setShifts(sData.shifts ?? []);
     setLocations((lData.locations ?? []).filter((l: Location) => l.active));
     setRoles(rData.roles ?? []);
     setTags(tData.tags ?? []);
+    setTimeOff(
+      (toData.requests ?? []).map((r: any) => ({
+        userId: r.userId,
+        startDate: r.startDate,
+        endDate: r.endDate,
+        status: r.status,
+      })),
+    );
+    setClockEntries(
+      (ceData.entries ?? []).map((e: any) => ({
+        userId: e.userId,
+        clockIn: e.clockIn,
+        clockOut: e.clockOut,
+      })),
+    );
     setLoading(false);
+  }
+
+  // Helpers used by cell rendering
+  function isOnTimeOff(employeeId: string, day: Date): boolean {
+    const ds = new Date(day); ds.setHours(0, 0, 0, 0);
+    const de = new Date(day); de.setHours(23, 59, 59, 999);
+    return timeOff.some((r) => {
+      if (r.userId !== employeeId) return false;
+      const s = new Date(r.startDate);
+      const e = new Date(r.endDate);
+      return s <= de && e >= ds;
+    });
+  }
+
+  function approvedHoursFor(employeeId: string, day: Date): number {
+    const ds = new Date(day); ds.setHours(0, 0, 0, 0);
+    const de = new Date(day); de.setHours(23, 59, 59, 999);
+    let total = 0;
+    for (const e of clockEntries) {
+      if (e.userId !== employeeId) continue;
+      const ci = new Date(e.clockIn);
+      if (ci < ds || ci > de) continue;
+      if (!e.clockOut) continue;
+      const co = new Date(e.clockOut);
+      total += (co.getTime() - ci.getTime()) / 3_600_000;
+    }
+    return total;
+  }
+
+  function fmtHM(hours: number): string {
+    const h = Math.floor(hours);
+    const m = Math.round((hours - h) * 60);
+    return `${h}H ${m.toString().padStart(2, "0")}M`;
   }
 
   useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [weekStart, locationFilter]);
@@ -391,6 +445,55 @@ export default function SchedulePage() {
           </div>
         )}
 
+        {/* Day summary strip — scheduled hours + approved hours per day */}
+        {!loading && displayedEmployees.length > 0 && (
+          <div className="card p-3 mb-3 overflow-x-auto">
+            <div className="grid min-w-[960px]" style={{ gridTemplateColumns: "192px repeat(7, 1fr)" }}>
+              <div className="px-3 py-2 text-[10px] uppercase tracking-[0.15em] text-smoke font-medium">
+                Day totals
+              </div>
+              {days.map((d) => {
+                const dayShifts = shifts.filter((s) => isSameDay(new Date(s.startTime), d));
+                const scheduled = dayShifts.reduce(
+                  (acc, s) => acc + differenceInMinutes(new Date(s.endTime), new Date(s.startTime)) / 60,
+                  0,
+                );
+                let approved = 0;
+                for (const e of clockEntries) {
+                  if (!e.clockOut) continue;
+                  const ci = new Date(e.clockIn);
+                  if (!isSameDay(ci, d)) continue;
+                  approved += (new Date(e.clockOut).getTime() - ci.getTime()) / 3_600_000;
+                }
+                const variance = approved - scheduled;
+                const isToday = isSameDay(d, new Date());
+                return (
+                  <div
+                    key={d.toISOString()}
+                    className={`px-3 py-2 border-l border-dust text-center ${isToday ? "bg-rust/5" : ""}`}
+                  >
+                    <div className="font-mono text-xs text-ink tabular-nums">
+                      <span className="text-smoke text-[10px] uppercase tracking-wider">Sched</span>{" "}
+                      <span className="font-medium">{scheduled.toFixed(1)}h</span>
+                    </div>
+                    {approved > 0 && (
+                      <div className="font-mono text-[10px] tabular-nums mt-0.5" style={{ color: "#059669" }}>
+                        Worked {approved.toFixed(1)}h
+                        {Math.abs(variance) >= 0.1 && (
+                          <span className="ml-1" style={{ color: variance > 0 ? "#d97706" : "#888" }}>
+                            ({variance > 0 ? "+" : ""}
+                            {variance.toFixed(1)})
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {loading ? (
           <div className="text-smoke">Loading…</div>
         ) : (
@@ -482,6 +585,8 @@ export default function SchedulePage() {
                                   const dayKey = dayKeyForDate(d);
                                   const dayHours = empLoc?.hours?.[dayKey];
                                   const isClosed = !!dayHours?.closed;
+                                  const onTimeOff = isOnTimeOff(emp.id, d);
+                                  const approvedH = approvedHoursFor(emp.id, d);
                                   return (
                                     <td
                                       key={d.toISOString()}
@@ -491,10 +596,28 @@ export default function SchedulePage() {
                                       }}
                                       className={`border-l border-dust p-2 align-top min-w-[130px] ${isClosed ? "bg-rose/5" : ""}`}
                                     >
-                                      {isClosed && ss.length === 0 && (
+                                      {onTimeOff && (
+                                        <div
+                                          className="text-[10px] uppercase tracking-wider font-medium text-center px-2 py-1.5 rounded mb-1"
+                                          style={{ background: "rgba(220,38,38,0.10)", color: "#991b1b", border: "1px solid rgba(220,38,38,0.25)" }}
+                                          title="Approved time-off request covers this day"
+                                        >
+                                          Unavailable
+                                        </div>
+                                      )}
+                                      {isClosed && ss.length === 0 && !onTimeOff && (
                                         <div className="text-[10px] uppercase tracking-[0.15em] text-rose/70 font-medium text-center py-1">Closed</div>
                                       )}
                                       <div className="space-y-1">
+                                        {approvedH > 0 && (
+                                          <div
+                                            className="px-2 py-1 rounded text-[10px] font-mono font-medium text-center"
+                                            style={{ background: "#1a1a1a", color: "white" }}
+                                            title="Total clocked-in hours that day"
+                                          >
+                                            Approved: {fmtHM(approvedH)}
+                                          </div>
+                                        )}
                                         {ss.map((s) => (
                                           <ShiftCard
                                             key={s.id}
