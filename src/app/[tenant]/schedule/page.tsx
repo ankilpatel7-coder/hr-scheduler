@@ -62,6 +62,43 @@ function dayKeyForDate(d: Date): keyof Hours {
 const UNSPEC_ROLE = "Unspecified";
 const DEFAULT_SECTION_COLOR = "#5F5E5A";
 
+// Vibrant fallback palette used when a role isn't in the ShiftRole registry.
+// Color is picked deterministically from the role name so the same role
+// always gets the same color across reloads.
+const FALLBACK_PALETTE = [
+  "#0f6e56", // teal
+  "#b8551c", // rust
+  "#534AB7", // purple
+  "#993556", // burgundy
+  "#1d9e75", // green
+  "#BA7517", // amber
+  "#185FA5", // blue
+  "#3c3489", // indigo
+];
+
+function hashColor(name: string): string {
+  if (name === UNSPEC_ROLE) return DEFAULT_SECTION_COLOR;
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  return FALLBACK_PALETTE[h % FALLBACK_PALETTE.length];
+}
+
+// Initials avatar color hash (separate from role color so 5 budtenders don't all
+// have the same avatar)
+const AVATAR_BG = ["#fce7e1", "#e1f5ee", "#eeedfe", "#fbeaf0", "#FAEEDA", "#E6F1FB", "#EAF3DE", "#F1EFE8"];
+const AVATAR_FG = ["#b8551c", "#0f6e56", "#3c3489", "#993556", "#854F0B", "#0C447C", "#3B6D11", "#5F5E5A"];
+
+function avatarPalette(name: string): { bg: string; fg: string } {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  const i = h % AVATAR_BG.length;
+  return { bg: AVATAR_BG[i], fg: AVATAR_FG[i] };
+}
+
+function initials(name: string): string {
+  return name.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase() ?? "").join("");
+}
+
 export default function SchedulePage() {
   const { data: session, status } = useSession();
   const router = useRouter();
@@ -263,14 +300,21 @@ export default function SchedulePage() {
     );
   }
 
-  const displayedEmployees = locationFilter
+  // Frontend belt-and-suspenders: never show admins on the schedule, even
+  // if the API forgets to filter them out. Admins manage the schedule;
+  // they're not assigned to it.
+  const displayedEmployees = (locationFilter
     ? employees.filter((e) => e.locations.some((l) => l.location.id === locationFilter))
-    : employees;
+    : employees
+  ).filter((e) => e.role !== "ADMIN");
 
   // Group employees by their job role (User.jobRole). Each section shows
   // EVERY employee of that role, regardless of whether they have shifts
-  // this week — so admins can add shifts straight from the section row.
+  // this week.
   const roleColorMap = new Map(roles.map((r) => [r.name, r.color]));
+  function colorForRole(name: string): string {
+    return roleColorMap.get(name) ?? hashColor(name);
+  }
   const sectionMap = new Map<string, Employee[]>(); // roleName -> Employee[]
   for (const e of displayedEmployees) {
     const r = e.jobRole ?? UNSPEC_ROLE;
@@ -355,7 +399,7 @@ export default function SchedulePage() {
             {sectionsList.map((roleName) => {
               const sectionEmps = sectionMap.get(roleName)!;
               const empIdSet = new Set(sectionEmps.map((e) => e.id));
-              const color = roleColorMap.get(roleName) || DEFAULT_SECTION_COLOR;
+              const color = colorForRole(roleName);
               const collapsed = collapsedRoles.has(roleName);
               const sectionShifts = shifts.filter((s) => empIdSet.has(s.employeeId));
               const sectionShiftCount = sectionShifts.length;
@@ -363,19 +407,33 @@ export default function SchedulePage() {
                 .reduce((acc, s) => acc + differenceInMinutes(new Date(s.endTime), new Date(s.startTime)) / 60, 0);
 
               return (
-                <div key={roleName} className="card overflow-hidden">
+                <div
+                  key={roleName}
+                  className="card overflow-hidden"
+                  style={{ borderLeft: `4px solid ${color}` }}
+                >
                   <div
-                    className="px-4 py-2.5 text-white flex items-center justify-between cursor-pointer select-none"
+                    className="px-5 py-3 text-white flex items-center justify-between cursor-pointer select-none"
                     style={{ background: color }}
                     onClick={() => toggleRoleCollapse(roleName)}
                   >
                     <div className="flex items-center gap-3">
-                      <span className="text-sm font-medium">{roleName}</span>
-                      <span className="text-[11px] opacity-80 font-mono">
-                        {sectionShiftCount} shift{sectionShiftCount === 1 ? "" : "s"} · {sectionHours.toFixed(1)}h
+                      <span
+                        className="w-7 h-7 rounded-full flex items-center justify-center"
+                        style={{ background: "rgba(255,255,255,0.18)" }}
+                      >
+                        <span className="text-[10px] font-bold tracking-wider uppercase">
+                          {roleName.slice(0, 1)}
+                        </span>
                       </span>
+                      <div>
+                        <div className="text-sm font-medium leading-tight">{roleName}</div>
+                        <div className="text-[10px] opacity-80 font-mono leading-tight mt-0.5">
+                          {sectionEmps.length} {sectionEmps.length === 1 ? "person" : "people"} · {sectionShiftCount} shift{sectionShiftCount === 1 ? "" : "s"} · {sectionHours.toFixed(1)}h
+                        </div>
+                      </div>
                     </div>
-                    <span className="text-xs opacity-70">{collapsed ? "▶" : "▾"}</span>
+                    <span className="text-sm opacity-80">{collapsed ? "▶" : "▾"}</span>
                   </div>
                   {!collapsed && (
                     <div className="overflow-x-auto">
@@ -397,13 +455,24 @@ export default function SchedulePage() {
                           {sectionEmps.map((emp) => {
                             const empWeekHours = weeklyHoursFor(emp.id);
                             const isOT = empWeekHours > 40;
+                            const av = avatarPalette(emp.name);
                             return (
-                              <tr key={emp.id} className="border-b border-dust last:border-0">
+                              <tr key={emp.id} className="border-b border-dust last:border-0 hover:bg-ink/[0.02] transition-colors">
                                 <td className="sticky left-0 bg-paper px-4 py-3 align-top">
-                                  <div className="font-medium text-sm">{emp.name}</div>
-                                  <div className="text-[11px] text-smoke">{emp.department ?? "—"}</div>
-                                  <div className={`text-[10px] mt-0.5 font-mono ${isOT ? "text-rose font-medium" : "text-smoke"}`}>
-                                    {empWeekHours.toFixed(1)}h{isOT && " · OT"}
+                                  <div className="flex items-center gap-2.5">
+                                    <span
+                                      className="w-8 h-8 rounded-full flex items-center justify-center display text-xs shrink-0"
+                                      style={{ background: av.bg, color: av.fg }}
+                                    >
+                                      {initials(emp.name)}
+                                    </span>
+                                    <div className="min-w-0">
+                                      <div className="font-medium text-sm truncate">{emp.name}</div>
+                                      <div className="text-[11px] text-smoke truncate">{emp.department ?? "—"}</div>
+                                      <div className={`text-[10px] mt-0.5 font-mono ${isOT ? "text-rose font-medium" : "text-smoke"}`}>
+                                        {empWeekHours.toFixed(1)}h{isOT && " · OT"}
+                                      </div>
+                                    </div>
                                   </div>
                                 </td>
                                 {days.map((d) => {
@@ -634,26 +703,34 @@ function ShiftCard({
   return (
     <div
       onContextMenu={onContextMenu}
-      className={`px-2 py-1.5 rounded text-xs group relative text-white ${showWarn ? "ring-2 ring-amber" : ""}`}
+      className={`px-2.5 py-1.5 rounded-md text-xs group relative transition-shadow hover:shadow-sm ${showWarn ? "ring-2 ring-amber" : ""}`}
       style={{
-        background: shift.published ? color : `${color}22`,
+        background: shift.published ? color : "white",
         color: shift.published ? "white" : "#1a1a1a",
-        border: shift.published ? undefined : `2px dashed ${color}80`,
+        border: shift.published ? `1px solid ${color}` : `2px dashed ${color}80`,
+        borderLeft: shift.published ? `4px solid rgba(255,255,255,0.25)` : `4px solid ${color}`,
       }}
     >
-      <div className="font-mono">
+      <div className="font-mono font-medium">
         {format(sStart, "h:mma")}
         <span className={shift.published ? "text-white/60" : "text-smoke"}> – </span>
         {format(sEnd, "h:mma")}
       </div>
       {shift.role && (
-        <div className={shift.published ? "text-white/85 truncate" : "text-smoke truncate"}>
+        <div className={`truncate text-[11px] ${shift.published ? "text-white/95 font-medium" : "text-ink"}`}>
           {shift.role}
         </div>
       )}
       {shift.tag && (
-        <div className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium" style={{ background: `${shift.tag.color}`, color: "white" }}>
-          🏷 {shift.tag.name}
+        <div
+          className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-medium"
+          style={{
+            background: shift.published ? "rgba(255,255,255,0.20)" : `${shift.tag.color}18`,
+            color: shift.published ? "white" : shift.tag.color,
+            border: shift.published ? undefined : `0.5px solid ${shift.tag.color}55`,
+          }}
+        >
+          {shift.tag.name}
         </div>
       )}
       {shift.location && (
