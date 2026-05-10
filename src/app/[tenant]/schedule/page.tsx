@@ -110,6 +110,7 @@ export default function SchedulePage() {
   const [tags, setTags] = useState<ShiftTag[]>([]);
   const [timeOff, setTimeOff] = useState<{ userId: string; startDate: string; endDate: string; status: string }[]>([]);
   const [clockEntries, setClockEntries] = useState<{ userId: string; clockIn: string; clockOut: string | null }[]>([]);
+  const [availability, setAvailability] = useState<{ userId: string; dayOfWeek: number; startMinute: number; endMinute: number; available: boolean }[]>([]);
   const [locationFilter, setLocationFilter] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [modalSlot, setModalSlot] = useState<{ day: Date; employeeId: string; defaultRole?: string } | null>(null);
@@ -141,7 +142,7 @@ export default function SchedulePage() {
     setLoading(true);
     const weekEnd = addDays(weekStart, 7);
     const locQuery = locationFilter ? `&locationId=${locationFilter}` : "";
-    const [eRes, sRes, lRes, rRes, tRes, toRes, ceRes] = await Promise.all([
+    const [eRes, sRes, lRes, rRes, tRes, toRes, ceRes, avRes] = await Promise.all([
       fetch("/api/employees?schedulableOnly=true"),
       fetch(`/api/shifts?from=${weekStart.toISOString()}&to=${weekEnd.toISOString()}${locQuery}`),
       fetch("/api/locations"),
@@ -149,6 +150,7 @@ export default function SchedulePage() {
       fetch("/api/tags"),
       fetch("/api/time-off?status=APPROVED"),
       fetch(`/api/timesheets?from=${weekStart.toISOString()}&to=${weekEnd.toISOString()}${locQuery}`),
+      fetch("/api/availability"),
     ]);
     const eData = await eRes.json();
     const sData = await sRes.json();
@@ -157,6 +159,7 @@ export default function SchedulePage() {
     const tData = tRes.ok ? await tRes.json() : { tags: [] };
     const toData = toRes.ok ? await toRes.json() : { requests: [] };
     const ceData = ceRes.ok ? await ceRes.json() : { entries: [] };
+    const avData = avRes.ok ? await avRes.json() : { availability: [] };
     setEmployees((eData.employees ?? []).filter((e: Employee) => e.active));
     setShifts(sData.shifts ?? []);
     setLocations((lData.locations ?? []).filter((l: Location) => l.active));
@@ -177,10 +180,21 @@ export default function SchedulePage() {
         clockOut: e.clockOut,
       })),
     );
+    setAvailability(avData.availability ?? []);
     setLoading(false);
   }
 
   // Helpers used by cell rendering
+
+  // True if the employee marked themselves unavailable for this dayOfWeek
+  // via the Availability page (recurring constraint, not date-specific).
+  function isUnavailable(employeeId: string, day: Date): boolean {
+    const dow = day.getDay(); // 0=Sun..6=Sat
+    return availability.some(
+      (a) => a.userId === employeeId && a.dayOfWeek === dow && a.available === false,
+    );
+  }
+
   function isOnTimeOff(employeeId: string, day: Date): boolean {
     const ds = new Date(day); ds.setHours(0, 0, 0, 0);
     const de = new Date(day); de.setHours(23, 59, 59, 999);
@@ -586,6 +600,7 @@ export default function SchedulePage() {
                                   const dayHours = empLoc?.hours?.[dayKey];
                                   const isClosed = !!dayHours?.closed;
                                   const onTimeOff = isOnTimeOff(emp.id, d);
+                                  const unavail = isUnavailable(emp.id, d);
                                   const approvedH = approvedHoursFor(emp.id, d);
                                   return (
                                     <td
@@ -596,16 +611,25 @@ export default function SchedulePage() {
                                       }}
                                       className={`border-l border-dust p-2 align-top min-w-[130px] ${isClosed ? "bg-rose/5" : ""}`}
                                     >
-                                      {onTimeOff && (
+                                      {unavail && (
                                         <div
                                           className="text-[10px] uppercase tracking-wider font-medium text-center px-2 py-1.5 rounded mb-1"
                                           style={{ background: "rgba(220,38,38,0.10)", color: "#991b1b", border: "1px solid rgba(220,38,38,0.25)" }}
-                                          title="Approved time-off request covers this day"
+                                          title="Employee marked themselves unavailable on this day of the week"
                                         >
                                           Unavailable
                                         </div>
                                       )}
-                                      {isClosed && ss.length === 0 && !onTimeOff && (
+                                      {onTimeOff && (
+                                        <div
+                                          className="text-[10px] uppercase tracking-wider font-medium text-center px-2 py-1.5 rounded mb-1 inline-flex items-center justify-center gap-1 w-full"
+                                          style={{ background: "rgba(245,158,11,0.10)", color: "#92400e", border: "1px solid rgba(245,158,11,0.30)" }}
+                                          title="Approved time-off request covers this day"
+                                        >
+                                          Time off
+                                        </div>
+                                      )}
+                                      {isClosed && ss.length === 0 && !unavail && !onTimeOff && (
                                         <div className="text-[10px] uppercase tracking-[0.15em] text-rose/70 font-medium text-center py-1">Closed</div>
                                       )}
                                       <div className="space-y-1">
