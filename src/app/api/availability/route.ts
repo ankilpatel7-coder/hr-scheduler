@@ -3,8 +3,10 @@
  *   GET  /api/availability                          → admin/mgr: all in tenant
  *                                                     staff: own only
  *   GET  /api/availability?employeeId=X             → admin/mgr: that employee
- *   POST /api/availability  { dayOfWeek, startMinute, endMinute, available }
- *                                                   → set ONE window for self
+ *   PUT  /api/availability  { entries: [...] }      → replace ALL of self's
+ *                                                     weekly windows (used by
+ *                                                     the Availability page)
+ *   POST /api/availability  { dayOfWeek, ... }      → add ONE window for self
  *   DELETE /api/availability?id=X                   → remove a window (own only)
  *
  * Day-of-week: 0=Sunday, 1=Monday, ..., 6=Saturday (matches JS getDay()).
@@ -25,6 +27,17 @@ const createSchema = z.object({
   startMinute: z.number().int().min(0).max(1440),
   endMinute: z.number().int().min(0).max(1440),
   available: z.boolean().optional().default(false),
+});
+
+const putSchema = z.object({
+  entries: z.array(
+    z.object({
+      dayOfWeek: z.number().int().min(0).max(6),
+      startMinute: z.number().int().min(0).max(1440),
+      endMinute: z.number().int().min(0).max(1440),
+      available: z.boolean(),
+    }),
+  ),
 });
 
 export async function GET(req: Request) {
@@ -57,6 +70,50 @@ export async function GET(req: Request) {
   const availability = await prisma.availability.findMany({
     where,
     orderBy: [{ userId: "asc" }, { dayOfWeek: "asc" }, { startMinute: "asc" }],
+  });
+  return NextResponse.json({ availability });
+}
+
+export async function PUT(req: Request) {
+  const auth = await requireAuth();
+  if ("error" in auth) return auth.error;
+  if (auth.isSuperAdmin || !auth.tenantId) {
+    return NextResponse.json({ error: "No tenant context" }, { status: 400 });
+  }
+  const body = await req.json().catch(() => null);
+  const parsed = putSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: "Invalid input", issues: parsed.error.issues }, { status: 400 });
+  }
+
+  // For available=true rows, end must be after start. For unavailable rows,
+  // any values are fine since the times are placeholders.
+  for (const e of parsed.data.entries) {
+    if (e.available && e.endMinute <= e.startMinute) {
+      return NextResponse.json(
+        { error: `Day ${e.dayOfWeek}: end time must be after start time` },
+        { status: 400 },
+      );
+    }
+  }
+
+  // Replace the entire week's availability for this user in one transaction
+  await prisma.$transaction([
+    prisma.availability.deleteMany({ where: { userId: auth.userId } }),
+    prisma.availability.createMany({
+      data: parsed.data.entries.map((e) => ({
+        userId: auth.userId,
+        dayOfWeek: e.dayOfWeek,
+        startMinute: e.startMinute,
+        endMinute: e.endMinute,
+        available: e.available,
+      })),
+    }),
+  ]);
+
+  const availability = await prisma.availability.findMany({
+    where: { userId: auth.userId },
+    orderBy: [{ dayOfWeek: "asc" }, { startMinute: "asc" }],
   });
   return NextResponse.json({ availability });
 }
