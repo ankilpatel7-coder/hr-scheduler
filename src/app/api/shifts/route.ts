@@ -20,6 +20,7 @@ const createSchema = z.object({
   endTime: z.string(),
   role: z.string().optional(),
   notes: z.string().optional(),
+  tagId: z.string().optional().nullable(),
 });
 
 export async function GET(req: Request) {
@@ -65,6 +66,7 @@ export async function GET(req: Request) {
       employee: { select: { id: true, name: true, department: true, hourlyWage: true } },
       location: { select: { id: true, name: true } },
       swap: true,
+      tag: true,
     },
   });
 
@@ -88,7 +90,7 @@ export async function POST(req: Request) {
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid input" }, { status: 400 });
   }
-  const { employeeId, locationId, startTime, endTime, role: shiftRole, notes } = parsed.data;
+  const { employeeId, locationId, startTime, endTime, role: shiftRole, notes, tagId } = parsed.data;
 
   // Verify employee in same tenant
   const emp = await prisma.user.findUnique({ where: { id: employeeId }, select: { tenantId: true } });
@@ -119,6 +121,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "End time must be after start time" }, { status: 400 });
   }
 
+  // Validate tag belongs to same tenant if provided
+  if (tagId) {
+    const tag = await prisma.shiftTag.findUnique({ where: { id: tagId } });
+    if (!tag || tag.tenantId !== tenantId) {
+      return NextResponse.json({ error: "Invalid tag" }, { status: 400 });
+    }
+  }
+
   const shift = await prisma.shift.create({
     data: {
       tenantId,
@@ -129,8 +139,10 @@ export async function POST(req: Request) {
       endTime: new Date(endTime),
       role: shiftRole,
       notes,
+      tagId: tagId || null,
       published: false,
     },
+    include: { tag: true },
   });
   return NextResponse.json({ shift });
 }
