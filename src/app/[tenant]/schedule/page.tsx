@@ -8,6 +8,7 @@ import {
   Printer, CalendarPlus, AlertTriangle, Settings,
 } from "lucide-react";
 import Link from "next/link";
+import TemplatesBar from "@/components/templates-bar";
 import { addDays, startOfWeek, format, isSameDay, differenceInMinutes } from "date-fns";
 
 type LocationRef = { id: string; name: string };
@@ -461,6 +462,11 @@ export default function SchedulePage() {
             <button onClick={() => setShowCopyWeek(true)} className="btn btn-secondary print:hidden" title="Copy last week's schedule into this week">
               <CalendarPlus size={14} /> Copy last week
             </button>
+            <TemplatesBar
+              weekStartIso={weekStart.toISOString()}
+              weekEndIso={addDays(weekStart, 7).toISOString()}
+              onApplied={() => load()}
+            />
             <button onClick={printSchedule} className="btn btn-secondary print:hidden" title="Print this week's schedule">
               <Printer size={14} /> Print
             </button>
