@@ -88,17 +88,17 @@ export default async function Dashboard({ searchParams }: { searchParams?: { ros
 
   const currentlyClockedIn =
     !isStaff(role)
-      ? await prisma.clockEntry.count({ where: { clockOut: null } })
+      ? await prisma.clockEntry.count({ where: { tenantId, clockOut: null } })
       : 0;
 
   const pendingTimeOff =
     !isStaff(role)
-      ? await prisma.timeOffRequest.count({ where: { status: "PENDING" } })
+      ? await prisma.timeOffRequest.count({ where: { tenantId, status: "PENDING" } })
       : 0;
 
   const pendingSwaps =
     !isStaff(role)
-      ? await prisma.shiftSwap.count({ where: { status: "CLAIMED" } })
+      ? await prisma.shiftSwap.count({ where: { tenantId, status: "CLAIMED" } })
       : 0;
 
   const draftShifts =
@@ -113,11 +113,11 @@ export default async function Dashboard({ searchParams }: { searchParams?: { ros
   let weekLaborCost = 0;
   if (!isStaff(role)) {
     const entries = await prisma.clockEntry.findMany({
-      where: { clockIn: { gte: weekStart, lt: weekEnd } },
+      where: { tenantId, clockIn: { gte: weekStart, lt: weekEnd } },
       include: { user: { select: { hourlyWage: true } } },
     });
     const scheduled = await prisma.shift.findMany({
-      where: { startTime: { gte: now, lt: weekEnd }, published: true },
+      where: { tenantId, startTime: { gte: now, lt: weekEnd }, published: true },
       include: { employee: { select: { hourlyWage: true } } },
     });
     const tot = new Map<string, number>();
@@ -206,7 +206,7 @@ export default async function Dashboard({ searchParams }: { searchParams?: { ros
 
             {myPendingTimeOff > 0 && (
               <Link
-                href="/time-off"
+                href={`/${tenantSlug}/time-off`}
                 className="md:col-span-2 card p-5 hover:border-amber transition-colors flex items-center gap-4 animate-slide-up"
                 style={{ borderColor: "rgba(251, 146, 60, 0.4)", background: "linear-gradient(180deg, rgba(251,146,60,0.08) 0%, rgba(15,22,38,0.7) 100%)" }}
               >
@@ -271,7 +271,7 @@ export default async function Dashboard({ searchParams }: { searchParams?: { ros
                     icon={<Inbox size={16} />}
                     count={pendingTimeOff}
                     label="Time-off pending"
-                    href="/time-off"
+                    href={`/${tenantSlug}/time-off`}
                   />
                 )}
                 {pendingSwaps > 0 && (
@@ -279,7 +279,7 @@ export default async function Dashboard({ searchParams }: { searchParams?: { ros
                     icon={<Repeat size={16} />}
                     count={pendingSwaps}
                     label="Swap approvals"
-                    href="/swaps"
+                    href={`/${tenantSlug}/swaps`}
                   />
                 )}
                 {draftShifts > 0 && (
@@ -287,7 +287,7 @@ export default async function Dashboard({ searchParams }: { searchParams?: { ros
                     icon={<CalendarDays size={16} />}
                     count={draftShifts}
                     label="Draft shifts"
-                    href="/schedule"
+                    href={`/${tenantSlug}/schedule`}
                   />
                 )}
                 {otAtRisk > 0 && (
@@ -295,7 +295,7 @@ export default async function Dashboard({ searchParams }: { searchParams?: { ros
                     icon={<AlertTriangle size={16} />}
                     count={otAtRisk}
                     label="Projected ≥ 40 hrs"
-                    href="/projected-hours"
+                    href={`/${tenantSlug}/projected-hours`}
                     warn
                   />
                 )}
@@ -320,7 +320,7 @@ export default async function Dashboard({ searchParams }: { searchParams?: { ros
             {/* Action grid */}
             <div className="grid md:grid-cols-3 gap-6 stagger">
               <ActionCard
-                href="/schedule"
+                href={`/${tenantSlug}/schedule`}
                 icon={<CalendarDays size={22} />}
                 title="Build schedule"
                 desc="Draft shifts, then publish to notify your team."
@@ -346,13 +346,13 @@ export default async function Dashboard({ searchParams }: { searchParams?: { ros
                 />
               )}
               <ActionCard
-                href="/time-off"
+                href={`/${tenantSlug}/time-off`}
                 icon={<Inbox size={22} />}
                 title="Time off"
                 desc="Review, approve, or deny requests."
               />
               <ActionCard
-                href="/swaps"
+                href={`/${tenantSlug}/swaps`}
                 icon={<Repeat size={22} />}
                 title="Swap board"
                 desc="Approve coverage between employees."
