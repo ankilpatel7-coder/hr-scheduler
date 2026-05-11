@@ -143,9 +143,13 @@ export default function EmployeeMultiSelect({
               filtered.map((e) => {
                 const selected = selectedSet.has(e.id);
                 return (
-                  <label
+                  <button
                     key={e.id}
-                    className="flex items-center gap-2 px-3 py-1.5 hover:bg-ink/[0.03] cursor-pointer text-sm"
+                    type="button"
+                    role="checkbox"
+                    aria-checked={selected}
+                    onClick={() => toggle(e.id)}
+                    className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-ink/[0.03] cursor-pointer text-sm text-left"
                   >
                     <span
                       className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${
@@ -156,14 +160,8 @@ export default function EmployeeMultiSelect({
                     >
                       {selected && <Check size={11} strokeWidth={3} />}
                     </span>
-                    <input
-                      type="checkbox"
-                      checked={selected}
-                      onChange={() => toggle(e.id)}
-                      className="sr-only"
-                    />
                     <span className="truncate">{e.name}</span>
-                  </label>
+                  </button>
                 );
               })
             )}

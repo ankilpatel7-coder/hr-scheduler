@@ -180,7 +180,11 @@ export default function TimesheetsPage() {
       const eRes = await fetch("/api/employees");
       if (eRes.ok) {
         const d = await eRes.json();
-        setEmployees(d.employees.map((e: any) => ({ id: e.id, name: e.name })));
+        setEmployees(
+          d.employees
+            .filter((e: any) => e.role !== "ADMIN")
+            .map((e: any) => ({ id: e.id, name: e.name })),
+        );
       }
     }
     setLoading(false);
