@@ -32,6 +32,7 @@ export default async function Dashboard({ searchParams }: { searchParams?: { ros
   const role = (session.user as any).role;
   const userId = (session.user as any).id;
   const tenantId = (session.user as any).tenantId as string | null;
+  if (!tenantId) redirect("/superadmin"); // narrows tenantId to string + sends super admins to their console
   const tenantInfo = tenantId ? await prisma.tenant.findUnique({ where: { id: tenantId }, select: { slug: true, timezone: true } }) : null;
   const tenantSlug = tenantInfo?.slug ?? "";
   const tenantTimezone = tenantInfo?.timezone ?? "America/New_York";
