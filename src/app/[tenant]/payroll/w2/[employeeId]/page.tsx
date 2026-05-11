@@ -290,6 +290,14 @@ function fmt(n: number): string {
   return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+// Static col-span lookup — Tailwind needs literal class names to compile,
+// so `col-span-${n}` interpolation silently produces no CSS.
+const COL_SPAN: Record<number, string> = {
+  1: "col-span-1", 2: "col-span-2", 3: "col-span-3", 4: "col-span-4",
+  5: "col-span-5", 6: "col-span-6", 7: "col-span-7", 8: "col-span-8",
+  9: "col-span-9", 10: "col-span-10", 11: "col-span-11", 12: "col-span-12",
+};
+
 function Field({
   gridSpan,
   label,
@@ -300,7 +308,7 @@ function Field({
   children: React.ReactNode;
 }) {
   return (
-    <div className={`col-span-${gridSpan} border border-ink/40 p-1.5 min-h-[36px]`}>
+    <div className={`${COL_SPAN[gridSpan]} border border-ink/40 p-1.5 min-h-[36px]`}>
       {label && <div className="text-[9px] text-ink/60 uppercase tracking-wider mb-0.5">{label}</div>}
       <div className="text-xs">{children}</div>
     </div>
@@ -317,7 +325,7 @@ function BoxField({
   value: string;
 }) {
   return (
-    <div className={`col-span-${gridSpan} border border-ink/40 p-1.5 min-h-[36px]`}>
+    <div className={`${COL_SPAN[gridSpan]} border border-ink/40 p-1.5 min-h-[36px]`}>
       <div className="text-[9px] text-ink/60 mb-0.5">{label}</div>
       <div className="text-sm font-mono text-right">{value || " "}</div>
     </div>
@@ -326,7 +334,7 @@ function BoxField({
 
 function BoxValue({ gridSpan, value }: { gridSpan: number; value: string }) {
   return (
-    <div className={`col-span-${gridSpan} border border-ink/40 p-1.5 min-h-[28px]`}>
+    <div className={`${COL_SPAN[gridSpan]} border border-ink/40 p-1.5 min-h-[28px]`}>
       <div className="text-xs font-mono text-center">{value}</div>
     </div>
   );

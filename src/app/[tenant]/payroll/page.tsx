@@ -91,14 +91,13 @@ export default async function PayrollPage({ params }: { params: { tenant: string
                   <td className="px-4 py-3 text-right font-mono">{p._count.payStubs}</td>
                   <td className="px-4 py-3 text-right">
                     <div className="inline-flex items-center justify-end gap-1">
-                      {p.status === "DRAFT" && (
-                        <DeletePayPeriodButton
+                      <DeletePayPeriodButton
                           periodId={p.id}
                           label={`${format(p.periodStart, "MMM d")} – ${format(p.periodEnd, "MMM d, yyyy")}`}
+                          status={p.status as "DRAFT" | "FINALIZED"}
                           stubCount={p._count.payStubs}
                           variant="icon"
                         />
-                      )}
                       <Link href={`/${params.tenant}/payroll/${p.id}`} className="text-rust hover:underline text-xs inline-flex items-center gap-1">
                         <FileText size={11} /> View
                       </Link>

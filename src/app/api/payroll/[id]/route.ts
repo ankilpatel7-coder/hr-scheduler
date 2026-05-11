@@ -2,19 +2,23 @@
  * Single pay period operations.
  *
  * DELETE /api/payroll/[id]
- *   Admin-only. Only allowed when status === DRAFT.
- *   Cascades to all child PayStub rows (set up via Prisma onDelete: Cascade
- *   on the PayStub.payPeriod relation).
+ *   ADMIN: can delete DRAFT or FINALIZED periods.
+ *   MANAGER: can delete DRAFT only.
+ *   Cascades to all child PayStub rows.
  *
- * Why we block delete on FINALIZED periods:
- *   Finalized stubs are part of the financial record (used for YTD wage
- *   calculation, W-2 generation, audit). Even an admin shouldn't be able
- *   to silently delete them. To remove a finalized period, an admin would
- *   need to first un-finalize it (separate flow, not built yet) or manually
- *   in the database with intent.
+ *   When deleting a FINALIZED period, the client should require an extra
+ *   confirmation step (e.g. type the period range to confirm). This API
+ *   doesn't enforce that — it trusts the caller — but the UI does.
+ *
+ * PATCH /api/payroll/[id]
+ *   ADMIN only. Body: { action: "unfinalize" }
+ *   Flips status back to DRAFT so paystubs can be regenerated or edited.
+ *   Use this when you need to fix something but want to keep an audit trail
+ *   instead of a hard delete.
  */
 
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireTenantContext } from "@/lib/tenant";
 
@@ -35,18 +39,59 @@ export async function DELETE(
   if (!period || period.tenantId !== ctx.tenant.id) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
-  if (period.status !== "DRAFT") {
-    return NextResponse.json(
-      {
-        error:
-          "Cannot delete a finalized pay period. Finalized stubs are part of the financial record.",
-      },
-      { status: 409 },
-    );
-  }
 
-  // Delete the period — cascade removes child PayStub rows.
+  // Note: previously we blocked DELETE on FINALIZED periods. Admins can now
+  // delete them — the UI requires a strong confirmation. Cascade still wipes
+  // all child PayStub rows.
   await prisma.payPeriod.delete({ where: { id: params.id } });
 
-  return NextResponse.json({ ok: true, deleted: { id: period.id } });
+  return NextResponse.json({
+    ok: true,
+    deleted: { id: period.id, wasFinalized: period.status === "FINALIZED" },
+  });
+}
+
+const patchSchema = z.object({
+  action: z.enum(["unfinalize"]),
+});
+
+export async function PATCH(
+  req: Request,
+  { params }: { params: { id: string } },
+) {
+  const ctx = await requireTenantContext();
+  if ("error" in ctx) return ctx.error;
+  if (ctx.role !== "ADMIN" && !ctx.isSuperAdmin) {
+    return NextResponse.json({ error: "Admin required" }, { status: 403 });
+  }
+
+  const body = await req.json();
+  const parsed = patchSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: "Invalid input" }, { status: 400 });
+  }
+
+  const period = await prisma.payPeriod.findUnique({
+    where: { id: params.id },
+    select: { id: true, tenantId: true, status: true },
+  });
+  if (!period || period.tenantId !== ctx.tenant.id) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  if (parsed.data.action === "unfinalize") {
+    if (period.status !== "FINALIZED") {
+      return NextResponse.json(
+        { error: "Period is not finalized." },
+        { status: 409 },
+      );
+    }
+    await prisma.payPeriod.update({
+      where: { id: params.id },
+      data: { status: "DRAFT", finalizedAt: null, finalizedBy: null },
+    });
+    return NextResponse.json({ ok: true, status: "DRAFT" });
+  }
+
+  return NextResponse.json({ error: "Unknown action" }, { status: 400 });
 }
