@@ -250,7 +250,9 @@ export default function EmployeeProfilePage() {
                 )}
               </div>
             </Card>
+          )}
 
+          {isAdmin && (
             <Card title="Payroll setup" subtitle="Primary location, local tax jurisdiction, pre-tax deductions (401(k), Section 125)">
               <div>
                 <Link
