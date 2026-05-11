@@ -1,14 +1,14 @@
 /**
- * /[tenant]/timesheets/by-employee?from=YYYY-MM-DD&to=YYYY-MM-DD&locationId=
+ * /[tenant]/timesheets/by-employee?from=YYYY-MM-DD&to=YYYY-MM-DD&locationId=&employeeId=
  *
  * Pivoted timesheet view:
- *   - Rows: employees
+ *   - Rows: employees (filterable to a single employee)
  *   - Columns: each date in the range
  *   - Cells: hours worked that day
  *   - Last column: total hours for the employee in the range
- *   - Last row: column totals (hours per day across all employees) + grand total
+ *   - Last row: column totals + grand total
  *
- * Same date/location filters as the chronological /timesheets page.
+ * Filters: from/to dates, location, employee dropdown. PDF export.
  */
 
 import { redirect } from "next/navigation";
@@ -16,7 +16,8 @@ import Link from "next/link";
 import { getServerAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import Navbar from "@/components/navbar";
-import { ArrowLeft, Calendar, List, MapPin } from "lucide-react";
+import { ArrowLeft, List, MapPin, User } from "lucide-react";
+import TimesheetPdfButton from "@/components/timesheet-pdf-button";
 import {
   format,
   startOfWeek,
@@ -45,7 +46,7 @@ export default async function TimesheetsByEmployeePage({
   searchParams,
 }: {
   params: { tenant: string };
-  searchParams: { from?: string; to?: string; locationId?: string };
+  searchParams: { from?: string; to?: string; locationId?: string; employeeId?: string };
 }) {
   const session = await getServerAuth();
   if (!session) redirect(`/login?from=/${params.tenant}/timesheets/by-employee`);
@@ -60,11 +61,10 @@ export default async function TimesheetsByEmployeePage({
 
   const tenant = await prisma.tenant.findUnique({
     where: { slug: params.tenant },
-    select: { id: true },
+    select: { id: true, businessName: true },
   });
   if (!tenant || tenant.id !== tenantId) redirect("/login");
 
-  // Default range = this week (Mon-Sun)
   const now = new Date();
   const defaultFrom = startOfWeek(now, { weekStartsOn: 1 });
   const defaultTo = endOfWeek(now, { weekStartsOn: 1 });
@@ -75,27 +75,31 @@ export default async function TimesheetsByEmployeePage({
   const toEnd = new Date(to);
   toEnd.setHours(23, 59, 59, 999);
 
-  // Cap to ~31 days to keep the table sane
   const days = Math.min(31, Math.max(1, differenceInCalendarDays(toEnd, fromStart) + 1));
   const dateColumns = Array.from({ length: days }, (_, i) => addDays(fromStart, i));
 
-  // Load locations for filter dropdown
-  const locations = await prisma.location.findMany({
-    where: { tenantId, active: true },
-    select: { id: true, name: true },
-    orderBy: { name: "asc" },
-  });
+  const [locations, allEmployees] = await Promise.all([
+    prisma.location.findMany({
+      where: { tenantId, active: true },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    }),
+    prisma.user.findMany({
+      where: { tenantId, role: { not: "ADMIN" } },
+      select: { id: true, name: true, active: true },
+      orderBy: { name: "asc" },
+    }),
+  ]);
 
-  // Fetch clock entries in range (with optional location scope via shift join — but
-  // ClockEntry doesn't have locationId. We'll filter on the user's shifts during the
-  // range matching the locationId if filter is set, since location is per-shift.)
   const locationId = searchParams.locationId || null;
+  const employeeId = searchParams.employeeId || null;
 
   const where: any = {
     tenantId,
     clockIn: { lte: toEnd },
     OR: [{ clockOut: null }, { clockOut: { gte: fromStart } }],
   };
+  if (employeeId) where.userId = employeeId;
 
   const entries = await prisma.clockEntry.findMany({
     where,
@@ -117,9 +121,6 @@ export default async function TimesheetsByEmployeePage({
     orderBy: { clockIn: "asc" },
   });
 
-  // If filtering by location, filter clock entries to those that fall within a
-  // shift at that location for that user that day. Simpler v1: filter by the
-  // employee's primaryLocation OR EmployeeLocation membership.
   let filteredEntries = entries;
   if (locationId) {
     const empLocRows = await prisma.employeeLocation.findMany({
@@ -130,26 +131,21 @@ export default async function TimesheetsByEmployeePage({
     filteredEntries = entries.filter((e) => allowedUserIds.has(e.userId));
   }
 
-  // Build pivot: employeeId → dayKey → hours
   type EmpRow = {
     id: string;
     name: string;
     department: string | null;
     jobRole: string | null;
     hourlyWage: number;
-    perDay: Map<string, number>;  // key: YYYY-MM-DD → hours
+    perDay: Map<string, number>;
     total: number;
   };
   const empMap = new Map<string, EmpRow>();
 
   for (const e of filteredEntries) {
-    // For multi-day spans, attribute hours to the day the entry started.
-    // (Overnight shifts are uncommon for retail; v1 attributes by clockIn day.)
     const dayKey = format(e.clockIn, "yyyy-MM-dd");
     const start = e.clockIn;
     const end = e.clockOut ?? now;
-
-    // Clip to range
     const effStart = start < fromStart ? fromStart : start;
     const effEnd = end > toEnd ? toEnd : end;
     if (effEnd <= effStart) continue;
@@ -174,7 +170,6 @@ export default async function TimesheetsByEmployeePage({
 
   const rows = Array.from(empMap.values()).sort((a, b) => a.name.localeCompare(b.name));
 
-  // Column totals
   const dayTotals = dateColumns.map((d) => {
     const key = format(d, "yyyy-MM-dd");
     let sum = 0;
@@ -188,23 +183,31 @@ export default async function TimesheetsByEmployeePage({
     return h === 0 ? "—" : h.toFixed(2);
   }
 
-  // Quick range buttons preserve location filter
   function rangeUrl(rangeFrom: Date, rangeTo: Date): string {
     const f = format(rangeFrom, "yyyy-MM-dd");
     const t = format(rangeTo, "yyyy-MM-dd");
     const locPart = locationId ? `&locationId=${locationId}` : "";
-    return `/${params.tenant}/timesheets/by-employee?from=${f}&to=${t}${locPart}`;
+    const empPart = employeeId ? `&employeeId=${employeeId}` : "";
+    return `/${params.tenant}/timesheets/by-employee?from=${f}&to=${t}${locPart}${empPart}`;
   }
 
   const thisWeek = { from: startOfWeek(now, { weekStartsOn: 1 }), to: endOfWeek(now, { weekStartsOn: 1 }) };
   const lastWeek = { from: subWeeks(thisWeek.from, 1), to: subWeeks(thisWeek.to, 1) };
   const last14 = { from: addDays(now, -13), to: now };
 
+  // Build PDF filename
+  const fromStr = format(fromStart, "yyyy-MM-dd");
+  const toStr = format(toEnd, "yyyy-MM-dd");
+  const empPart = employeeId
+    ? "-" + (allEmployees.find((e) => e.id === employeeId)?.name.replace(/\s+/g, "-") ?? "employee")
+    : "";
+  const pdfFilename = `timesheets-${params.tenant}${empPart}-${fromStr}-to-${toStr}.pdf`;
+
   return (
     <div className="min-h-screen">
       <Navbar />
       <main className="max-w-[1400px] mx-auto px-6 py-10 space-y-6">
-        <div>
+        <div className="print:hidden">
           <Link
             href={`/${params.tenant}/timesheets`}
             className="inline-flex items-center gap-1 text-xs text-rust hover:underline mb-3"
@@ -217,23 +220,26 @@ export default async function TimesheetsByEmployeePage({
               <div className="label-eyebrow mb-1">Hours and pay</div>
               <h1 className="display text-4xl text-ink">Timesheets · by employee</h1>
             </div>
-            <Link
-              href={`/${params.tenant}/timesheets?from=${format(fromStart, "yyyy-MM-dd")}&to=${format(toEnd, "yyyy-MM-dd")}${locationId ? `&locationId=${locationId}` : ""}`}
-              className="text-xs text-rust hover:underline inline-flex items-center gap-1"
-            >
-              <List size={12} /> Switch to list view
-            </Link>
+            <div className="flex items-center gap-3">
+              <Link
+                href={`/${params.tenant}/timesheets?from=${fromStr}&to=${toStr}${locationId ? `&locationId=${locationId}` : ""}${employeeId ? `&employeeId=${employeeId}` : ""}`}
+                className="text-xs text-rust hover:underline inline-flex items-center gap-1"
+              >
+                <List size={12} /> Switch to list view
+              </Link>
+              <TimesheetPdfButton filename={pdfFilename} />
+            </div>
           </div>
         </div>
 
         {/* Filters */}
-        <form className="card p-4 flex items-end gap-3 flex-wrap" action="" method="get">
+        <form className="card p-4 flex items-end gap-3 flex-wrap print:hidden" action="" method="get">
           <div>
             <label className="block text-[10px] uppercase tracking-wider text-smoke font-medium mb-1">From</label>
             <input
               type="date"
               name="from"
-              defaultValue={format(fromStart, "yyyy-MM-dd")}
+              defaultValue={fromStr}
               className="text-sm rounded border border-ink/10 px-3 py-2 bg-white"
             />
           </div>
@@ -242,7 +248,7 @@ export default async function TimesheetsByEmployeePage({
             <input
               type="date"
               name="to"
-              defaultValue={format(toEnd, "yyyy-MM-dd")}
+              defaultValue={toStr}
               className="text-sm rounded border border-ink/10 px-3 py-2 bg-white"
             />
           </div>
@@ -263,6 +269,23 @@ export default async function TimesheetsByEmployeePage({
               </select>
             </div>
           )}
+          <div>
+            <label className="block text-[10px] uppercase tracking-wider text-smoke font-medium mb-1">
+              <User size={11} className="inline mr-1" /> Employee
+            </label>
+            <select
+              name="employeeId"
+              defaultValue={employeeId ?? ""}
+              className="text-sm rounded border border-ink/10 px-3 py-2 bg-white"
+            >
+              <option value="">All employees</option>
+              {allEmployees.map((e) => (
+                <option key={e.id} value={e.id}>
+                  {e.name}{!e.active ? " (inactive)" : ""}
+                </option>
+              ))}
+            </select>
+          </div>
           <button type="submit" className="btn btn-rust">Apply</button>
 
           <div className="flex items-center gap-2 ml-auto">
@@ -272,85 +295,105 @@ export default async function TimesheetsByEmployeePage({
           </div>
         </form>
 
-        {/* Summary tiles */}
-        <div className="grid grid-cols-3 gap-3">
-          <Stat label="Total hours" value={`${grandTotal.toFixed(1)} hrs`} />
-          <Stat label="Estimated pay" value={`$${grandPay.toFixed(2)}`} />
-          <Stat label="Employees with hours" value={rows.length.toString()} />
-        </div>
+        {/* === Printable area === */}
+        <div id="timesheet-printable" className="space-y-4">
+          {/* PDF-only header (hidden on screen, visible in PDF capture).
+              We force display via inline style so html2canvas picks it up. */}
+          <div className="screen:hidden print-header" style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 4 }}>
+              {tenant.businessName} — Timesheet by Employee
+            </div>
+            <div style={{ fontSize: 12, color: "#555" }}>
+              {format(fromStart, "MMM d, yyyy")} – {format(toEnd, "MMM d, yyyy")}
+              {employeeId && allEmployees.find((e) => e.id === employeeId)
+                ? ` · ${allEmployees.find((e) => e.id === employeeId)!.name}`
+                : ""}
+              {locationId && locations.find((l) => l.id === locationId)
+                ? ` · ${locations.find((l) => l.id === locationId)!.name}`
+                : ""}
+            </div>
+          </div>
 
-        {/* Pivot table */}
-        <div className="card overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="border-b border-ink/10 bg-paper">
-                <th className="sticky left-0 z-10 bg-paper px-3 py-2 text-left text-[10px] uppercase tracking-wider text-smoke font-medium whitespace-nowrap">
-                  Employee
-                </th>
-                {dateColumns.map((d) => (
-                  <th key={d.toISOString()} className="px-2 py-2 text-right text-[10px] uppercase tracking-wider text-smoke font-medium whitespace-nowrap min-w-[58px]">
-                    <div>{format(d, "EEE")}</div>
-                    <div className="font-mono normal-case tracking-normal">{format(d, "MMM d")}</div>
+          {/* Summary tiles */}
+          <div className="grid grid-cols-3 gap-3">
+            <Stat label="Total hours" value={`${grandTotal.toFixed(1)} hrs`} />
+            <Stat label="Estimated pay" value={`$${grandPay.toFixed(2)}`} />
+            <Stat label="Employees with hours" value={rows.length.toString()} />
+          </div>
+
+          {/* Pivot table */}
+          <div className="card overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-ink/10 bg-paper">
+                  <th className="sticky left-0 z-10 bg-paper px-3 py-2 text-left text-[10px] uppercase tracking-wider text-smoke font-medium whitespace-nowrap">
+                    Employee
                   </th>
-                ))}
-                <th className="px-3 py-2 text-right text-[10px] uppercase tracking-wider text-smoke font-medium whitespace-nowrap bg-ink/[0.03]">
-                  Total
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.length === 0 ? (
-                <tr>
-                  <td colSpan={dateColumns.length + 2} className="px-3 py-12 text-center text-smoke italic">
-                    No hours in this range.
-                  </td>
+                  {dateColumns.map((d) => (
+                    <th key={d.toISOString()} className="px-2 py-2 text-right text-[10px] uppercase tracking-wider text-smoke font-medium whitespace-nowrap min-w-[58px]">
+                      <div>{format(d, "EEE")}</div>
+                      <div className="font-mono normal-case tracking-normal">{format(d, "MMM d")}</div>
+                    </th>
+                  ))}
+                  <th className="px-3 py-2 text-right text-[10px] uppercase tracking-wider text-smoke font-medium whitespace-nowrap bg-ink/[0.03]">
+                    Total
+                  </th>
                 </tr>
-              ) : (
-                rows.map((r) => (
-                  <tr key={r.id} className="border-b border-ink/5 hover:bg-ink/[0.02]">
-                    <td className="sticky left-0 z-10 bg-white px-3 py-2 whitespace-nowrap">
-                      <div className="font-medium text-ink">{r.name}</div>
-                      <div className="text-[10px] text-smoke">
-                        {r.jobRole || r.department || "—"} · ${r.hourlyWage.toFixed(2)}/hr
-                      </div>
-                    </td>
-                    {dateColumns.map((d) => {
-                      const key = format(d, "yyyy-MM-dd");
-                      const h = r.perDay.get(key) ?? 0;
-                      return (
-                        <td
-                          key={key}
-                          className={`px-2 py-2 text-right font-mono tabular-nums ${
-                            h === 0 ? "text-smoke" : "text-ink"
-                          }`}
-                        >
-                          {fmt(h)}
-                        </td>
-                      );
-                    })}
-                    <td className="px-3 py-2 text-right font-mono tabular-nums font-medium text-ink bg-ink/[0.02]">
-                      {r.total.toFixed(2)}
+              </thead>
+              <tbody>
+                {rows.length === 0 ? (
+                  <tr>
+                    <td colSpan={dateColumns.length + 2} className="px-3 py-12 text-center text-smoke italic">
+                      No hours in this range.
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-            {rows.length > 0 && (
-              <tfoot>
-                <tr className="border-t-2 border-ink/20 bg-ink/[0.03] font-medium">
-                  <td className="sticky left-0 z-10 bg-ink/[0.03] px-3 py-2">Daily totals</td>
-                  {dayTotals.map((t, i) => (
-                    <td key={i} className="px-2 py-2 text-right font-mono tabular-nums">
-                      {t === 0 ? "—" : t.toFixed(2)}
+                ) : (
+                  rows.map((r) => (
+                    <tr key={r.id} className="border-b border-ink/5 hover:bg-ink/[0.02]">
+                      <td className="sticky left-0 z-10 bg-white px-3 py-2 whitespace-nowrap">
+                        <div className="font-medium text-ink">{r.name}</div>
+                        <div className="text-[10px] text-smoke">
+                          {r.jobRole || r.department || "—"} · ${r.hourlyWage.toFixed(2)}/hr
+                        </div>
+                      </td>
+                      {dateColumns.map((d) => {
+                        const key = format(d, "yyyy-MM-dd");
+                        const h = r.perDay.get(key) ?? 0;
+                        return (
+                          <td
+                            key={key}
+                            className={`px-2 py-2 text-right font-mono tabular-nums ${
+                              h === 0 ? "text-smoke" : "text-ink"
+                            }`}
+                          >
+                            {fmt(h)}
+                          </td>
+                        );
+                      })}
+                      <td className="px-3 py-2 text-right font-mono tabular-nums font-medium text-ink bg-ink/[0.02]">
+                        {r.total.toFixed(2)}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+              {rows.length > 0 && (
+                <tfoot>
+                  <tr className="border-t-2 border-ink/20 bg-ink/[0.03] font-medium">
+                    <td className="sticky left-0 z-10 bg-ink/[0.03] px-3 py-2">Daily totals</td>
+                    {dayTotals.map((t, i) => (
+                      <td key={i} className="px-2 py-2 text-right font-mono tabular-nums">
+                        {t === 0 ? "—" : t.toFixed(2)}
+                      </td>
+                    ))}
+                    <td className="px-3 py-2 text-right font-mono tabular-nums font-bold text-ink">
+                      {grandTotal.toFixed(2)}
                     </td>
-                  ))}
-                  <td className="px-3 py-2 text-right font-mono tabular-nums font-bold text-ink">
-                    {grandTotal.toFixed(2)}
-                  </td>
-                </tr>
-              </tfoot>
-            )}
-          </table>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
         </div>
       </main>
     </div>
