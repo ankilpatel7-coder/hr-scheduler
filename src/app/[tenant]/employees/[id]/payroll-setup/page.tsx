@@ -13,6 +13,7 @@ import { prisma } from "@/lib/db";
 import { ArrowLeft, Coins } from "lucide-react";
 import { LOCAL_TAX_JURISDICTIONS } from "@/lib/payroll/local-tax";
 import PayrollSetupForm from "./payroll-form";
+import SsnField from "@/components/ssn-field";
 
 export const dynamic = "force-dynamic";
 
@@ -45,6 +46,7 @@ export default async function PayrollSetupPage({
       name: true,
       email: true,
       primaryLocationId: true,
+      ssnLast4: true,
       primaryLocation: { select: { id: true, name: true, locState: true, legalName: true } },
       localTaxJurisdiction: true,
       preTax401kPercent: true,
@@ -83,6 +85,8 @@ export default async function PayrollSetupPage({
           employee&rsquo;s paystub, which state&rsquo;s taxes apply, and any
           pre-tax deductions (401(k), Section&nbsp;125).
         </p>
+
+        <SsnField employeeId={employee.id} initialLast4={employee.ssnLast4 ?? null} />
 
         <PayrollSetupForm
           employeeId={employee.id}

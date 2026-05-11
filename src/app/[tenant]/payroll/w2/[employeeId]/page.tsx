@@ -59,6 +59,7 @@ export default async function W2Page({
       name: true,
       email: true,
       address: true,
+      ssnLast4: true,
       primaryLocation: {
         select: {
           legalName: true,
@@ -136,7 +137,13 @@ export default async function W2Page({
           {/* Top grid: a (employee SSN) | b (employer EIN) | c (employer name/addr) */}
           <div className="grid grid-cols-12 gap-2 mb-2">
             <Field gridSpan={4} label="a — Employee's SSA number">
-              <span className="text-smoke italic">(on file)</span>
+              {employee.ssnLast4 ? (
+                <span className="font-mono">***-**-{employee.ssnLast4}</span>
+              ) : (
+                <span className="text-amber-700 italic text-[10px]">
+                  Not set — required for W-2 filing
+                </span>
+              )}
             </Field>
             <Field gridSpan={4} label="b — Employer ID Number (EIN)">
               {employer.ein || "(not set)"}

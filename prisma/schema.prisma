@@ -238,6 +238,16 @@ model User {
   preTaxHsaAmount        Float        @default(0)   // HSA contribution per period
   preTaxFsaAmount        Float        @default(0)   // FSA contribution per period
 
+  // ─── Sensitive payroll info (v12.5) ───
+  // Social Security Number — encrypted at rest using AES-256-GCM with a key
+  // from the SSN_ENCRYPTION_KEY env var (32 bytes, base64-encoded). Never
+  // sent to the client browser; decrypted server-side only for W-2 / EFW2
+  // generation. The blob is base64(iv || authTag || ciphertext).
+  ssnEncrypted String?
+  // Last 4 digits stored in plaintext for masked display (***-**-1234).
+  // Not sensitive by itself.
+  ssnLast4     String?
+
   // 4-digit PIN for mobile clock-in (v12.3). Hashed with bcrypt. Pair with rate
   // limiting on the future PIN-validation endpoint to prevent brute force.
   pinHash      String?
