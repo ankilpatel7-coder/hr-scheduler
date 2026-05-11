@@ -10,6 +10,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import {
+import { detectShiftConflicts, firstBlock } from "@/lib/schedule-conflicts";
   requireAuth,
   requireRole,
   getScopedEmployeeIds,
@@ -179,6 +180,22 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "End time must be after start time" }, { status: 400 });
   }
 
+  // POST_CONFLICT_CHECK
+  const postConflicts = await detectShiftConflicts({
+    tenantId,
+    employeeId: employeeId ?? null,
+    startTime: new Date(startTime),
+    endTime: new Date(endTime),
+  });
+  const postBlock = firstBlock(postConflicts);
+  if (postBlock) {
+    return NextResponse.json(
+      { error: postBlock.message, conflicts: postConflicts },
+      { status: 409 },
+    );
+  }
+
+
   // Validate tag belongs to same tenant if provided
   if (tagId) {
     const tag = await prisma.shiftTag.findUnique({ where: { id: tagId } });
@@ -202,7 +219,7 @@ export async function POST(req: Request) {
     },
     include: { tag: true },
   });
-  return NextResponse.json({ shift });
+  return NextResponse.json({ shift, conflicts: postConflicts });
 }
 
 export async function PATCH(req: Request) {
@@ -228,6 +245,24 @@ export async function PATCH(req: Request) {
     if (denied) return denied;
   }
 
+  // PATCH_CONFLICT_CHECK
+  const newStart = rest.startTime ? new Date(rest.startTime) : existing.startTime;
+  const newEnd = rest.endTime ? new Date(rest.endTime) : existing.endTime;
+  const patchConflicts = await detectShiftConflicts({
+    tenantId,
+    employeeId: existing.employeeId,
+    startTime: newStart,
+    endTime: newEnd,
+    excludeShiftId: existing.id,
+  });
+  const patchBlock = firstBlock(patchConflicts);
+  if (patchBlock) {
+    return NextResponse.json(
+      { error: patchBlock.message, conflicts: patchConflicts },
+      { status: 409 },
+    );
+  }
+
   const updates: any = {};
   if (rest.startTime) updates.startTime = new Date(rest.startTime);
   if (rest.endTime) updates.endTime = new Date(rest.endTime);
@@ -235,7 +270,7 @@ export async function PATCH(req: Request) {
   if (rest.role !== undefined) updates.role = rest.role;
   if (rest.notes !== undefined) updates.notes = rest.notes;
   const shift = await prisma.shift.update({ where: { id }, data: updates });
-  return NextResponse.json({ shift });
+  return NextResponse.json({ shift, conflicts: patchConflicts });
 }
 
 export async function DELETE(req: Request) {
