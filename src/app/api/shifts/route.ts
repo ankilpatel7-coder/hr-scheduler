@@ -10,7 +10,6 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import {
-import { detectShiftConflicts, firstBlock } from "@/lib/schedule-conflicts";
   requireAuth,
   requireRole,
   getScopedEmployeeIds,
@@ -18,6 +17,7 @@ import { detectShiftConflicts, firstBlock } from "@/lib/schedule-conflicts";
   isStaff,
 } from "@/lib/guards";
 
+import { detectShiftConflicts, firstBlock } from "@/lib/schedule-conflicts";
 const createSchema = z.object({
   employeeId: z.string().nullable().optional(),
   locationId: z.string().optional().nullable(),
