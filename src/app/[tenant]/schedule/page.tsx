@@ -444,7 +444,7 @@ export default function SchedulePage() {
 
         {/* Print-only header — hidden on screen, visible when printing */}
         <div className="hidden print:block print-only-header">
-          <h1>{params.tenant.charAt(0).toUpperCase() + params.tenant.slice(1)} — Weekly Schedule</h1>
+          <h1>Weekly Schedule</h1>
           <div className="week-range">
             Week of {format(weekStart, "EEEE, MMMM d, yyyy")} – {format(addDays(weekStart, 6), "MMMM d, yyyy")}
           </div>
