@@ -10,6 +10,7 @@ import { prisma } from "@/lib/db";
 import Navbar from "@/components/navbar";
 import { FileText } from "lucide-react";
 import { format } from "date-fns";
+import DeletePayPeriodButton from "@/components/delete-pay-period-button";
 import NewPeriodForm from "./new-period-form";
 
 export const dynamic = "force-dynamic";
@@ -81,9 +82,19 @@ export default async function PayrollPage({ params }: { params: { tenant: string
                   </td>
                   <td className="px-4 py-3 text-right font-mono">{p._count.payStubs}</td>
                   <td className="px-4 py-3 text-right">
-                    <Link href={`/${params.tenant}/payroll/${p.id}`} className="text-rust hover:underline text-xs inline-flex items-center gap-1">
-                      <FileText size={11} /> View
-                    </Link>
+                    <div className="inline-flex items-center justify-end gap-1">
+                      {p.status === "DRAFT" && (
+                        <DeletePayPeriodButton
+                          periodId={p.id}
+                          label={`${format(p.periodStart, "MMM d")} – ${format(p.periodEnd, "MMM d, yyyy")}`}
+                          stubCount={p._count.payStubs}
+                          variant="icon"
+                        />
+                      )}
+                      <Link href={`/${params.tenant}/payroll/${p.id}`} className="text-rust hover:underline text-xs inline-flex items-center gap-1">
+                        <FileText size={11} /> View
+                      </Link>
+                    </div>
                   </td>
                 </tr>
               ))}
