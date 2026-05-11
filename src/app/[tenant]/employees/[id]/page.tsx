@@ -6,8 +6,7 @@ import Link from "next/link";
 import Navbar from "@/components/navbar";
 import {
   ArrowLeft, Mail, Phone, MapPin, Calendar, Briefcase, DollarSign,
-  AlertTriangle, Camera, Edit3, KeyRound, ShieldCheck, Tag,
-} from "lucide-react";
+  AlertTriangle, Camera, Edit3, KeyRound, ShieldCheck, Tag, Coins } from "lucide-react";
 import { format } from "date-fns";
 
 type Profile = {
@@ -249,6 +248,20 @@ export default function EmployeeProfilePage() {
                     Defaults
                   </span>
                 )}
+              </div>
+            </Card>
+
+            <Card title="Payroll setup" subtitle="Primary location, local tax jurisdiction, pre-tax deductions (401(k), Section 125)">
+              <div>
+                <Link
+                  href={`/${tenantSlug}/employees/${profile.id}/payroll-setup`}
+                  className="btn btn-secondary inline-flex items-center gap-2"
+                >
+                  <Coins size={14} /> Edit payroll setup →
+                </Link>
+                <p className="text-xs text-smoke mt-2">
+                  Drives which LLC issues this employee&rsquo;s paystub, which state&rsquo;s taxes apply, and pre-tax deductions.
+                </p>
               </div>
             </Card>
           )}
