@@ -12,6 +12,8 @@ import CoverageForecast from "@/components/coverage-forecast";
 import { fmtDate, fmtTime, durationHours } from "@/lib/utils";
 import { isStaff } from "@/lib/guards";
 import {
+
+export const dynamic = "force-dynamic";
   Clock,
   Users,
   CalendarDays,
