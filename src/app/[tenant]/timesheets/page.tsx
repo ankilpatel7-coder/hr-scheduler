@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Navbar from "@/components/navbar";
 import LocationFilter from "@/components/location-filter";
@@ -16,8 +17,7 @@ import {
   Plus,
   Camera,
   MapPin,
-  AlertTriangle,
-} from "lucide-react";
+  AlertTriangle, LayoutGrid } from "lucide-react";
 import { format, startOfWeek, endOfWeek, subDays } from "date-fns";
 
 type GeoSide = {
@@ -126,6 +126,8 @@ function aggregateGroup(g: DayGroup) {
 export default function TimesheetsPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
+  const tenantSlugForViewToggle =
+    typeof window !== "undefined" ? (window.location.pathname.split("/")[1] ?? "") : "";
   const [entries, setEntries] = useState<Entry[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
@@ -255,6 +257,17 @@ export default function TimesheetsPage() {
           <div>
             <div className="label-eyebrow mb-3">Hours and pay</div>
             <h1 className="display text-5xl text-ink">Timesheets</h1>
+            <div className="mt-1 flex items-center gap-3 text-xs">
+              <span className="text-smoke">View:</span>
+              <span className="font-medium text-ink">Chronological</span>
+              <span className="text-dust">·</span>
+              <Link
+                href={`/${tenantSlugForViewToggle}/timesheets/by-employee`}
+                className="text-rust hover:underline inline-flex items-center gap-1"
+              >
+                <LayoutGrid size={11} /> By employee
+              </Link>
+            </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <LocationFilter value={locationFilter} onChange={setLocationFilter} />
