@@ -142,17 +142,17 @@ export default async function Dashboard({ searchParams }: { searchParams?: { ros
       <Navbar />
       <main className="max-w-[1500px] mx-auto px-6 py-10 animate-fade-in">
         {/* Hero */}
-        <div className="mb-10 animate-slide-up">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-2 h-2 rounded-full bg-moss animate-pulse-glow"></div>
+        <div className="mb-10 animate-slide-up hero-aurora">
+          <div className="flex items-center gap-3 mb-4">
+            <span className="live-dot" />
             <div className="label-eyebrow">
               {isStaff(role) ? "Live · Your Shift" : "Live · Operations Console"}
             </div>
           </div>
-          <h1 className="display text-5xl md:text-6xl text-ink leading-[1.05]">
-            Hello, <span className="text-rust italic">{session.user?.name?.split(" ")[0]}</span>.
+          <h1 className="display text-5xl md:text-6xl leading-[1.0]">
+            Hello, <span className="text-gradient italic">{session.user?.name?.split(" ")[0]}</span>.
           </h1>
-          <p className="text-smoke mt-3 max-w-xl">
+          <p className="text-smoke mt-4 max-w-2xl text-base">
             {isStaff(role)
               ? openEntry
                 ? "You're currently clocked in. Tap the clock card to clock out."
