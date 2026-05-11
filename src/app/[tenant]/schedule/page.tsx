@@ -441,6 +441,17 @@ export default function SchedulePage() {
     <div className="min-h-screen">
       <Navbar />
       <main className="max-w-[1400px] mx-auto px-6 py-10">
+
+        {/* Print-only header — hidden on screen, visible when printing */}
+        <div className="hidden print:block print-only-header">
+          <h1>{params.tenant.charAt(0).toUpperCase() + params.tenant.slice(1)} — Weekly Schedule</h1>
+          <div className="week-range">
+            Week of {format(weekStart, "EEEE, MMMM d, yyyy")} – {format(addDays(weekStart, 6), "MMMM d, yyyy")}
+          </div>
+          <div className="printed-at">
+            Printed {format(new Date(), "MMM d, yyyy 'at' h:mm a")}
+          </div>
+        </div>
         <div className="flex items-baseline justify-between mb-6 flex-wrap gap-4">
           <div>
             <div className="text-[10px] tracking-[0.3em] uppercase text-smoke mb-2">Week of</div>

@@ -352,4 +352,43 @@ input[type="checkbox"]:focus-visible {
   h1.display, .display { color: black !important; }
   /* Hide hover-only buttons */
   .group-hover\:opacity-100 { display: none !important; }
+
+  /* schedule-print-additions:v1 */
+  /* ─── Schedule page printout (landscape letter) ─── */
+  @page {
+    size: letter landscape;
+    margin: 0.4in;
+  }
+  /* Print-only header (tenant + week range) — hidden on screen */
+  .print-only-header { display: block !important; margin: 0 0 10pt; padding-bottom: 6pt; border-bottom: 2px solid #1a1816; }
+  .print-only-header h1 { font-size: 16pt !important; font-weight: 700 !important; margin: 0; color: black !important; line-height: 1.2; }
+  .print-only-header .week-range { font-size: 11pt; color: #444 !important; margin-top: 3pt; }
+  .print-only-header .printed-at { font-size: 8pt; color: #888 !important; margin-top: 2pt; }
+  /* Schedule layout — tighter for landscape */
+  main { padding: 0 !important; margin: 0 !important; max-width: none !important; }
+  /* Schedule shift cards (covers .shift-card OR generic compact card markup) */
+  .shift-card,
+  [class*="bg-paper"][class*="border"],
+  .schedule-shift {
+    font-size: 8pt !important;
+    padding: 3pt 5pt !important;
+    border: 1px solid #ccc !important;
+    border-radius: 2pt;
+    margin-bottom: 2pt;
+    page-break-inside: avoid;
+    break-inside: avoid;
+    background: white !important;
+    color: black !important;
+  }
+  /* Role / department section: keep together */
+  .role-section, .schedule-role-group { page-break-inside: avoid; break-inside: avoid; margin-bottom: 6pt; }
+  /* Day column headers */
+  .day-col-header { font-size: 9pt !important; font-weight: 600 !important; border-bottom: 1px solid #aaa !important; padding: 3pt 4pt !important; color: black !important; }
+  /* Hide form controls + interactive bits in print */
+  input, select, textarea { display: none !important; }
+  .fixed { display: none !important; }
+  /* Make sure print:block utility works */
+  .hidden.print\:block { display: block !important; }
+  /* Force colors to render so role accents survive */
+  * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
 }
