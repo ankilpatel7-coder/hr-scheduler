@@ -8,7 +8,7 @@ import { redirect } from "next/navigation";
 import { getServerAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import Navbar from "@/components/navbar";
-import { FileText } from "lucide-react";
+import { FileText, Calendar } from "lucide-react";
 import { format } from "date-fns";
 import DeletePayPeriodButton from "@/components/delete-pay-period-button";
 import NewPeriodForm from "./new-period-form";
@@ -49,6 +49,14 @@ export default async function PayrollPage({ params }: { params: { tenant: string
         </div>
 
         <NewPeriodForm tenantSlug={params.tenant} />
+        <div className="flex items-center gap-3">
+          <Link
+            href={`/${params.tenant}/payroll/year-end`}
+            className="inline-flex items-center gap-1.5 text-sm text-rust hover:underline font-medium"
+          >
+            <Calendar size={14} /> Year-end review (W-2 / 941) →
+          </Link>
+        </div>
 
         <div className="card overflow-hidden">
           <table className="w-full text-sm">
