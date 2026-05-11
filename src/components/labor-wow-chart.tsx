@@ -1,19 +1,13 @@
 /**
- * Last 8 weeks: bars for hours, cost shown as a small label above each bar.
- *
- *   <LaborWowChart tenantId={tenantId} />
- *
- * Previous version used an SVG cost-line overlay; that caused stroke
- * overflow on browsers that don't clip SVG paths by default. Switched to
- * pure HTML — no overflow weirdness.
+ * Premium 8-week labor chart — gradient bars, today emphasis, smooth animations.
  */
 
 import { prisma } from "@/lib/db";
 import { startOfWeek, endOfWeek, subWeeks, format } from "date-fns";
 
 const SPARK_WEEKS = 8;
-const CHART_HEIGHT = 160;
-const LABEL_AREA_PX = 20;
+const CHART_HEIGHT = 180;
+const LABEL_AREA_PX = 22;
 
 function durationHours(a: Date, b: Date) {
   return Math.max(0, (b.getTime() - a.getTime()) / 36e5);
@@ -32,8 +26,7 @@ export default async function LaborWowChart({ tenantId }: { tenantId: string }) 
       NOT: { clockOut: null },
     },
     select: {
-      clockIn: true,
-      clockOut: true,
+      clockIn: true, clockOut: true,
       user: { select: { hourlyWage: true } },
     },
   });
@@ -42,8 +35,7 @@ export default async function LaborWowChart({ tenantId }: { tenantId: string }) 
   for (let i = SPARK_WEEKS - 1; i >= 0; i--) {
     const ws = subWeeks(thisWeekStart, i);
     const we = endOfWeek(ws, { weekStartsOn: 1 });
-    let h = 0;
-    let c = 0;
+    let h = 0, c = 0;
     for (const e of entries) {
       if (e.clockOut && e.clockIn >= ws && e.clockIn <= we) {
         const eh = durationHours(e.clockIn, e.clockOut);
@@ -64,64 +56,86 @@ export default async function LaborWowChart({ tenantId }: { tenantId: string }) 
     return `$${Math.round(c)}`;
   }
 
+  // Compute trend vs. prior week
+  const lastWk = buckets[SPARK_WEEKS - 2];
+  const wowHours = lastWk.hours > 0 ? ((thisWk.hours - lastWk.hours) / lastWk.hours) * 100 : 0;
+  const wowCost = lastWk.cost > 0 ? ((thisWk.cost - lastWk.cost) / lastWk.cost) * 100 : 0;
+
   return (
-    <div className="card p-5">
-      <div className="flex items-baseline justify-between mb-4 gap-3 flex-wrap">
+    <div className="card p-6">
+      <div className="flex items-baseline justify-between mb-5 gap-3 flex-wrap">
         <div>
           <div className="label-eyebrow">Last 8 weeks</div>
-          <h2 className="display text-2xl text-ink mt-0.5">Labor — hours &amp; cost</h2>
+          <h2 className="display text-3xl text-ink mt-1">Labor — hours &amp; cost</h2>
         </div>
-        <div className="flex gap-4 text-[11px]">
+        <div className="flex gap-4 text-[11px] items-center">
           <span className="inline-flex items-center gap-1.5">
-            <span className="w-3 h-2 rounded-sm" style={{ background: "#b8551c" }} />
-            Hours (bar)
+            <span
+              className="w-4 h-3 rounded-sm"
+              style={{ background: "linear-gradient(180deg, #818cf8, #6366f1)" }}
+            />
+            Hours
           </span>
-          <span className="inline-flex items-center gap-1.5 text-smoke">
-            $X · cost above bar
+          <span className="inline-flex items-center gap-1.5">
+            <span
+              className="w-4 h-3 rounded-sm"
+              style={{ background: "linear-gradient(180deg, #f472b6, #ec4899)" }}
+            />
+            Current week
           </span>
         </div>
       </div>
 
-      {/* Chart area */}
       <div
-        className="grid items-end"
+        className="grid items-end relative"
         style={{
           gridTemplateColumns: `repeat(${SPARK_WEEKS}, 1fr)`,
-          gap: 12,
+          gap: 14,
           height: CHART_HEIGHT,
         }}
       >
         {buckets.map((b, i) => {
           const isCurrent = i === SPARK_WEEKS - 1;
           const heightPct = (b.hours / maxHours) * 100;
-          const labelColor = isCurrent ? "#b8551c" : "#888";
           return (
             <div
               key={i}
-              className="flex flex-col items-stretch justify-end h-full relative"
+              className="flex flex-col items-stretch justify-end h-full relative group"
               style={{ minWidth: 0 }}
               title={`${format(b.weekStart, "MMM d")}: ${b.hours.toFixed(1)}h · $${Math.round(b.cost).toLocaleString()}`}
             >
               {/* Cost label above bar */}
               <div
-                className="text-center font-mono"
+                className="text-center font-mono transition-all"
                 style={{
-                  fontSize: 10,
-                  color: labelColor,
-                  fontWeight: isCurrent ? 600 : 400,
-                  marginBottom: 4,
+                  fontSize: 11,
+                  color: isCurrent ? "#ec4899" : "#94a3b8",
+                  fontWeight: isCurrent ? 600 : 500,
+                  marginBottom: 6,
                   whiteSpace: "nowrap",
-                  overflow: "visible",
                 }}
               >
                 {compactCost(b.cost)}
               </div>
+              {/* Bar with gradient + shadow */}
               <div
-                className="w-full rounded-t"
+                className="w-full rounded-t-md transition-all duration-300 group-hover:translate-y-[-2px]"
                 style={{
                   height: b.hours > 0 ? `${heightPct}%` : "2px",
-                  background: "#b8551c",
-                  opacity: isCurrent ? 1 : 0.55,
+                  background: isCurrent
+                    ? "linear-gradient(180deg, #f472b6 0%, #ec4899 100%)"
+                    : "linear-gradient(180deg, #818cf8 0%, #6366f1 100%)",
+                  boxShadow: isCurrent
+                    ? "0 4px 12px -2px rgba(236, 72, 153, 0.4), 0 2px 4px rgba(236, 72, 153, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.3)"
+                    : "0 2px 8px -2px rgba(99, 102, 241, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.3)",
+                  opacity: 1,
+                }}
+              />
+              {/* Hover halo */}
+              <div
+                className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[120%] h-2 rounded-full blur-md opacity-0 group-hover:opacity-60 transition-opacity pointer-events-none"
+                style={{
+                  background: isCurrent ? "#ec4899" : "#6366f1",
                 }}
               />
             </div>
@@ -129,12 +143,11 @@ export default async function LaborWowChart({ tenantId }: { tenantId: string }) 
         })}
       </div>
 
-      {/* Labels row */}
       <div
-        className="grid mt-2"
+        className="grid mt-3"
         style={{
           gridTemplateColumns: `repeat(${SPARK_WEEKS}, 1fr)`,
-          gap: 12,
+          gap: 14,
           height: LABEL_AREA_PX,
         }}
       >
@@ -145,9 +158,9 @@ export default async function LaborWowChart({ tenantId }: { tenantId: string }) 
               key={i}
               className="text-center font-mono"
               style={{
-                fontSize: 9,
-                color: isCurrent ? "#1a1a1a" : "#888",
-                fontWeight: isCurrent ? 500 : 400,
+                fontSize: 10,
+                color: isCurrent ? "#0f172a" : "#94a3b8",
+                fontWeight: isCurrent ? 600 : 500,
               }}
             >
               {format(b.weekStart, "MMM d")}
@@ -156,18 +169,43 @@ export default async function LaborWowChart({ tenantId }: { tenantId: string }) 
         })}
       </div>
 
-      {/* This-week summary */}
-      <div className="grid grid-cols-2 gap-4 mt-5 pt-4 border-t border-dust">
+      <div className="grid grid-cols-2 gap-6 mt-6 pt-5 border-t border-dust">
         <div>
-          <div className="label-eyebrow">This week · hours</div>
-          <div className="display text-2xl text-ink mt-1 tabular-nums">
-            {thisWk.hours.toFixed(1)}
+          <div className="label-eyebrow flex items-center gap-2">
+            This week · hours
+            {Math.abs(wowHours) >= 1 && (
+              <span
+                className="text-[10px] font-mono px-1.5 py-0.5 rounded"
+                style={{
+                  color: wowHours > 0 ? "#059669" : "#dc2626",
+                  background: wowHours > 0 ? "rgba(16, 185, 129, 0.1)" : "rgba(220, 38, 38, 0.1)",
+                }}
+              >
+                {wowHours > 0 ? "▲" : "▼"} {Math.abs(wowHours).toFixed(0)}%
+              </span>
+            )}
+          </div>
+          <div className="display text-4xl mt-1 tabular-nums">
+            <span className="text-gradient-cool">{thisWk.hours.toFixed(1)}</span>
           </div>
         </div>
         <div>
-          <div className="label-eyebrow">This week · cost</div>
-          <div className="display text-2xl text-ink mt-1 tabular-nums">
-            ${Math.round(thisWk.cost).toLocaleString()}
+          <div className="label-eyebrow flex items-center gap-2">
+            This week · cost
+            {Math.abs(wowCost) >= 1 && (
+              <span
+                className="text-[10px] font-mono px-1.5 py-0.5 rounded"
+                style={{
+                  color: wowCost > 0 ? "#dc2626" : "#059669",
+                  background: wowCost > 0 ? "rgba(220, 38, 38, 0.1)" : "rgba(16, 185, 129, 0.1)",
+                }}
+              >
+                {wowCost > 0 ? "▲" : "▼"} {Math.abs(wowCost).toFixed(0)}%
+              </span>
+            )}
+          </div>
+          <div className="display text-4xl mt-1 tabular-nums">
+            <span className="text-gradient">${Math.round(thisWk.cost).toLocaleString()}</span>
           </div>
         </div>
       </div>
