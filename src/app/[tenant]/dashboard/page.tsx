@@ -29,6 +29,7 @@ import AnimatedNumber from "@/components/animated-number";
 
 export const dynamic = "force-dynamic";
 
+
 export default async function Dashboard({ searchParams }: { searchParams?: { rosterDate?: string } }) {
   const session = await getServerAuth();
   if (!session) redirect("/login");
