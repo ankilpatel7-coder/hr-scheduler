@@ -13,7 +13,6 @@ import { fmtDate, fmtTime, durationHours } from "@/lib/utils";
 import { isStaff } from "@/lib/guards";
 import {
 
-export const dynamic = "force-dynamic";
   Clock,
   Users,
   CalendarDays,
@@ -27,6 +26,8 @@ export const dynamic = "force-dynamic";
   ArrowUpRight,
 } from "lucide-react";
 import AnimatedNumber from "@/components/animated-number";
+
+export const dynamic = "force-dynamic";
 
 export default async function Dashboard({ searchParams }: { searchParams?: { rosterDate?: string } }) {
   const session = await getServerAuth();
