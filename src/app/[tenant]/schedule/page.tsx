@@ -10,6 +10,7 @@ import {
 import Link from "next/link";
 import TemplatesBar from "@/components/templates-bar";
 import { addDays, startOfWeek, format, isSameDay, differenceInMinutes } from "date-fns";
+import SchedulePdfButton from "@/components/schedule-pdf-button";
 
 type LocationRef = { id: string; name: string };
 
@@ -440,7 +441,7 @@ export default function SchedulePage() {
   return (
     <div className="min-h-screen">
       <Navbar />
-      <main className="max-w-[1400px] mx-auto px-6 py-10">
+      <main className="max-w-[1400px] mx-auto px-6 py-10" id="schedule-printable">
 
         {/* Print-only header — hidden on screen, visible when printing */}
         <div className="hidden print:block print-only-header">
@@ -478,9 +479,10 @@ export default function SchedulePage() {
               weekEndIso={addDays(weekStart, 7).toISOString()}
               onApplied={() => load()}
             />
-            <button onClick={printSchedule} className="btn btn-secondary print:hidden" title="Print this week's schedule">
-              <Printer size={14} /> Print
-            </button>
+            <SchedulePdfButton
+              weekStartIso={weekStart.toISOString()}
+              weekEndIso={addDays(weekStart, 7).toISOString()}
+            />
             <button onClick={publish} disabled={publishing || draftCount === 0} className="btn btn-rust print:hidden" title={draftCount === 0 ? "No drafts to publish" : ""}>
               <Send size={14} />
               {publishing ? "Publishing…" : draftCount > 0 ? `Publish (${draftCount})` : "Publish"}
