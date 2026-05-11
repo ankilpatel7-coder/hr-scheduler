@@ -27,6 +27,8 @@ export async function GET(req: Request) {
   const from = searchParams.get("from");
   const to = searchParams.get("to");
   const employeeId = searchParams.get("employeeId");
+  const employeeIdsParam = searchParams.get("employeeIds");
+  const employeeIds = employeeIdsParam ? employeeIdsParam.split(",").filter(Boolean) : null;
   const formatType = searchParams.get("format");
   const locationId = searchParams.get("locationId");
 
@@ -42,9 +44,14 @@ export async function GET(req: Request) {
   } else if (role === "MANAGER") {
     const scopedIds = await getScopedEmployeeIds(userId, role);
     where.userId = { in: scopedIds ?? [] };
-    if (employeeId) {
+    if (employeeIds && employeeIds.length > 0) {
+      const allowed = (scopedIds ?? []).filter((id) => employeeIds.includes(id));
+      where.userId = allowed.length > 0 ? { in: allowed } : "__none__";
+    } else if (employeeId) {
       where.userId = scopedIds && scopedIds.includes(employeeId) ? employeeId : "__none__";
     }
+  } else if (employeeIds && employeeIds.length > 0) {
+    where.userId = { in: employeeIds };
   } else if (employeeId) {
     where.userId = employeeId;
   }

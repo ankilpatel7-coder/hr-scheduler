@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Navbar from "@/components/navbar";
 import LocationFilter from "@/components/location-filter";
+import EmployeeMultiSelect from "@/components/employee-multi-select";
 import SelfieVerifyModal from "@/components/selfie-verify-modal";
 import ClockEntryMapPopup from "@/components/clock-entry-map-popup";
 import {
@@ -143,6 +144,7 @@ export default function TimesheetsPage() {
   const [showAdd, setShowAdd] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [locationFilter, setLocationFilter] = useState("");
+  const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<string[]>([]);
   const [outsideOnly, setOutsideOnly] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
@@ -168,7 +170,8 @@ export default function TimesheetsPage() {
     const fromIso = new Date(from + "T00:00:00").toISOString();
     const toIso = new Date(to + "T23:59:59").toISOString();
     const locParam = locationFilter ? `&locationId=${locationFilter}` : "";
-    const res = await fetch(`/api/timesheets?from=${fromIso}&to=${toIso}${locParam}`);
+    const empParam = selectedEmployeeIds.length > 0 ? `&employeeIds=${selectedEmployeeIds.join(",")}` : "";
+    const res = await fetch(`/api/timesheets?from=${fromIso}&to=${toIso}${locParam}${empParam}`);
     if (res.ok) {
       const d = await res.json();
       setEntries(d.entries);
@@ -186,7 +189,7 @@ export default function TimesheetsPage() {
   useEffect(() => {
     if (session) load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session, from, to, locationFilter]);
+  }, [session, from, to, locationFilter, selectedEmployeeIds]);
 
   function setQuickRange(kind: "this-week" | "last-week" | "last-14") {
     if (kind === "this-week") {
@@ -225,12 +228,21 @@ export default function TimesheetsPage() {
     totalHours += h;
     if (isAdmin) totalPay += h * (e.user.hourlyWage ?? 0);
   }
-  const byUser = new Map<string, number>();
+  // FLSA-correct overtime: bucket hours per (user, workweek) where a workweek
+  // is Sun 00:00 → Sat 23:59. For each bucket, hours over 40 are OT. Sum
+  // across all buckets in the range.
+  const byUserWeek = new Map<string, number>();
   for (const e of entries) {
     const h = hours(e.clockIn, e.clockOut);
-    byUser.set(e.user.id, (byUser.get(e.user.id) ?? 0) + h);
+    const start = new Date(e.clockIn);
+    const day = start.getDay(); // 0 = Sun
+    const weekStart = new Date(start);
+    weekStart.setDate(weekStart.getDate() - day);
+    weekStart.setHours(0, 0, 0, 0);
+    const key = `${e.user.id}|${weekStart.toISOString()}`;
+    byUserWeek.set(key, (byUserWeek.get(key) ?? 0) + h);
   }
-  for (const h of byUser.values()) {
+  for (const h of byUserWeek.values()) {
     if (h > 40) overtimeHours += h - 40;
   }
 
@@ -271,6 +283,13 @@ export default function TimesheetsPage() {
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <LocationFilter value={locationFilter} onChange={setLocationFilter} />
+            {canManage && employees.length > 0 && (
+              <EmployeeMultiSelect
+                employees={employees}
+                selectedIds={selectedEmployeeIds}
+                onChange={setSelectedEmployeeIds}
+              />
+            )}
             {outsideCount > 0 && (
               <button
                 onClick={() => setOutsideOnly((v) => !v)}
