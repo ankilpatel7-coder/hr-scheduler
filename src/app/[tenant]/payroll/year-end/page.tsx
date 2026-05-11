@@ -184,6 +184,12 @@ export default async function YearEndPage({
                           >
                             {w.employeeName}
                           </Link>
+                          <Link
+                            href={`/${params.tenant}/payroll/w2/${w.employeeId}?year=${year}`}
+                            className="block text-[10px] text-rust hover:underline mt-0.5"
+                          >
+                            View W-2 →
+                          </Link>
                           {w.hasDraftStubs && (
                             <AlertTriangle
                               size={11}
