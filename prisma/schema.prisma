@@ -212,8 +212,31 @@ model User {
   deductionsAdjustment   Float        @default(0)      // W-4 step 4b (annual dollars beyond standard deduction)
   extraWithholding       Float        @default(0)      // W-4 step 4c (per-pay-period dollars)
 
-  // KY-specific (only set when tenant.state = KY; nullable otherwise)
+  // KY-specific (only set when employee's tax state = KY; nullable otherwise)
   kyExemptionsAllowance  Int?         // KY DOR Form K-4
+
+  // ─── Multi-state / multi-location payroll (v12.4) ───
+  // Employee's "home" location — determines which LLC issues the paystub
+  // (legalName, EIN, address come from this location), AND which state's
+  // taxes apply (locState). When null, falls back to tenant.legalName /
+  // tenant.federalEIN / tenant.state.
+  primaryLocationId      String?
+  primaryLocation        Location?    @relation("PrimaryLocation", fields: [primaryLocationId], references: [id], onDelete: SetNull)
+
+  // Local tax jurisdiction code, e.g. "LOUISVILLE_METRO" → 2.2% occupational tax.
+  // Null = no local withholding. Defaults set per-location at hire time.
+  localTaxJurisdiction   String?
+
+  // ─── Pre-tax deductions (per pay period; biweekly assumed for v12) ───
+  // 401(k) traditional contribution. Either a percent of gross OR a fixed $;
+  // if both set, percent takes precedence. Reduces federal + state taxable
+  // wages but NOT FICA-taxable wages.
+  preTax401kPercent      Float        @default(0)   // 0-100
+  preTax401kAmount       Float        @default(0)   // dollars per period
+  // Section 125 cafeteria plan deductions — reduce federal + FICA + state taxable.
+  preTaxHealthPremium    Float        @default(0)   // medical/dental/vision premium per period
+  preTaxHsaAmount        Float        @default(0)   // HSA contribution per period
+  preTaxFsaAmount        Float        @default(0)   // FSA contribution per period
 
   // 4-digit PIN for mobile clock-in (v12.3). Hashed with bcrypt. Pair with rate
   // limiting on the future PIN-validation endpoint to prevent brute force.
@@ -283,6 +306,7 @@ model Location {
   shifts    Shift[]
   employees EmployeeLocation[]
   templateShifts ScheduleTemplateShift[] @relation("TemplateLocationShifts")
+  primaryEmployees User[] @relation("PrimaryLocation")
 
   @@index([tenantId, active])
 }
@@ -590,8 +614,17 @@ model PayStub {
   // Local taxes (placeholder for future; 0 in v12)
   localIncomeTax          Float    @default(0)
 
-  // Pre-tax deductions (placeholder for future; 0 in v12)
+  // Pre-tax deductions — sum of all four breakdowns below.
   preTaxDeductions        Float    @default(0)
+  // Breakdown for paystub display + audit (all per-period dollars)
+  preTax401k              Float    @default(0)
+  preTaxHealth            Float    @default(0)
+  preTaxHsa               Float    @default(0)
+  preTaxFsa               Float    @default(0)
+
+  // Tax jurisdiction snapshot (what was applied at generation time)
+  taxState                USState?
+  localTaxJurisdiction    String?
 
   // Post-tax deductions
   extraWithholding        Float    // From W-4 step 4c

@@ -1,26 +1,30 @@
 /**
  * Payroll engine — computes paystubs for a pay period.
  *
- * Inputs:
- *   - Pay period (start/end dates)
- *   - List of employees with W-4 + wage settings
- *   - Clock entries for those employees within the period
- *   - Tenant state (for state tax routing)
- *
- * Output: PayStub data ready to insert into DB.
+ * v12.4 changes vs v12.0:
+ *   - Per-EMPLOYEE tax state (not per-period). An employee's state comes from
+ *     their primaryLocation.locState (or tenant.state fallback). This lets a
+ *     single tenant run payroll for KY + NV employees in the same period.
+ *   - Pre-tax deductions: 401(k) traditional, Section 125 (health/HSA/FSA).
+ *   - Local tax dispatcher (Louisville Metro 2.2% occupational tax).
  *
  * Hours computation (FLSA-compliant):
- *   - Workweek = Sun 00:00 → Sat 23:59 (FLSA default; could be tenant-configurable later)
+ *   - Workweek = Sun 00:00 → Sat 23:59 (FLSA default)
  *   - Per workweek: hours over 40 are overtime (1.5x)
  *   - Overtime is computed PER WORKWEEK, then summed across the pay period
  *
- * Tax flow (matches schema PayStub fields):
- *   regular + OT pay → grossPay
- *   grossPay → federal withholding, FICA, Medicare, state withholding
- *   gross - all deductions → netPay
+ * Tax flow (order matters — pre-tax deductions reduce different bases):
+ *   1. grossPay = regularPay + overtimePay
+ *   2. preTax401k → reduces FEDERAL + STATE taxable wages (NOT FICA)
+ *   3. Section 125 (health + HSA + FSA) → reduces FED + FICA + STATE
+ *   4. Federal withholding computed on (gross - 401k - section125)
+ *   5. FICA (SS + Medicare) computed on (gross - section125)
+ *   6. State withholding computed on (gross - 401k - section125) [KY follows fed]
+ *   7. Local tax computed on gross (Louisville Metro doesn't honor pre-tax)
+ *   8. netPay = gross - all deductions
  */
 
-import { differenceInMinutes, startOfWeek, endOfWeek, isWithinInterval } from "date-fns";
+import { differenceInMinutes, startOfWeek, endOfWeek } from "date-fns";
 import {
   computeFederalIncomeTax,
   computeSocialSecurityTax,
@@ -28,19 +32,33 @@ import {
   computeAdditionalMedicareTax,
   type FilingStatus as FedFilingStatus,
 } from "./federal";
-import { computeKentuckyIncomeTax } from "./state-ky";
+import { computeStateIncomeTax } from "./state-dispatch";
+import { computeLocalIncomeTax } from "./local-tax";
 
 export type EmployeePayrollInput = {
   id: string;
   name: string;
   hourlyWage: number;
+
+  // Federal W-4
   filingStatus: FedFilingStatus;
   multipleJobsCheckbox: boolean;
   dependentsCredit: number;
   otherIncome: number;
   deductionsAdjustment: number;
   extraWithholding: number;
-  kyExemptionsAllowance: number | null;
+
+  // State / local (per-employee — v12.4)
+  state: string;                          // USState enum value, e.g. "KY", "NV"
+  localTaxJurisdiction: string | null;    // e.g. "LOUISVILLE_METRO"
+  kyExemptionsAllowance: number | null;   // KY K-4
+
+  // Pre-tax deductions (per pay period)
+  preTax401kPercent: number;              // 0-100 (takes precedence over amount if > 0)
+  preTax401kAmount: number;
+  preTaxHealthPremium: number;
+  preTaxHsaAmount: number;
+  preTaxFsaAmount: number;
 };
 
 export type ClockEntryInput = {
@@ -57,16 +75,30 @@ export type StubComputation = {
   regularPay: number;
   overtimePay: number;
   grossPay: number;
+
+  // Pre-tax breakdown
+  preTax401k: number;
+  preTaxHealth: number;
+  preTaxHsa: number;
+  preTaxFsa: number;
+  preTaxDeductions: number;        // sum of the four above
+
+  // Federal
   federalIncomeTax: number;
   socialSecurityTax: number;
   medicareTax: number;
   additionalMedicareTax: number;
+
+  // State / local
   stateIncomeTax: number;
   localIncomeTax: number;
-  preTaxDeductions: number;
+  taxState: string;                // recorded for audit
+  localTaxJurisdiction: string | null;
+
   extraWithholding: number;
   totalDeductions: number;
   netPay: number;
+
   // For audit
   hoursPerWorkweek: { weekStart: string; hours: number }[];
 };
@@ -74,25 +106,22 @@ export type StubComputation = {
 export type PayPeriodInput = {
   periodStart: Date;
   periodEnd: Date;
-  state: string; // USState enum value, e.g. "KY"
   employees: EmployeePayrollInput[];
   clockEntries: ClockEntryInput[];
   // YTD wages BEFORE this period (per employee), for SS cap + Additional Medicare threshold
   ytdWagesBefore: Map<string, number>;
 };
 
-/**
- * Sum minutes worked from clock entries within an interval.
- * Open clock entries (no clockOut) are treated as ending at periodEnd
- * (or now, whichever is earlier) — the user should close out open entries
- * before finalizing payroll.
- */
-function sumMinutesInRange(entries: ClockEntryInput[], rangeStart: Date, rangeEnd: Date, fallbackEnd: Date): number {
+function sumMinutesInRange(
+  entries: ClockEntryInput[],
+  rangeStart: Date,
+  rangeEnd: Date,
+  fallbackEnd: Date,
+): number {
   let total = 0;
   for (const e of entries) {
     const start = e.clockIn;
     const end = e.clockOut ?? fallbackEnd;
-    // Clip to range
     const effectiveStart = start < rangeStart ? rangeStart : start;
     const effectiveEnd = end > rangeEnd ? rangeEnd : end;
     if (effectiveEnd > effectiveStart) {
@@ -102,23 +131,15 @@ function sumMinutesInRange(entries: ClockEntryInput[], rangeStart: Date, rangeEn
   return total;
 }
 
-/**
- * Split hours into regular + overtime per workweek (FLSA: > 40 hrs/week is OT).
- * Returns separate sums plus a per-workweek breakdown for the audit log.
- */
 function splitRegularOvertime(
   entries: ClockEntryInput[],
   periodStart: Date,
   periodEnd: Date,
 ): { regularHours: number; overtimeHours: number; perWeek: { weekStart: string; hours: number }[] } {
-  // Find workweeks that overlap the pay period
   const weeks: { start: Date; end: Date }[] = [];
-  let cursor = startOfWeek(periodStart, { weekStartsOn: 0 }); // Sunday
+  let cursor = startOfWeek(periodStart, { weekStartsOn: 0 });
   while (cursor <= periodEnd) {
-    weeks.push({
-      start: cursor,
-      end: endOfWeek(cursor, { weekStartsOn: 0 }),
-    });
+    weeks.push({ start: cursor, end: endOfWeek(cursor, { weekStartsOn: 0 }) });
     cursor = new Date(cursor);
     cursor.setDate(cursor.getDate() + 7);
   }
@@ -128,7 +149,6 @@ function splitRegularOvertime(
   const perWeek: { weekStart: string; hours: number }[] = [];
 
   for (const w of weeks) {
-    // Clip the workweek to the pay period (in case the period starts/ends mid-week)
     const clippedStart = w.start < periodStart ? periodStart : w.start;
     const clippedEnd = w.end > periodEnd ? periodEnd : w.end;
 
@@ -155,14 +175,28 @@ function splitRegularOvertime(
 function roundHours(h: number): number {
   return Math.round(h * 100) / 100;
 }
-
 function roundCents(x: number): number {
   return Math.round(x * 100) / 100;
 }
 
 /**
+ * Resolve the actual 401(k) per-period deduction:
+ * - If percent > 0: percent * gross
+ * - Else if amount > 0: amount (capped at gross)
+ * - Else: 0
+ */
+function compute401kDeduction(grossPay: number, percent: number, amount: number): number {
+  if (percent > 0) {
+    return roundCents(grossPay * (percent / 100));
+  }
+  if (amount > 0) {
+    return roundCents(Math.min(amount, grossPay));
+  }
+  return 0;
+}
+
+/**
  * Compute paystubs for every employee in the pay period.
- * Returns one StubComputation per employee.
  */
 export function computePayPeriod(input: PayPeriodInput): StubComputation[] {
   const stubs: StubComputation[] = [];
@@ -180,63 +214,67 @@ export function computePayPeriod(input: PayPeriodInput): StubComputation[] {
     const overtimePay = roundCents(overtimeHours * emp.hourlyWage * 1.5);
     const grossPay = roundCents(regularPay + overtimePay);
 
+    // ─── Pre-tax deductions ───
+    const preTax401k = compute401kDeduction(grossPay, emp.preTax401kPercent, emp.preTax401kAmount);
+    const preTaxHealth = roundCents(emp.preTaxHealthPremium);
+    const preTaxHsa = roundCents(emp.preTaxHsaAmount);
+    const preTaxFsa = roundCents(emp.preTaxFsaAmount);
+    const section125 = roundCents(preTaxHealth + preTaxHsa + preTaxFsa);
+    const preTaxDeductions = roundCents(preTax401k + section125);
+
+    // Taxable bases
+    const federalTaxableWages = roundCents(grossPay - preTax401k - section125);
+    const ficaTaxableWages = roundCents(grossPay - section125);          // 401k does NOT reduce FICA
+    const stateTaxableWages = federalTaxableWages;                       // KY follows federal; NV doesn't tax
+
     const ytdBefore = input.ytdWagesBefore.get(emp.id) ?? 0;
 
     // Federal
     const federalIncomeTax = computeFederalIncomeTax({
-      grossPayPerPeriod: grossPay,
+      grossPayPerPeriod: federalTaxableWages,
       payFrequency: "BIWEEKLY",
       filingStatus: emp.filingStatus,
       multipleJobsCheckbox: emp.multipleJobsCheckbox,
       dependentsCredit: emp.dependentsCredit,
       otherIncome: emp.otherIncome,
       deductionsAdjustment: emp.deductionsAdjustment,
-      extraWithholding: 0, // applied as separate line item below
+      extraWithholding: 0,
     });
-    const socialSecurityTax = computeSocialSecurityTax(grossPay, ytdBefore);
-    const medicareTax = computeMedicareTax(grossPay);
-    const additionalMedicareTax = computeAdditionalMedicareTax(grossPay, ytdBefore);
+    const socialSecurityTax = computeSocialSecurityTax(ficaTaxableWages, ytdBefore);
+    const medicareTax = computeMedicareTax(ficaTaxableWages);
+    const additionalMedicareTax = computeAdditionalMedicareTax(ficaTaxableWages, ytdBefore);
 
-    // State
-    let stateIncomeTax = 0;
-    if (input.state === "KY") {
-      stateIncomeTax = computeKentuckyIncomeTax({
-        grossPayPerPeriod: grossPay,
-        kyExemptionsAllowance: emp.kyExemptionsAllowance ?? 0,
-      });
-    }
-    // For other states (TX/FL/etc with no income tax), stateIncomeTax stays 0.
-    // Adding more states = new functions in lib/payroll/state-XX.ts + add a case here.
+    // State (per-employee dispatcher)
+    const stateIncomeTax = computeStateIncomeTax(emp.state, {
+      stateTaxableWages,
+      kyExemptionsAllowance: emp.kyExemptionsAllowance ?? 0,
+    });
 
-    const localIncomeTax = 0; // v12 doesn't compute local taxes
-    const preTaxDeductions = 0; // v12 doesn't handle 401k/HSA/health
+    // Local (Louisville Metro applies to gross — does NOT honor pre-tax 401k or Section 125;
+    // verify against actual paystub before relying)
+    const localIncomeTax = computeLocalIncomeTax(emp.localTaxJurisdiction, grossPay);
+
     const extraWithholding = roundCents(emp.extraWithholding);
 
     const totalDeductions = roundCents(
+      preTaxDeductions +
       federalIncomeTax + socialSecurityTax + medicareTax + additionalMedicareTax +
-      stateIncomeTax + localIncomeTax + preTaxDeductions + extraWithholding
+      stateIncomeTax + localIncomeTax + extraWithholding,
     );
 
     const netPay = roundCents(grossPay - totalDeductions);
 
     stubs.push({
       employeeId: emp.id,
-      regularHours,
-      overtimeHours,
-      hourlyRate: emp.hourlyWage,
-      regularPay,
-      overtimePay,
-      grossPay,
-      federalIncomeTax,
-      socialSecurityTax,
-      medicareTax,
-      additionalMedicareTax,
-      stateIncomeTax,
-      localIncomeTax,
-      preTaxDeductions,
+      regularHours, overtimeHours, hourlyRate: emp.hourlyWage,
+      regularPay, overtimePay, grossPay,
+      preTax401k, preTaxHealth, preTaxHsa, preTaxFsa, preTaxDeductions,
+      federalIncomeTax, socialSecurityTax, medicareTax, additionalMedicareTax,
+      stateIncomeTax, localIncomeTax,
+      taxState: emp.state,
+      localTaxJurisdiction: emp.localTaxJurisdiction,
       extraWithholding,
-      totalDeductions,
-      netPay,
+      totalDeductions, netPay,
       hoursPerWorkweek: perWeek,
     });
   }
