@@ -126,10 +126,59 @@ export default async function TodayTimelineWidget({
         </div>
       </div>
 
-      <div className="flex gap-2 mb-4 text-[11px] font-mono">
-        {isViewingToday && <Stat n={liveCount} label="live" color="#10b981" />}
-        <Stat n={upcomingCount} label="upcoming" color="#6366f1" />
-        <Stat n={endedCount} label="ended" color="#94a3b8" />
+      <div className="flex gap-2 mb-5">
+        {/* premium-today-v1 */}
+        {isViewingToday && (
+          <span
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold tracking-wide"
+            style={{
+              background: liveCount > 0
+                ? "linear-gradient(135deg, #34d399 0%, #10b981 100%)"
+                : "linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)",
+              color: liveCount > 0 ? "white" : "#94a3b8",
+              boxShadow: liveCount > 0
+                ? "0 2px 8px -2px rgba(16, 185, 129, 0.4), inset 0 1px 0 rgba(255,255,255,0.3)"
+                : "inset 0 1px 0 rgba(255,255,255,0.6)",
+              border: liveCount > 0 ? "none" : "1px solid #e2e8f0",
+            }}
+          >
+            <span
+              className="w-1.5 h-1.5 rounded-full"
+              style={{
+                background: liveCount > 0 ? "white" : "#cbd5e1",
+                boxShadow: liveCount > 0 ? "0 0 6px rgba(255,255,255,0.8)" : "none",
+                animation: liveCount > 0 ? "pulse-glow 1.5s ease-in-out infinite" : "none",
+              }}
+            />
+            {liveCount} LIVE
+          </span>
+        )}
+        <span
+          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold tracking-wide"
+          style={{
+            background: upcomingCount > 0
+              ? "linear-gradient(135deg, #818cf8 0%, #6366f1 100%)"
+              : "linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)",
+            color: upcomingCount > 0 ? "white" : "#94a3b8",
+            boxShadow: upcomingCount > 0
+              ? "0 2px 8px -2px rgba(99, 102, 241, 0.4), inset 0 1px 0 rgba(255,255,255,0.3)"
+              : "inset 0 1px 0 rgba(255,255,255,0.6)",
+            border: upcomingCount > 0 ? "none" : "1px solid #e2e8f0",
+          }}
+        >
+          {upcomingCount} UPCOMING
+        </span>
+        <span
+          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold tracking-wide"
+          style={{
+            background: "linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)",
+            color: endedCount > 0 ? "#475569" : "#94a3b8",
+            border: "1px solid #e2e8f0",
+            boxShadow: "inset 0 1px 0 rgba(255,255,255,0.6)",
+          }}
+        >
+          {endedCount} ENDED
+        </span>
       </div>
 
       <div className="flex gap-3 text-[10px] text-smoke mb-2 ml-[100px]">
@@ -178,13 +227,40 @@ export default async function TodayTimelineWidget({
               {ticks.map((t) => (
                 <div
                   key={t.hour}
-                  className="absolute top-0.5 -translate-x-1/2"
-                  style={{ left: `${t.pct}%` }}
+                  className="absolute top-0.5 -translate-x-1/2 font-semibold"
+                  style={{ left: `${t.pct}%`, fontSize: 10, color: "#64748b" }}
                 >
                   {t.label}
                 </div>
               ))}
+              {nowPct >= 0 && (
+                <div
+                  className="absolute top-3 -translate-x-1/2 z-10 pointer-events-none"
+                  style={{ left: `${nowPct}%` }}
+                >
+                  <div
+                    className="w-2 h-2 rounded-full"
+                    style={{
+                      background: "linear-gradient(135deg, #ec4899, #f43f5e)",
+                      boxShadow: "0 0 0 2px white, 0 0 8px rgba(236, 72, 153, 0.5)",
+                    }}
+                  />
+                </div>
+              )}
             </div>
+            {nowPct >= 0 && (
+              <div
+                className="absolute pointer-events-none z-10"
+                style={{
+                  left: `${nowPct}%`,
+                  top: 18,
+                  bottom: 0,
+                  width: 2,
+                  background: "linear-gradient(180deg, rgba(236, 72, 153, 0.6), rgba(244, 63, 94, 0.1))",
+                  boxShadow: "0 0 4px rgba(236, 72, 153, 0.4)",
+                }}
+              />
+            )}
 
             {shifts.map((shift) => {
               const startPct = pctOfDay(shift.startTime, dayStart);
@@ -215,7 +291,7 @@ export default async function TodayTimelineWidget({
               return (
                 <div
                   key={shift.id}
-                  className="relative mt-1.5 rounded-md bg-ink/[0.04]"
+                  className="relative mt-1.5 rounded-md bg-ink/[0.03] hover:bg-ink/[0.06] transition-colors group/row"
                   style={{ height: 40 }}
                 >
                   {ticks.map((t) => (
@@ -233,9 +309,10 @@ export default async function TodayTimelineWidget({
                       width: `${widthPct}%`,
                       top: 5,
                       height: 12,
-                      background: `repeating-linear-gradient(45deg, ${scheduledColor}33 0 5px, ${scheduledColor}11 5px 10px)`,
+                      background: `linear-gradient(180deg, ${scheduledColor}28 0%, ${scheduledColor}18 100%), repeating-linear-gradient(135deg, ${scheduledColor}1f 0 6px, transparent 6px 12px)`,
                       border: `1px solid ${scheduledColor}55`,
-                      borderRadius: 3,
+                      borderRadius: 4,
+                      boxShadow: `inset 0 1px 0 ${scheduledColor}22`,
                     }}
                     title={`Scheduled ${tzFormat(shift.startTime, "h:mma", tz).toLowerCase()}–${tzFormat(shift.endTime, "h:mma", tz).toLowerCase()}`}
                   />
@@ -256,8 +333,13 @@ export default async function TodayTimelineWidget({
                           width: `${segWidthPct}%`,
                           top: 23,
                           height: 12,
-                          background: isOpen ? "#10b981" : "rgba(16,185,129,0.85)",
-                          borderRadius: 3,
+                          background: isOpen
+                              ? "linear-gradient(180deg, #34d399 0%, #10b981 100%)"
+                              : "linear-gradient(180deg, rgba(52,211,153,0.95) 0%, rgba(16,185,129,0.9) 100%)",
+                          borderRadius: 4,
+                          boxShadow: isOpen
+                            ? "0 0 12px rgba(16, 185, 129, 0.5), 0 0 4px rgba(16, 185, 129, 0.8), inset 0 1px 0 rgba(255,255,255,0.3)"
+                            : "0 1px 3px rgba(16, 185, 129, 0.3), inset 0 1px 0 rgba(255,255,255,0.25)",
                         }}
                         title={`Worked ${tzFormat(segIn, "h:mma", tz).toLowerCase()}–${seg.out ? tzFormat(seg.out, "h:mma", tz).toLowerCase() : "now"}`}
                       />
