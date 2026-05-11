@@ -197,13 +197,13 @@ function KpiCard({
       ? "#dc2626"
       : "#888";
   return (
-    <div className="card p-3.5 min-w-0">
+    <div className={`kpi-tile min-w-0 ${warn ? "warn" : ""}`}>
       <div className="text-[9px] uppercase tracking-[0.18em] text-smoke font-medium truncate">
         {label}
       </div>
       <div className="flex items-baseline gap-1.5 mt-1 flex-wrap">
         <div
-          className="display text-2xl text-ink leading-none truncate"
+          className="display text-3xl text-ink leading-none truncate"
           style={{ color: warn ? "#d97706" : undefined }}
         >
           {value}

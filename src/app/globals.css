@@ -518,6 +518,9 @@ h1.display, .display {
 
 /* === Gradient text utility === */
 .text-gradient {
+  display: inline-block;
+  padding-right: 0.12em;
+  margin-right: -0.06em;
   background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #ec4899 100%);
   -webkit-background-clip: text;
   background-clip: text;
@@ -525,6 +528,9 @@ h1.display, .display {
   -webkit-text-fill-color: transparent;
 }
 .text-gradient-warm {
+  display: inline-block;
+  padding-right: 0.12em;
+  margin-right: -0.06em;
   background: linear-gradient(135deg, #f59e0b 0%, #ef4444 50%, #ec4899 100%);
   -webkit-background-clip: text;
   background-clip: text;
@@ -532,6 +538,9 @@ h1.display, .display {
   -webkit-text-fill-color: transparent;
 }
 .text-gradient-cool {
+  display: inline-block;
+  padding-right: 0.12em;
+  margin-right: -0.06em;
   background: linear-gradient(135deg, #06b6d4 0%, #6366f1 50%, #8b5cf6 100%);
   -webkit-background-clip: text;
   background-clip: text;
