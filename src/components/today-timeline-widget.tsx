@@ -32,6 +32,22 @@ function pctOfDay(d: Date, dayBase: Date): number {
   return Math.max(0, Math.min(100, (fromStart / HOURS_SPAN) * 100));
 }
 
+/**
+ * Parse "YYYY-MM-DD" as noon UTC of that calendar date. Noon UTC sits
+ * inside the same calendar day in every US timezone (UTC-5 to UTC-10),
+ * so passing this Date into tzStartOfDay correctly yields midnight local
+ * on the requested day. Avoids the parseISO(yyyy-mm-dd) gotcha where the
+ * result is midnight UTC, which is the previous day in negative-offset tz.
+ */
+function parseYmdNoonUtc(ymd: string): Date | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd);
+  if (!m) return null;
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  return new Date(Date.UTC(y, mo - 1, d, 12, 0, 0));
+}
+
 type Entry = { in: Date; out: Date | null };
 
 export default async function TodayTimelineWidget({
@@ -48,8 +64,8 @@ export default async function TodayTimelineWidget({
   const tz = timezone || DEFAULT_TZ;
   const now = new Date();
   // Resolve target date in the tenant's tz — default to today
-  const parsed = date ? parseISO(date) : now;
-  const targetDate = isValid(parsed) ? parsed : now;
+  const parsed = date ? parseYmdNoonUtc(date) : null;
+  const targetDate = parsed && isValid(parsed) ? parsed : now;
   const isViewingToday = tzYmd(targetDate, tz) === tzYmd(now, tz);
 
   const dayStart = tzStartOfDay(targetDate, tz);
