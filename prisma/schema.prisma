@@ -154,6 +154,7 @@ model Tenant {
   payPeriods     PayPeriod[]
   roles           ShiftRole[]
   shiftTags       ShiftTag[]
+  scheduleTemplates ScheduleTemplate[]
 
   @@index([slug])
   @@index([active])
@@ -234,6 +235,8 @@ model User {
   decidedSwaps    ShiftSwap[]        @relation("DecidedSwaps")
   resetTokens     PasswordReset[]
   payStubs        PayStub[]
+  createdTemplates    ScheduleTemplate[]      @relation("CreatedTemplates")
+  templateShifts      ScheduleTemplateShift[] @relation("TemplateShifts")
 
   // Indexes for tenant scoping
   @@index([tenantId, active])
@@ -279,6 +282,7 @@ model Location {
 
   shifts    Shift[]
   employees EmployeeLocation[]
+  templateShifts ScheduleTemplateShift[] @relation("TemplateLocationShifts")
 
   @@index([tenantId, active])
 }
@@ -361,9 +365,55 @@ model ShiftTag {
   createdAt DateTime @default(now())
 
   shifts    Shift[]
+  templateShifts ScheduleTemplateShift[] @relation("TemplateTagShifts")
 
   @@unique([tenantId, name])
   @@index([tenantId, active])
+}
+
+// ============================================================
+// ScheduleTemplate — saved week pattern that can be applied to a target week.
+// Apply behavior: REPLACES the entire target week's draft (unpublished) shifts.
+// Employee binding: tries the original employee on apply; falls back to a
+// house shift (employeeId = null) if that employee is gone or inactive.
+// ============================================================
+
+model ScheduleTemplate {
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name        String
+  createdById String
+  createdBy   User     @relation("CreatedTemplates", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  shifts      ScheduleTemplateShift[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId, createdAt])
+}
+
+model ScheduleTemplateShift {
+  id          String   @id @default(cuid())
+  templateId  String
+  template    ScheduleTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  // 0=Sunday ... 6=Saturday (matches JS Date.getDay())
+  dayOfWeek   Int
+  startMinute Int      // minutes since midnight, 0-1439
+  endMinute   Int      // minutes since midnight, 0-1440 (overnight crosses to next day)
+  // Original employee — soft pointer. If employee is deleted/inactive at
+  // apply time, the resulting shift becomes a house shift.
+  employeeId  String?
+  employee    User?    @relation("TemplateShifts", fields: [employeeId], references: [id], onDelete: SetNull)
+  locationId  String?
+  location    Location? @relation("TemplateLocationShifts", fields: [locationId], references: [id], onDelete: SetNull)
+  role        String?
+  tagId       String?
+  tag         ShiftTag? @relation("TemplateTagShifts", fields: [tagId], references: [id], onDelete: SetNull)
+  notes       String?
+
+  @@index([templateId, dayOfWeek])
 }
 
 // ============================================================
