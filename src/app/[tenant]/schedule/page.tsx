@@ -1,7 +1,7 @@
 "use client";
 import { Fragment, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
-import { useRouter } from "next/navigation";
+import { useRouter, useParams } from "next/navigation";
 import Navbar from "@/components/navbar";
 import {
   Plus, Pencil, Trash2, ChevronLeft, ChevronRight, X, Send, Copy, Clipboard,
@@ -11,6 +11,7 @@ import Link from "next/link";
 import TemplatesBar from "@/components/templates-bar";
 import { addDays, startOfWeek, format, isSameDay, differenceInMinutes } from "date-fns";
 import SchedulePdfButton from "@/components/schedule-pdf-button";
+import LaborBudgetBar from "@/components/labor-budget-bar";
 
 type LocationRef = { id: string; name: string };
 
@@ -104,6 +105,7 @@ function initials(name: string): string {
 export default function SchedulePage() {
   const { data: session, status } = useSession();
   const router = useRouter();
+  const tenantSlugForBudget = (useParams()?.tenant as string) ?? "";
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
@@ -489,6 +491,8 @@ export default function SchedulePage() {
             </button>
           </div>
         </div>
+
+        <LaborBudgetBar shifts={shifts as any} weekStart={weekStart} tenantSlug={tenantSlugForBudget} />
 
         {publishMsg && (
           <div className="mb-4 text-sm bg-moss/10 border border-moss/20 text-ink px-4 py-2 rounded">{publishMsg}</div>
