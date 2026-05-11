@@ -12,6 +12,7 @@ import TemplatesBar from "@/components/templates-bar";
 import { addDays, startOfWeek, format, isSameDay, differenceInMinutes } from "date-fns";
 import SchedulePdfButton from "@/components/schedule-pdf-button";
 import LaborBudgetBar from "@/components/labor-budget-bar";
+import CalendarEventsBanner from "@/components/calendar-events-banner";
 
 type LocationRef = { id: string; name: string };
 
@@ -493,6 +494,7 @@ export default function SchedulePage() {
         </div>
 
         <LaborBudgetBar shifts={shifts as any} weekStart={weekStart} tenantSlug={tenantSlugForBudget} />
+        <CalendarEventsBanner weekStart={weekStart} tenantSlug={tenantSlugForBudget} />
 
         {publishMsg && (
           <div className="mb-4 text-sm bg-moss/10 border border-moss/20 text-ink px-4 py-2 rounded">{publishMsg}</div>

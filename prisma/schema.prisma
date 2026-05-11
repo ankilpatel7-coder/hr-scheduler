@@ -64,6 +64,13 @@ enum PayPeriodStatus {
   FINALIZED   // Locked; paystubs are immutable
 }
 
+enum CalendarEventType {
+  HOLIDAY   // paid holiday (e.g., Christmas, July 4)
+  MEETING   // all-hands meeting, training, etc.
+  CLOSED    // shop closed — shifts overlapping get a warning
+  OTHER
+}
+
 enum USState {
   AL
   AK
@@ -156,6 +163,7 @@ model Tenant {
   shiftTags       ShiftTag[]
   scheduleTemplates ScheduleTemplate[]
   laborBudget    LaborBudget?
+  calendarEvents CalendarEvent[]
 
   @@index([slug])
   @@index([active])
@@ -271,6 +279,7 @@ model User {
   payStubs        PayStub[]
   createdTemplates    ScheduleTemplate[]      @relation("CreatedTemplates")
   templateShifts      ScheduleTemplateShift[] @relation("TemplateShifts")
+  createdEvents       CalendarEvent[]         @relation("CreatedEvents")
 
   // Indexes for tenant scoping
   @@index([tenantId, active])
@@ -473,6 +482,33 @@ model LaborBudget {
   budgetWeekly Float    @default(0)
   updatedAt    DateTime @updatedAt
   createdAt    DateTime @default(now())
+}
+
+// ============================================================
+// CalendarEvent — tenant-wide events shown on the schedule
+// (holidays, meetings, shop-closed days, etc.). All-day, date-range based.
+// ============================================================
+
+model CalendarEvent {
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  title       String
+  description String?  @db.Text
+  type        CalendarEventType @default(OTHER)
+  // Inclusive date range. For a single day, startDate == endDate.
+  // Times normalized to midnight UTC of the date.
+  startDate   DateTime
+  endDate     DateTime
+  // Optional hex color override. If null, derive from type at render time.
+  color       String?
+  createdById String
+  createdBy   User     @relation("CreatedEvents", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId, startDate])
+  @@index([tenantId, type])
 }
 
 // ============================================================

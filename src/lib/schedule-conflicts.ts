@@ -16,7 +16,12 @@
 import { prisma } from "@/lib/db";
 import { startOfWeek, endOfWeek, format } from "date-fns";
 
-export type ConflictType = "overlap" | "unavailable" | "time_off" | "overtime";
+export type ConflictType =
+  | "overlap"
+  | "unavailable"
+  | "time_off"
+  | "overtime"
+  | "event_closed";
 export type ConflictSeverity = "block" | "warn";
 
 export type ShiftConflict = {
@@ -153,6 +158,25 @@ export async function detectShiftConflicts(
       severity: "warn",
       message: `Total this week would hit exactly 40 hrs — any additional minute triggers OT`,
       meta: { totalHrs },
+    });
+  }
+
+  // ─── 5. CLOSED calendar events overlap (WARN, tenant-wide) ──────────────
+  const closedEvent = await prisma.calendarEvent.findFirst({
+    where: {
+      tenantId: input.tenantId,
+      type: "CLOSED",
+      startDate: { lte: input.endTime },
+      endDate: { gte: input.startTime },
+    },
+    select: { id: true, title: true, startDate: true, endDate: true },
+  });
+  if (closedEvent) {
+    conflicts.push({
+      type: "event_closed",
+      severity: "warn",
+      message: `Overlaps "${closedEvent.title}" (shop closed)`,
+      meta: { eventId: closedEvent.id },
     });
   }
 
