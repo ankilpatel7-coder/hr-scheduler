@@ -6,7 +6,7 @@ import Link from "next/link";
 import Navbar from "@/components/navbar";
 import {
   ArrowLeft, Mail, Phone, MapPin, Calendar, Briefcase, DollarSign,
-  AlertTriangle, Camera, Edit3, KeyRound, ShieldCheck, Tag, Coins } from "lucide-react";
+  AlertTriangle, Camera, Edit3, KeyRound, ShieldCheck, Tag, Coins, FileText } from "lucide-react";
 import { format } from "date-fns";
 
 type Profile = {
@@ -263,6 +263,22 @@ export default function EmployeeProfilePage() {
                 </Link>
                 <p className="text-xs text-smoke mt-2">
                   Drives which LLC issues this employee&rsquo;s paystub, which state&rsquo;s taxes apply, and pre-tax deductions.
+                </p>
+              </div>
+            </Card>
+          )}
+
+          {isAdmin && (
+            <Card title="Document signing" subtitle="Documents this employee has signed or still needs to sign">
+              <div>
+                <Link
+                  href={`/${tenantSlug}/employees/${profile.id}/documents`}
+                  className="btn btn-secondary inline-flex items-center gap-2"
+                >
+                  <FileText size={14} /> View this employee's documents →
+                </Link>
+                <p className="text-xs text-smoke mt-2">
+                  See pending and signed documents for this employee. Admin can waive a pending requirement.
                 </p>
               </div>
             </Card>
