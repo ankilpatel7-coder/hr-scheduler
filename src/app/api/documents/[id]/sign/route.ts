@@ -165,7 +165,7 @@ export async function POST(
   // Upload signed PDF to Blob
   const safeName = sig.document.fileName.replace(/[^\w.-]/g, "_").replace(/\.pdf$/i, "");
   const blobPath = `tenants/${tenantId}/signatures/${sig.documentId}/${userId}-${signedAt.getTime()}-${safeName}-signed.pdf`;
-  const blob = await put(blobPath, signedBytes, {
+  const blob = await put(blobPath, Buffer.from(signedBytes), {
     access: "public",
     contentType: "application/pdf",
   });
