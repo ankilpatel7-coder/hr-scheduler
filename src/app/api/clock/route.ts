@@ -94,6 +94,27 @@ export async function POST(req: Request) {
   const addressPromise = reverseGeocode(lat, lng);
 
   if (action === "in") {
+    // Gate: block clock-in until every required+active document is signed.
+    // Returns 403 with the list so the client can route the user to /my-documents.
+    // Note: PENDING document signatures
+    const docBlockers = await prisma.documentSignature.findMany({
+      where: {
+        employeeId: userId,
+        status: "PENDING",
+        document: { tenantId, active: true, required: true },
+      },
+      select: { document: { select: { id: true, title: true } } },
+    });
+    if (docBlockers.length > 0) {
+      return NextResponse.json(
+        {
+          error: `You have ${docBlockers.length} required document${docBlockers.length === 1 ? "" : "s"} to sign before clocking in.`,
+          blockedBy: docBlockers.map((b) => ({ documentId: b.document.id, title: b.document.title })),
+        },
+        { status: 403 },
+      );
+    }
+
     const open = await prisma.clockEntry.findFirst({
       where: { userId, tenantId, clockOut: null },
     });
