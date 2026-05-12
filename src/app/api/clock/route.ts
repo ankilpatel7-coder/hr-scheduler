@@ -85,6 +85,22 @@ export async function POST(req: Request) {
   }
   const { action, selfie, lat, lng } = parsed.data;
 
+  // Look up tenant approval policy — when requireClockApproval=false,
+  // clock entries are auto-approved.
+  const tenantCfg = await prisma.tenant.findUnique({
+    where: { id: tenantId },
+    select: { requireClockApproval: true },
+  });
+  const autoApprove = tenantCfg?.requireClockApproval === false;
+  const approvalFields = autoApprove
+    ? {
+        approvalStatus: "APPROVED" as const,
+        approvedById: userId,
+        approvedAt: new Date(),
+        approvalNote: "Auto-approved (tenant has approval disabled)",
+      }
+    : {};
+
   const geo = checkGeofence(lat, lng);
   if (!geo.ok) {
     return NextResponse.json({ error: geo.reason }, { status: 403 });
@@ -131,6 +147,7 @@ export async function POST(req: Request) {
         latIn: lat,
         lngIn: lng,
         addressIn: address,
+        ...approvalFields,
       },
     });
     return NextResponse.json({ entry });
@@ -151,6 +168,7 @@ export async function POST(req: Request) {
         latOut: lat,
         lngOut: lng,
         addressOut: address,
+        ...approvalFields,
       },
     });
     return NextResponse.json({ entry });

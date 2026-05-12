@@ -83,6 +83,12 @@ enum ClockApprovalStatus {
   REJECTED  // rejected — does NOT count toward payroll; should be edited/deleted
 }
 
+enum BreakType {
+  SHORT_15  // 15-minute break (typically PAID)
+  MEAL_30   // 30-minute meal (typically UNPAID; deducted from hours)
+  OTHER     // other duration (uses actual time)
+}
+
 enum USState {
   AL
   AK
@@ -159,6 +165,11 @@ model Tenant {
   // Payroll config
   payFrequency    String   @default("BIWEEKLY")  // BIWEEKLY only for v12; future: WEEKLY, SEMI_MONTHLY, MONTHLY
   firstPeriodStart DateTime?  // anchor date for computing pay period boundaries
+
+  // Operations config (v12.6)
+  // If false, clock entries auto-approve (APPROVED on create) and skip the
+  // admin approval queue. Useful for small/trusted teams.
+  requireClockApproval Boolean @default(true)
 
   active          Boolean  @default(true)
   createdAt       DateTime @default(now())
@@ -612,16 +623,37 @@ model ClockEntry {
 
   // Daily approval workflow (v12.6) — admins/managers must approve clock
   // entries before payroll generation treats them as final. Defaults to
-  // PENDING on create.
+  // PENDING on create unless tenant.requireClockApproval is false.
   approvalStatus  ClockApprovalStatus @default(PENDING)
   approvedById    String?
   approvedBy      User?               @relation("ApprovedClockEntries", fields: [approvedById], references: [id])
   approvedAt      DateTime?
   approvalNote    String?             @db.Text
 
+  // Break tracking (v12.6) — first-class breaks instead of clocking out + in.
+  breaks Break[]
+
   @@index([tenantId, clockIn])
   @@index([userId, clockIn])
   @@index([tenantId, approvalStatus])
+}
+
+// ============================================================
+// Break — taken during an open ClockEntry. Tracks scheduled type (15/30)
+// vs actual duration. Multiple breaks per shift allowed.
+// ============================================================
+
+model Break {
+  id           String      @id @default(cuid())
+  clockEntryId String
+  clockEntry   ClockEntry  @relation(fields: [clockEntryId], references: [id], onDelete: Cascade)
+  breakStart   DateTime
+  breakEnd     DateTime?   // null while break is ongoing
+  breakType    BreakType   @default(SHORT_15)
+  notes        String?
+  createdAt    DateTime    @default(now())
+
+  @@index([clockEntryId, breakStart])
 }
 
 // ============================================================
