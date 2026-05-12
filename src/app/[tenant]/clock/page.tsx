@@ -2,9 +2,10 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
+import Link from "next/link";
 import Navbar from "@/components/navbar";
 import ClockCamera from "@/components/clock-camera";
-import { MapPin, CheckCircle2, AlertTriangle, RefreshCw, Loader2 } from "lucide-react";
+import { MapPin, CheckCircle2, AlertTriangle, RefreshCw, Loader2, FileText } from "lucide-react";
 
 type OpenEntry = {
   id: string;
@@ -26,6 +27,7 @@ export default function ClockPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [blockedDocs, setBlockedDocs] = useState<Array<{ documentId: string; title: string }>>([]);
   const [success, setSuccess] = useState<string | null>(null);
   const [loc, setLoc] = useState<LocStatus>({ state: "idle" });
   const [now, setNow] = useState(new Date());
@@ -132,6 +134,8 @@ export default function ClockPage() {
       return;
     }
     setError(null);
+    setError(null);
+    setBlockedDocs([]);
     setSubmitting(true);
     const body: any = { action: open ? "out" : "in", selfie };
     if (loc.state === "captured") {
@@ -147,9 +151,11 @@ export default function ClockPage() {
     setSubmitting(false);
     if (!res.ok) {
       setError(data.error ?? "Something went wrong");
+      setBlockedDocs(Array.isArray(data.blockedBy) ? data.blockedBy : []);
       return;
     }
     setSuccess(open ? "Clocked out." : "Clocked in.");
+    setBlockedDocs([]);
     setSelfie(null);
     setOpen(open ? null : { id: data.entry.id, clockIn: data.entry.clockIn });
     setSubmitWithoutGps(false);
@@ -178,7 +184,40 @@ export default function ClockPage() {
     <div className="min-h-screen">
       <Navbar />
       <main className="max-w-3xl mx-auto px-6 py-10">
-        <div className="mb-8">
+        
+        {blockedDocs.length > 0 && (
+          <div
+            className="card p-5 mb-6 border-l-4"
+            style={{ borderLeftColor: "#d97706", background: "rgba(245,158,11,0.06)" }}
+          >
+            <div className="flex items-start gap-3">
+              <div
+                className="shrink-0 w-9 h-9 rounded-full flex items-center justify-center"
+                style={{ background: "rgba(245,158,11,0.18)", color: "#d97706" }}
+              >
+                <FileText size={16} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-semibold text-ink">
+                  Sign {blockedDocs.length} document{blockedDocs.length === 1 ? "" : "s"} to unlock clock-in
+                </div>
+                <ul className="text-xs text-smoke mt-1 list-disc pl-4 space-y-0.5">
+                  {blockedDocs.map((d) => (
+                    <li key={d.documentId}>{d.title}</li>
+                  ))}
+                </ul>
+                <Link
+                  href={`/${(typeof window !== "undefined" ? window.location.pathname.split("/")[1] : "")}/my-documents`}
+                  className="btn btn-rust inline-flex items-center gap-1.5 mt-3"
+                >
+                  <FileText size={14} /> Open My Documents →
+                </Link>
+              </div>
+            </div>
+          </div>
+        )}
+
+<div className="mb-8">
           <div className="text-[10px] tracking-[0.3em] uppercase text-smoke mb-2">
             {open ? "On the clock" : "Ready to start"}
           </div>
