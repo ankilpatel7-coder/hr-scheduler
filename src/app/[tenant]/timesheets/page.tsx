@@ -18,7 +18,7 @@ import {
   Plus,
   Camera,
   MapPin,
-  AlertTriangle, LayoutGrid } from "lucide-react";
+  AlertTriangle, LayoutGrid, ClipboardCheck } from "lucide-react";
 import { format, startOfWeek, endOfWeek, subDays } from "date-fns";
 
 type GeoSide = {
@@ -282,6 +282,13 @@ export default function TimesheetsPage() {
                 className="text-rust hover:underline inline-flex items-center gap-1"
               >
                 <LayoutGrid size={11} /> By employee
+              </Link>
+              <span className="text-dust">·</span>
+              <Link
+                href={`/${tenantSlugForViewToggle}/timesheets/approvals`}
+                className="text-rust hover:underline inline-flex items-center gap-1"
+              >
+                <ClipboardCheck size={11} /> Approvals
               </Link>
             </div>
           </div>

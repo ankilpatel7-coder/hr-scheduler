@@ -31,8 +31,11 @@ export async function GET(req: Request) {
   const employeeIds = employeeIdsParam ? employeeIdsParam.split(",").filter(Boolean) : null;
   const formatType = searchParams.get("format");
   const locationId = searchParams.get("locationId");
+  /* approval-gate-v1 */
+  const includeAllParam = searchParams.get("includeAll") === "true";
 
   const where: any = {};
+  if (!includeAllParam) where.approvalStatus = "APPROVED";
   if (from || to) {
     where.clockIn = {};
     if (from) where.clockIn.gte = new Date(from);

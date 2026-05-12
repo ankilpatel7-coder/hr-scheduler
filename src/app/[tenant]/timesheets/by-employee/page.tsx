@@ -96,6 +96,7 @@ export default async function TimesheetsByEmployeePage({
 
   const where: any = {
     tenantId,
+    approvalStatus: "APPROVED",
     clockIn: { lte: toEnd },
     OR: [{ clockOut: null }, { clockOut: { gte: fromStart } }],
   };

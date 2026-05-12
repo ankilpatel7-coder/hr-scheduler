@@ -77,6 +77,12 @@ enum DocumentSignatureStatus {
   WAIVED   // admin has waived the requirement
 }
 
+enum ClockApprovalStatus {
+  PENDING   // awaiting admin/manager approval
+  APPROVED  // approved — counts cleanly toward payroll
+  REJECTED  // rejected — does NOT count toward payroll; should be edited/deleted
+}
+
 enum USState {
   AL
   AK
@@ -290,6 +296,7 @@ model User {
   uploadedDocuments   Document[]              @relation("UploadedDocuments")
   signatures          DocumentSignature[]     @relation("EmployeeSignatures")
   waivedSignatures    DocumentSignature[]     @relation("WaivedSignatures")
+  approvedClockEntries ClockEntry[]           @relation("ApprovedClockEntries")
 
   // Indexes for tenant scoping
   @@index([tenantId, active])
@@ -603,8 +610,18 @@ model ClockEntry {
   editNote    String?
   createdAt   DateTime  @default(now())
 
+  // Daily approval workflow (v12.6) — admins/managers must approve clock
+  // entries before payroll generation treats them as final. Defaults to
+  // PENDING on create.
+  approvalStatus  ClockApprovalStatus @default(PENDING)
+  approvedById    String?
+  approvedBy      User?               @relation("ApprovedClockEntries", fields: [approvedById], references: [id])
+  approvedAt      DateTime?
+  approvalNote    String?             @db.Text
+
   @@index([tenantId, clockIn])
   @@index([userId, clockIn])
+  @@index([tenantId, approvalStatus])
 }
 
 // ============================================================

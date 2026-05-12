@@ -86,6 +86,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     where: {
       userId: { in: empIds },
       clockIn: { lte: period.periodEnd },
+      approvalStatus: "APPROVED",
       OR: [{ clockOut: null }, { clockOut: { gte: period.periodStart } }],
     },
     select: { userId: true, clockIn: true, clockOut: true },
