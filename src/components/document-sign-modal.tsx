@@ -9,14 +9,12 @@
  */
 
 import { useRef, useState } from "react";
-import dynamic from "next/dynamic";
+import SignatureCanvas from "react-signature-canvas";
 import { X, Save, Eraser, AlertCircle } from "lucide-react";
 
-// react-signature-canvas is a client-only lib (uses HTMLCanvasElement).
-// next/dynamic with ssr:false avoids server-side import errors.
-const SignatureCanvas = dynamic(() => import("react-signature-canvas"), {
-  ssr: false,
-});
+// Note: react-signature-canvas is client-side (uses HTMLCanvasElement).
+// We can import it directly here because this whole file is a "use client"
+// component — no SSR concerns. next/dynamic was breaking ref forwarding.
 
 type DocLite = {
   documentId: string;
@@ -35,7 +33,7 @@ export default function DocumentSignModal({
   onClose: () => void;
   onSigned: () => void;
 }) {
-  const sigRef = useRef<any>(null);
+  const sigRef = useRef<SignatureCanvas | null>(null);
   const [acknowledged, setAcknowledged] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
