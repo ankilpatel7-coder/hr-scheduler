@@ -102,20 +102,66 @@ export async function POST(req: Request) {
     },
   });
 
-  // Create PENDING signatures for every active employee
-  const activeEmps = await prisma.user.findMany({
-    where: {
-      tenantId: auth.tenantId,
-      active: true,
-      role: { not: "ADMIN" },
-    },
-    select: { id: true },
-  });
-  if (activeEmps.length > 0) {
+  // Resolve recipient set based on assignMode.
+  //   "all"     → every active non-admin employee in the tenant
+  //   "custom"  → union of:
+  //       - employeeIds (explicit)
+  //       - employees assigned to any of locationIds (via EmployeeLocation)
+  const assignMode = String(formData.get("assignMode") ?? "all");
+  const employeeIdsParam = String(formData.get("employeeIds") ?? "")
+    .split(",").map((s) => s.trim()).filter(Boolean);
+  const locationIdsParam = String(formData.get("locationIds") ?? "")
+    .split(",").map((s) => s.trim()).filter(Boolean);
+
+  let recipientIds: string[] = [];
+  if (assignMode === "custom") {
+    const explicit = employeeIdsParam;
+    let viaLocs: string[] = [];
+    if (locationIdsParam.length > 0) {
+      const rows = await prisma.employeeLocation.findMany({
+        where: {
+          locationId: { in: locationIdsParam },
+          user: {
+            tenantId: auth.tenantId,
+            active: true,
+            role: { not: "ADMIN" },
+          },
+        },
+        select: { userId: true },
+      });
+      viaLocs = rows.map((r) => r.userId);
+    }
+    recipientIds = Array.from(new Set([...explicit, ...viaLocs]));
+    // Verify all belong to this tenant + are non-admin + active
+    if (recipientIds.length > 0) {
+      const allowed = await prisma.user.findMany({
+        where: {
+          id: { in: recipientIds },
+          tenantId: auth.tenantId,
+          active: true,
+          role: { not: "ADMIN" },
+        },
+        select: { id: true },
+      });
+      recipientIds = allowed.map((u) => u.id);
+    }
+  } else {
+    const emps = await prisma.user.findMany({
+      where: {
+        tenantId: auth.tenantId,
+        active: true,
+        role: { not: "ADMIN" },
+      },
+      select: { id: true },
+    });
+    recipientIds = emps.map((e) => e.id);
+  }
+
+  if (recipientIds.length > 0) {
     await prisma.documentSignature.createMany({
-      data: activeEmps.map((e) => ({
+      data: recipientIds.map((id) => ({
         documentId: doc.id,
-        employeeId: e.id,
+        employeeId: id,
         status: "PENDING" as const,
       })),
       skipDuplicates: true,
@@ -124,6 +170,7 @@ export async function POST(req: Request) {
 
   return NextResponse.json({
     document: doc,
-    employeesAssigned: activeEmps.length,
+    employeesAssigned: recipientIds.length,
+    assignMode,
   });
 }
