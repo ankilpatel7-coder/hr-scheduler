@@ -71,6 +71,12 @@ enum CalendarEventType {
   OTHER
 }
 
+enum DocumentSignatureStatus {
+  PENDING  // employee hasn't signed yet
+  SIGNED   // employee has signed
+  WAIVED   // admin has waived the requirement
+}
+
 enum USState {
   AL
   AK
@@ -164,6 +170,7 @@ model Tenant {
   scheduleTemplates ScheduleTemplate[]
   laborBudget    LaborBudget?
   calendarEvents CalendarEvent[]
+  documents      Document[]
 
   @@index([slug])
   @@index([active])
@@ -280,6 +287,9 @@ model User {
   createdTemplates    ScheduleTemplate[]      @relation("CreatedTemplates")
   templateShifts      ScheduleTemplateShift[] @relation("TemplateShifts")
   createdEvents       CalendarEvent[]         @relation("CreatedEvents")
+  uploadedDocuments   Document[]              @relation("UploadedDocuments")
+  signatures          DocumentSignature[]     @relation("EmployeeSignatures")
+  waivedSignatures    DocumentSignature[]     @relation("WaivedSignatures")
 
   // Indexes for tenant scoping
   @@index([tenantId, active])
@@ -509,6 +519,61 @@ model CalendarEvent {
 
   @@index([tenantId, startDate])
   @@index([tenantId, type])
+}
+
+// ============================================================
+// Document — uploaded by admin, signed by every active employee.
+// Stored in Vercel Blob; the URL is what we keep in DB.
+// Required documents block clock-in until signed.
+// ============================================================
+
+model Document {
+  id            String   @id @default(cuid())
+  tenantId      String
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  title         String
+  description   String?  @db.Text
+  fileUrl       String                 // Vercel Blob URL of the original PDF
+  fileName      String                 // original filename, for display
+  fileSize      Int                    // bytes
+  required      Boolean  @default(true) // gate clock-in if true
+  active        Boolean  @default(true) // archive without delete
+  uploadedById  String
+  uploadedBy    User     @relation("UploadedDocuments", fields: [uploadedById], references: [id])
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  signatures    DocumentSignature[]
+
+  @@index([tenantId, active])
+}
+
+model DocumentSignature {
+  id              String   @id @default(cuid())
+  documentId      String
+  document        Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  employeeId      String
+  employee        User     @relation("EmployeeSignatures", fields: [employeeId], references: [id], onDelete: Cascade)
+  status          DocumentSignatureStatus @default(PENDING)
+
+  // Signature itself (base64 PNG of the canvas drawing)
+  signatureImage  String?  @db.Text
+  // Vercel Blob URL of the merged signed PDF (signature embedded on a final page)
+  signedFileUrl   String?
+  signedAt        DateTime?
+  signedIp        String?
+  signedUserAgent String?  @db.Text
+
+  // Admin can waive a requirement (with audit trail)
+  waivedById      String?
+  waivedBy        User?    @relation("WaivedSignatures", fields: [waivedById], references: [id])
+  waivedAt        DateTime?
+  waiveReason     String?  @db.Text
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([documentId, employeeId])
+  @@index([employeeId, status])
 }
 
 // ============================================================
