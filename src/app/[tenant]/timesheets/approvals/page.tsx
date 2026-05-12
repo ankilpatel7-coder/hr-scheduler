@@ -71,6 +71,7 @@ export default async function ClockApprovalsPage({
       include: {
         user: { select: { id: true, name: true, hourlyWage: true } },
         approvedBy: { select: { id: true, name: true } },
+        breaks: { select: { id: true, breakStart: true, breakEnd: true, breakType: true }, orderBy: { breakStart: "asc" } },
       },
     }),
     prisma.user.findMany({
@@ -124,6 +125,11 @@ export default async function ClockApprovalsPage({
             approvalNote: e.approvalNote,
             addressIn: e.addressIn,
             addressOut: e.addressOut,
+            breaks: e.breaks.map((b: any) => ({
+              breakStart: b.breakStart.toISOString(),
+              breakEnd: b.breakEnd ? b.breakEnd.toISOString() : null,
+              breakType: b.breakType as "SHORT_15" | "MEAL_30" | "OTHER",
+            })),
           }))}
           totals={{ pending: pendingCount, approved: approvedCount, rejected: rejectedCount }}
         />

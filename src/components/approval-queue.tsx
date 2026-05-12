@@ -23,6 +23,12 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 
+type BreakRow = {
+  breakStart: string;
+  breakEnd: string | null;
+  breakType: "SHORT_15" | "MEAL_30" | "OTHER";
+};
+
 type Entry = {
   id: string;
   userId: string;
@@ -36,6 +42,13 @@ type Entry = {
   approvalNote: string | null;
   addressIn: string | null;
   addressOut: string | null;
+  breaks?: BreakRow[];
+};
+
+const BREAK_META = {
+  SHORT_15: { target: 15, label: "15 min · paid", color: "#10b981" },
+  MEAL_30:  { target: 30, label: "30 min · meal", color: "#6366f1" },
+  OTHER:    { target: null as number | null, label: "Other", color: "#94a3b8" },
 };
 
 type Employee = { id: string; name: string };
@@ -253,6 +266,41 @@ export default function ApprovalQueue({
                         {e.approvalNote && (
                           <div className="text-[11px] text-smoke mt-1 italic">
                             &ldquo;{e.approvalNote}&rdquo;
+                          </div>
+                        )}
+                        {e.breaks && e.breaks.length > 0 && (
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {e.breaks.map((b, i) => {
+                              const meta = BREAK_META[b.breakType];
+                              const bStart = new Date(b.breakStart);
+                              const bEnd = b.breakEnd ? new Date(b.breakEnd) : null;
+                              const mins = bEnd
+                                ? Math.round((bEnd.getTime() - bStart.getTime()) / 60000)
+                                : null;
+                              const overByMin =
+                                mins !== null && meta.target !== null
+                                  ? mins - meta.target
+                                  : null;
+                              const tone =
+                                overByMin !== null && overByMin > 0
+                                  ? "#dc2626"
+                                  : overByMin !== null && overByMin >= -2
+                                    ? "#d97706"
+                                    : meta.color;
+                              return (
+                                <span
+                                  key={i}
+                                  className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded font-medium"
+                                  style={{ background: `${tone}15`, color: tone }}
+                                  title={`${meta.label} · started ${format(bStart, "h:mma")}${bEnd ? ` ended ${format(bEnd, "h:mma")}` : " (still on break)"}`}
+                                >
+                                  ☕ {mins === null ? "ongoing" : `${mins} min`}
+                                  {meta.target !== null && (
+                                    <span className="opacity-70">/ {meta.target}</span>
+                                  )}
+                                </span>
+                              );
+                            })}
                           </div>
                         )}
                       </div>

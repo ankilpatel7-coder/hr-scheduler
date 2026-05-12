@@ -69,6 +69,7 @@ export async function GET(req: Request) {
     include: {
       user: { select: { id: true, name: true, email: true, department: true, hourlyWage: true } },
     },
+    include: { breaks: { orderBy: { breakStart: "asc" } } },
   });
 
   // Load tenant's active geocoded locations for distance/geofence evaluation.

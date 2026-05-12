@@ -109,6 +109,7 @@ export default async function TimesheetsByEmployeePage({
       userId: true,
       clockIn: true,
       clockOut: true,
+      breaks: { select: { breakStart: true, breakEnd: true, breakType: true } },
       user: {
         select: {
           id: true,
@@ -150,7 +151,20 @@ export default async function TimesheetsByEmployeePage({
     const effStart = start < fromStart ? fromStart : start;
     const effEnd = end > toEnd ? toEnd : end;
     if (effEnd <= effStart) continue;
+    // Deduct UNPAID breaks (MEAL_30 + OTHER) from the worked hours.
+    // SHORT_15 stays in because it's paid by convention.
+    let unpaidBreakHrs = 0;
+    for (const b of (e as any).breaks ?? []) {
+      if (b.breakType === "SHORT_15") continue;
+      const bStart = new Date(b.breakStart);
+      const bEnd = b.breakEnd ? new Date(b.breakEnd) : now;
+      // Clip to this entry's effective range
+      const bs = bStart < effStart ? effStart : bStart;
+      const be = bEnd > effEnd ? effEnd : bEnd;
+      if (be > bs) unpaidBreakHrs += (be.getTime() - bs.getTime()) / 3_600_000;
+    }
     const hrs = durationHours(effStart, effEnd);
+    const hrsAdjusted = Math.max(0, hrs - unpaidBreakHrs);
 
     let row = empMap.get(e.userId);
     if (!row) {
@@ -165,8 +179,8 @@ export default async function TimesheetsByEmployeePage({
       };
       empMap.set(e.userId, row);
     }
-    row.perDay.set(dayKey, (row.perDay.get(dayKey) ?? 0) + hrs);
-    row.total += hrs;
+    row.perDay.set(dayKey, (row.perDay.get(dayKey) ?? 0) + hrsAdjusted);
+    row.total += hrsAdjusted;
   }
 
   const rows = Array.from(empMap.values()).sort((a, b) => a.name.localeCompare(b.name));
