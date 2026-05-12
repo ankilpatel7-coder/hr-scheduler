@@ -48,17 +48,65 @@ export default function DocumentSignModal({
       setErr("Please confirm you've read the document.");
       return;
     }
-    if (!sigRef.current || sigRef.current.isEmpty?.()) {
+
+    const ref = sigRef.current as any;
+    if (!ref) {
+      setErr("Signature pad not ready — try refreshing the page.");
+      return;
+    }
+
+    // Defensive isEmpty check — wrap in try/catch since some versions of
+    // signature_pad throw if called before initialization.
+    let isEmpty = false;
+    try {
+      if (typeof ref.isEmpty === "function") isEmpty = !!ref.isEmpty();
+    } catch {}
+    if (isEmpty) {
       setErr("Please draw your signature in the box below.");
       return;
     }
+
     setBusy(true);
     try {
-      // Get trimmed canvas — react-signature-canvas v1.x:
-      //   getTrimmedCanvas() exists; toDataURL("image/png") on it
-      const canvas =
-        sigRef.current.getTrimmedCanvas?.() ?? sigRef.current.getCanvas();
-      const dataUrl = canvas.toDataURL("image/png");
+      // Get the data URL — try several methods because react-signature-canvas
+      // varies across v1/v2/v3 and signature_pad v3/v4.
+      let dataUrl: string | null = null;
+      let lastTryErr: any = null;
+
+      // Method 1: ref.toDataURL (component shortcut)
+      try {
+        if (typeof ref.toDataURL === "function") {
+          dataUrl = ref.toDataURL("image/png");
+        }
+      } catch (e) { lastTryErr = e; }
+
+      // Method 2: ref.getCanvas().toDataURL — works on raw HTMLCanvasElement
+      if (!dataUrl) {
+        try {
+          const canvas = typeof ref.getCanvas === "function" ? ref.getCanvas() : null;
+          if (canvas && typeof canvas.toDataURL === "function") {
+            dataUrl = canvas.toDataURL("image/png");
+          }
+        } catch (e) { lastTryErr = e; }
+      }
+
+      // Method 3: ref.getTrimmedCanvas (older API)
+      if (!dataUrl) {
+        try {
+          if (typeof ref.getTrimmedCanvas === "function") {
+            const trimmed = ref.getTrimmedCanvas();
+            if (trimmed && typeof trimmed.toDataURL === "function") {
+              dataUrl = trimmed.toDataURL("image/png");
+            }
+          }
+        } catch (e) { lastTryErr = e; }
+      }
+
+      if (!dataUrl) {
+        throw new Error(
+          `Could not capture signature${lastTryErr ? ` (${lastTryErr.message})` : ""}. Try refreshing the page.`,
+        );
+      }
 
       const res = await fetch(`/api/documents/${document.documentId}/sign`, {
         method: "POST",
