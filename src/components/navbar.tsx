@@ -44,6 +44,7 @@ export default function Navbar() {
     { href: tlink("/clock"), label: "Clock In", show: isStaffMember },
     { href: tlink("/my-shifts"), label: "My Shifts", show: isStaffMember },
     { href: tlink("/availability"), label: "Availability", show: isStaffMember },
+    { href: tlink("/my-documents"), label: "My Documents", show: isStaffMember },
     { href: tlink("/schedule"), label: "Schedule", show: isAdmin || isManager },
     { href: tlink("/employees"), label: "Employees", show: isAdmin || isManager },
     { href: tlink("/locations"), label: "Locations", show: isAdmin },
@@ -51,6 +52,7 @@ export default function Navbar() {
     { href: tlink("/swaps"), label: "Swaps", show: !isSuperAdmin },
     { href: tlink("/timesheets"), label: "Timesheets", show: !isSuperAdmin },
     { href: tlink("/payroll"), label: "Payroll", show: isAdmin },
+    { href: tlink("/documents"), label: "Documents", show: isAdmin },
     { href: tlink("/profile"), label: "Profile", show: isStaffMember },
     { href: tlink("/settings"), label: "Settings", show: isAdmin },
   ];
