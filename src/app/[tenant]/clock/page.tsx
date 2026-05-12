@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 import Navbar from "@/components/navbar";
+import BreakControls from "@/components/break-controls";
 import ClockCamera from "@/components/clock-camera";
 import { MapPin, CheckCircle2, AlertTriangle, RefreshCw, Loader2, FileText } from "lucide-react";
 
@@ -248,6 +249,8 @@ export default function ClockPage() {
             </div>
           </div>
         )}
+
+        {open && <BreakControls />}
 
         <div className="grid md:grid-cols-2 gap-6">
           <div className="card p-6">
