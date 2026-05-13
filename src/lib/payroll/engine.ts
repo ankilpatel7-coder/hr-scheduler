@@ -65,6 +65,9 @@ export type ClockEntryInput = {
   userId: string;
   clockIn: Date;
   clockOut: Date | null;
+  // Optional breaks taken within this clock entry. MEAL_30 + OTHER
+  // are deducted from worked hours (unpaid). SHORT_15 stays paid.
+  breaks?: { breakStart: Date; breakEnd: Date | null; breakType: "SHORT_15" | "MEAL_30" | "OTHER" }[];
 };
 
 export type StubComputation = {

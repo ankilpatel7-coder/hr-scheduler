@@ -39,6 +39,7 @@ type Entry = {
   userId: string;
   clockIn: string;
   clockOut: string | null;
+  breaks?: { breakStart: string; breakEnd: string | null; breakType: "SHORT_15" | "MEAL_30" | "OTHER" }[];
   selfieIn: string | null;
   selfieOut: string | null;
   latIn: number | null;
@@ -590,6 +591,36 @@ function GroupSummaryRow({
 
 /** Single clock-entry row. Used for both single-segment days AND segments
  * inside an expanded multi-segment group (with `indent` true). */
+// BREAK_META_TS — chip styling
+const BREAK_META_TS = {
+  SHORT_15: { target: 15, label: "15", color: "#10b981" },
+  MEAL_30:  { target: 30, label: "30", color: "#6366f1" },
+  OTHER:    { target: null as number | null, label: "?", color: "#94a3b8" },
+};
+
+function breakSummary(breaks: { breakStart: string; breakEnd: string | null; breakType: "SHORT_15" | "MEAL_30" | "OTHER" }[]): {
+  unpaidMin: number;
+  chips: { mins: number | null; type: "SHORT_15" | "MEAL_30" | "OTHER"; tone: string }[];
+} {
+  let unpaidMin = 0;
+  const chips: { mins: number | null; type: "SHORT_15" | "MEAL_30" | "OTHER"; tone: string }[] = [];
+  for (const b of breaks) {
+    const start = new Date(b.breakStart);
+    const end = b.breakEnd ? new Date(b.breakEnd) : null;
+    const mins = end ? Math.round((end.getTime() - start.getTime()) / 60000) : null;
+    if (b.breakType !== "SHORT_15" && mins !== null) unpaidMin += mins;
+    const meta = BREAK_META_TS[b.breakType];
+    let tone = meta.color;
+    if (mins !== null && meta.target !== null) {
+      const over = mins - meta.target;
+      if (over > 0) tone = "#dc2626";
+      else if (over >= -2) tone = "#d97706";
+    }
+    chips.push({ mins, type: b.breakType, tone });
+  }
+  return { unpaidMin, chips };
+}
+
 function SegmentRow({
   entry: e,
   isAdmin,
@@ -660,7 +691,34 @@ function SegmentRow({
         )}
       </td>
       <td className="px-4 py-3 text-right font-mono text-glow align-top">
-        {h.toFixed(2)}
+        <div>{h.toFixed(2)}</div>
+        {e.breaks && e.breaks.length > 0 && (() => {
+          const { unpaidMin, chips } = breakSummary(e.breaks);
+          return (
+            <>
+              {unpaidMin > 0 && (
+                <div className="text-[10px] text-smoke font-mono mt-0.5">
+                  − {unpaidMin}m unpaid
+                </div>
+              )}
+              <div className="flex justify-end flex-wrap gap-1 mt-1">
+                {chips.map((c, i) => {
+                  const meta = BREAK_META_TS[c.type];
+                  return (
+                    <span
+                      key={i}
+                      className="inline-flex items-center gap-0.5 text-[9px] px-1 py-0.5 rounded font-medium"
+                      style={{ background: `${c.tone}15`, color: c.tone }}
+                      title={`${meta.label}-min ${c.type === "SHORT_15" ? "paid" : c.type === "MEAL_30" ? "meal" : "other"} break${c.mins !== null ? ` — actual ${c.mins} min` : " (ongoing)"}`}
+                    >
+                      ☕ {c.mins === null ? "…" : c.mins}{meta.target !== null ? `/${meta.target}` : ""}
+                    </span>
+                  );
+                })}
+              </div>
+            </>
+          );
+        })()}
       </td>
       {isAdmin && (
         <td className="px-4 py-3 text-right font-mono text-ink align-top">
