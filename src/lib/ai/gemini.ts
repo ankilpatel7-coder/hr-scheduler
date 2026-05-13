@@ -21,7 +21,7 @@ function client(): GoogleGenerativeAI {
 }
 
 export function model(name: "flash" | "pro" = "flash"): GenerativeModel {
-  const modelId = name === "pro" ? "gemini-1.5-pro" : "gemini-1.5-flash";
+  const modelId = name === "pro" ? "gemini-1.5-pro-latest" : "gemini-2.0-flash";
   return client().getGenerativeModel({
     model: modelId,
     generationConfig: {
