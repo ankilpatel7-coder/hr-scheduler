@@ -51,21 +51,17 @@ export async function POST(req: Request) {
   // - Staff: docs they have signed (so it's content they've already seen)
   // - Admin/Manager: all active tenant docs
   const isManager = role === "ADMIN" || role === "MANAGER";
-  const docsQuery = isManager
-    ? {
-        where: { tenantId, active: true, extractedText: { not: null } },
-      }
-    : {
-        where: {
-          tenantId,
-          active: true,
-          extractedText: { not: null },
-          signatures: { some: { employeeId: userId, status: "SIGNED" as const } },
-        },
-      };
+  const where: any = {
+    tenantId,
+    active: true,
+    extractedText: { not: null },
+  };
+  if (!isManager) {
+    where.signatures = { some: { employeeId: userId, status: "SIGNED" } };
+  }
 
   const docs = await prisma.document.findMany({
-    ...docsQuery,
+    where,
     select: { id: true, title: true, extractedText: true },
     orderBy: { createdAt: "desc" },
   });
