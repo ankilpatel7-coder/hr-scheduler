@@ -31,7 +31,8 @@ export async function POST(req: Request) {
   });
 
   // Lazy-load pdf-parse so it doesn't slow cold starts on routes that don't use it
-  const pdfParse = (await import("pdf-parse")).default;
+  const _pdfMod = (await import("pdf-parse")) as any;
+  const pdfParse: (buf: Buffer) => Promise<{ text: string }> = _pdfMod.default ?? _pdfMod;
 
   let indexed = 0;
   let failed = 0;
