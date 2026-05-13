@@ -11,6 +11,7 @@ import { FileText, ArrowLeft } from "lucide-react";
 import { format } from "date-fns";
 import DocumentUploadForm from "@/components/document-upload-form";
 import DocumentRowActions from "@/components/document-row-actions";
+import DocsChatWidget from "@/components/docs-chat-widget";
 
 export const dynamic = "force-dynamic";
 
@@ -142,6 +143,7 @@ export default async function DocumentsAdminPage({
           </div>
         </div>
       </main>
+      <DocsChatWidget />
     </div>
   );
 }

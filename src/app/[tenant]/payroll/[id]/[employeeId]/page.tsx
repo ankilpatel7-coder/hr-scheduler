@@ -12,6 +12,7 @@ import Navbar from "@/components/navbar";
 import { ArrowLeft } from "lucide-react";
 import { format } from "date-fns";
 import PdfButton from "./pdf-button";
+import PayrollExplainButton from "@/components/payroll-explain-button";
 import { amountToWords, asteriskAmount } from "@/lib/number-to-words";
 
 export const dynamic = "force-dynamic";

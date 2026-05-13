@@ -554,6 +554,9 @@ model Document {
   fileUrl       String                 // Vercel Blob URL of the original PDF
   fileName      String                 // original filename, for display
   fileSize      Int                    // bytes
+  // Extracted plaintext (server-side parsed via pdf-parse on upload).
+  // Used as RAG context for the AI Q&A chatbot. Null = not indexed.
+  extractedText String?  @db.Text
   required      Boolean  @default(true) // gate clock-in if true
   active        Boolean  @default(true) // archive without delete
   uploadedById  String

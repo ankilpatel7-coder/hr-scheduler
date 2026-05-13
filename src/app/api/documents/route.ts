@@ -89,9 +89,24 @@ export async function POST(req: Request) {
   });
 
   // Create the document record
+  // Extract searchable text from the PDF for AI Q&A. Failures are non-fatal —
+  // the doc still gets created, just without the searchable text. Admin can
+  // re-index later via /api/ai/docs-reindex.
+  let extractedText: string | null = null;
+  try {
+    const pdfParse = (await import("pdf-parse")).default;
+    const fileBuf = Buffer.from(await file.arrayBuffer());
+    const parsed = await pdfParse(fileBuf);
+    const text = (parsed.text || "").trim();
+    if (text.length > 0) extractedText = text;
+  } catch (e: any) {
+    console.warn("PDF text extraction failed:", e?.message ?? e);
+  }
+
   const doc = await prisma.document.create({
     data: {
       tenantId: auth.tenantId,
+      extractedText,
       title,
       description,
       fileUrl: blob.url,

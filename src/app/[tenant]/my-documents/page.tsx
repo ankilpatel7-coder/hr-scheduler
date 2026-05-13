@@ -10,6 +10,7 @@ import { prisma } from "@/lib/db";
 import { FileText, ArrowLeft } from "lucide-react";
 import { format } from "date-fns";
 import MyDocumentsList from "@/components/my-documents-list";
+import DocsChatWidget from "@/components/docs-chat-widget";
 
 export const dynamic = "force-dynamic";
 
@@ -87,6 +88,7 @@ export default async function MyDocumentsPage({
           }))}
         />
       </main>
+      <DocsChatWidget />
     </div>
   );
 }
