@@ -115,6 +115,7 @@ export default async function PaystubPage({
           <Link href={`/${params.tenant}/payroll/${params.id}`} className="text-smoke hover:text-ink text-sm inline-flex items-center gap-1">
             <ArrowLeft size={14} /> Back to period
           </Link>
+          <PayrollExplainButton payStubId={stub.id} />
           <PdfButton filename={`paystub-${stub.employee.name.replace(/\s+/g, "_")}_${format(stub.payPeriod.periodStart, "MM.dd.yyyy")}_${format(stub.payPeriod.periodEnd, "MM.dd.yyyy")}.pdf`} />
         </div>
 
