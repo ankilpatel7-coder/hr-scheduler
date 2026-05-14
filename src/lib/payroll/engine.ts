@@ -115,12 +115,11 @@ export type PayPeriodInput = {
   ytdWagesBefore: Map<string, number>;
 };
 
-function sumMinutesInRange(
-  entries: ClockEntryInput[],
-  rangeStart: Date,
-  rangeEnd: Date,
-  fallbackEnd: Date,
-): number {
+function sumMinutesInRange(entries: ClockEntryInput[], rangeStart: Date, rangeEnd: Date, fallbackEnd: Date): number {
+  // MS_PRECISION_V1 — uses millisecond-accurate float math so payroll
+  // totals match the timesheet pivot view exactly. Old version used
+  // date-fns differenceInMinutes which truncated seconds, causing tiny
+  // drift between payroll and timesheets.
   let total = 0;
   for (const e of entries) {
     const start = e.clockIn;
@@ -128,7 +127,18 @@ function sumMinutesInRange(
     const effectiveStart = start < rangeStart ? rangeStart : start;
     const effectiveEnd = end > rangeEnd ? rangeEnd : end;
     if (effectiveEnd > effectiveStart) {
-      total += differenceInMinutes(effectiveEnd, effectiveStart);
+      total += (effectiveEnd.getTime() - effectiveStart.getTime()) / 60000;
+      // Subtract overlapping UNPAID break minutes (MEAL_30 + OTHER).
+      // SHORT_15 stays in (paid by convention).
+      let unpaidBreakMinutes = 0;
+      for (const b of e.breaks ?? []) {
+        if (b.breakType === "SHORT_15") continue;
+        if (!b.breakEnd) continue;
+        const bs = b.breakStart < effectiveStart ? effectiveStart : b.breakStart;
+        const be = b.breakEnd > effectiveEnd ? effectiveEnd : b.breakEnd;
+        if (be > bs) unpaidBreakMinutes += (be.getTime() - bs.getTime()) / 60000;
+      }
+      total = Math.max(0, total - unpaidBreakMinutes);
     }
   }
   return total;
