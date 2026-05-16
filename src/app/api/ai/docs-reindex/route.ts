@@ -35,11 +35,18 @@ export async function POST(req: Request) {
     // in the package's index.js that fails on Vercel.
     let pdfParse: (buf: Buffer) => Promise<{ text: string }>;
     try {
-      const mod = (await import("pdf-parse/lib/pdf-parse.js")) as any;
-      pdfParse = mod.default ?? mod;
+      const { extractText, getDocumentProxy } = await import("unpdf");
+      pdfParse = async (buf: Buffer) => {
+        const pdf = await getDocumentProxy(new Uint8Array(buf));
+        const { text } = await extractText(pdf, { mergePages: true });
+        return { text: Array.isArray(text) ? text.join("\n") : text };
+      };
     } catch (e: any) {
       return NextResponse.json(
-        { error: `Could not load pdf-parse library: ${e.message}` },
+        { error: `Could not load unpdf library: ${e.message}` },
+        { status: 500 },
+      );
+    }` },
         { status: 500 },
       );
     }

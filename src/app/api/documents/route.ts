@@ -94,12 +94,12 @@ export async function POST(req: Request) {
   // re-index later via /api/ai/docs-reindex.
   let extractedText: string | null = null;
   try {
-    const _pdfMod = (await import("pdf-parse/lib/pdf-parse.js")) as any;
-  const pdfParse: (buf: Buffer) => Promise<{ text: string }> = _pdfMod.default ?? _pdfMod;
+    const { extractText, getDocumentProxy } = await import("unpdf");
     const fileBuf = Buffer.from(await file.arrayBuffer());
-    const parsed = await pdfParse(fileBuf);
-    const text = (parsed.text || "").trim();
-    if (text.length > 0) extractedText = text;
+    const pdf = await getDocumentProxy(new Uint8Array(fileBuf));
+    const { text } = await extractText(pdf, { mergePages: true });
+    const joined = (Array.isArray(text) ? text.join("\n") : text).trim();
+    if (joined.length > 0) extractedText = joined;
   } catch (e: any) {
     console.warn("PDF text extraction failed:", e?.message ?? e);
   }
