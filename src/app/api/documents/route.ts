@@ -94,7 +94,7 @@ export async function POST(req: Request) {
   // re-index later via /api/ai/docs-reindex.
   let extractedText: string | null = null;
   try {
-    const _pdfMod = (await import("pdf-parse")) as any;
+    const _pdfMod = (await import("pdf-parse/lib/pdf-parse.js")) as any;
   const pdfParse: (buf: Buffer) => Promise<{ text: string }> = _pdfMod.default ?? _pdfMod;
     const fileBuf = Buffer.from(await file.arrayBuffer());
     const parsed = await pdfParse(fileBuf);
