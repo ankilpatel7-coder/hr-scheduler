@@ -1,34 +1,44 @@
 /**
- * Gemini client wrapper — single place for the SDK + retries + JSON helpers.
+ * AI client wrapper — single place for the SDK + JSON helpers.
  *
- * Free tier (no credit card): 15 req/min for Pro, 60 req/min for Flash.
- * We default to Flash for speed/cost; switch to Pro for tougher reasoning.
+ * Backed by Groq (Llama 3.3 70B) on the free tier:
+ *   - 30 req/min, 14,400 req/day
+ *   - 6K input tokens/min, 100K input tokens/day
+ *   - No credit card required
+ *
+ * Filename kept as `gemini.ts` to avoid touching the two call sites
+ * (payroll-explain, docs-chat). The exported API surface is identical
+ * to the previous Gemini wrapper.
  */
 
-import { GoogleGenerativeAI, GenerativeModel } from "@google/generative-ai";
+import Groq from "groq-sdk";
 
-let _client: GoogleGenerativeAI | null = null;
-function client(): GoogleGenerativeAI {
-  if (!process.env.GEMINI_API_KEY) {
+let _client: Groq | null = null;
+function client(): Groq {
+  if (!process.env.GROQ_API_KEY) {
     throw new Error(
-      "GEMINI_API_KEY not configured. Get a free key at https://aistudio.google.com.",
+      "GROQ_API_KEY not configured. Get a free key at https://console.groq.com/keys.",
     );
   }
   if (!_client) {
-    _client = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    _client = new Groq({ apiKey: process.env.GROQ_API_KEY });
   }
   return _client;
 }
 
-export function model(name: "flash" | "pro" = "flash"): GenerativeModel {
-  const modelId = name === "pro" ? "gemini-1.5-pro-latest" : "gemini-2.0-flash";
-  return client().getGenerativeModel({
-    model: modelId,
-    generationConfig: {
-      temperature: 0.4,
-      maxOutputTokens: 2048,
-    },
-  });
+// Both tiers point at the same Llama 3.3 70B for now — Groq's free tier
+// doesn't have a meaningful "pro" alternative. If we ever pay for Groq's
+// 405B endpoint or swap providers, "pro" can route there.
+const MODEL_FLASH = "llama-3.3-70b-versatile";
+const MODEL_PRO = "llama-3.3-70b-versatile";
+
+/**
+ * Returns the Groq model id for the requested tier. Exported only because
+ * the previous Gemini wrapper exported `model()`; new code should call
+ * `generateText` / `generateJson` directly.
+ */
+export function model(name: "flash" | "pro" = "flash"): string {
+  return name === "pro" ? MODEL_PRO : MODEL_FLASH;
 }
 
 /**
@@ -38,15 +48,25 @@ export async function generateText(
   prompt: string,
   opts: { model?: "flash" | "pro"; system?: string; temperature?: number } = {},
 ): Promise<string> {
-  const m = model(opts.model ?? "flash");
-  const fullPrompt = opts.system ? `${opts.system}\n\n---\n\n${prompt}` : prompt;
-  const result = await m.generateContent(fullPrompt);
-  return result.response.text();
+  const messages: { role: "system" | "user"; content: string }[] = [];
+  if (opts.system) {
+    messages.push({ role: "system", content: opts.system });
+  }
+  messages.push({ role: "user", content: prompt });
+
+  const completion = await client().chat.completions.create({
+    model: opts.model === "pro" ? MODEL_PRO : MODEL_FLASH,
+    messages,
+    temperature: opts.temperature ?? 0.4,
+    max_tokens: 2048,
+  });
+
+  return completion.choices[0]?.message?.content ?? "";
 }
 
 /**
  * Generate JSON from a prompt. The prompt should describe the schema.
- * Throws if Gemini doesn't return valid JSON after a clean.
+ * Throws if the model doesn't return valid JSON after a clean.
  */
 export async function generateJson<T = any>(
   prompt: string,
@@ -54,15 +74,21 @@ export async function generateJson<T = any>(
 ): Promise<T> {
   const text = await generateText(prompt, {
     ...opts,
-    system: (opts.system ?? "") +
+    system:
+      (opts.system ?? "") +
       "\n\nReturn valid JSON only. Do not wrap in markdown fences or include any prose.",
   });
-  // Strip ```json ... ``` fences if Gemini ignored instructions
-  const cleaned = text.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
+  // Strip ```json ... ``` fences if the model ignored instructions
+  const cleaned = text
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/```\s*$/i, "")
+    .trim();
   try {
     return JSON.parse(cleaned) as T;
   } catch (e: any) {
-    throw new Error(`AI returned invalid JSON: ${e.message}\n\nResponse:\n${text}`);
+    throw new Error(
+      `AI returned invalid JSON: ${e.message}\n\nResponse:\n${text}`,
+    );
   }
 }
 
@@ -70,5 +96,5 @@ export async function generateJson<T = any>(
  * Returns whether AI is configured. Useful for gating UI features.
  */
 export function aiAvailable(): boolean {
-  return !!process.env.GEMINI_API_KEY;
+  return !!process.env.GROQ_API_KEY;
 }
