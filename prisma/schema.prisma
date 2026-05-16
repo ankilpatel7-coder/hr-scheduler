@@ -188,6 +188,7 @@ model Tenant {
   laborBudget       LaborBudget?
   calendarEvents    CalendarEvent[]
   documents         Document[]
+  documentFolders   DocumentFolder[]
 
   @@index([slug])
   @@index([active])
@@ -289,25 +290,26 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  shifts               Shift[]                 @relation("EmployeeShifts")
-  createdShifts        Shift[]                 @relation("ManagerShifts")
-  clockEntries         ClockEntry[]
-  locations            EmployeeLocation[]
-  availability         Availability[]
-  timeOff              TimeOffRequest[]        @relation("EmployeeTimeOff")
-  decidedTimeOff       TimeOffRequest[]        @relation("ManagerTimeOff")
-  offeredSwaps         ShiftSwap[]             @relation("OfferedSwaps")
-  claimedSwaps         ShiftSwap[]             @relation("ClaimedSwaps")
-  decidedSwaps         ShiftSwap[]             @relation("DecidedSwaps")
-  resetTokens          PasswordReset[]
-  payStubs             PayStub[]
-  createdTemplates     ScheduleTemplate[]      @relation("CreatedTemplates")
-  templateShifts       ScheduleTemplateShift[] @relation("TemplateShifts")
-  createdEvents        CalendarEvent[]         @relation("CreatedEvents")
-  uploadedDocuments    Document[]              @relation("UploadedDocuments")
-  signatures           DocumentSignature[]     @relation("EmployeeSignatures")
-  waivedSignatures     DocumentSignature[]     @relation("WaivedSignatures")
-  approvedClockEntries ClockEntry[]            @relation("ApprovedClockEntries")
+  shifts                 Shift[]                 @relation("EmployeeShifts")
+  createdShifts          Shift[]                 @relation("ManagerShifts")
+  clockEntries           ClockEntry[]
+  locations              EmployeeLocation[]
+  availability           Availability[]
+  timeOff                TimeOffRequest[]        @relation("EmployeeTimeOff")
+  decidedTimeOff         TimeOffRequest[]        @relation("ManagerTimeOff")
+  offeredSwaps           ShiftSwap[]             @relation("OfferedSwaps")
+  claimedSwaps           ShiftSwap[]             @relation("ClaimedSwaps")
+  decidedSwaps           ShiftSwap[]             @relation("DecidedSwaps")
+  resetTokens            PasswordReset[]
+  payStubs               PayStub[]
+  createdTemplates       ScheduleTemplate[]      @relation("CreatedTemplates")
+  templateShifts         ScheduleTemplateShift[] @relation("TemplateShifts")
+  createdEvents          CalendarEvent[]         @relation("CreatedEvents")
+  uploadedDocuments      Document[]              @relation("UploadedDocuments")
+  signatures             DocumentSignature[]     @relation("EmployeeSignatures")
+  waivedSignatures       DocumentSignature[]     @relation("WaivedSignatures")
+  approvedClockEntries   ClockEntry[]            @relation("ApprovedClockEntries")
+  documentFoldersCreated DocumentFolder[]        @relation("DocumentFoldersCreated")
 
   // Indexes for tenant scoping
   @@index([tenantId, active])
@@ -564,8 +566,15 @@ model Document {
   createdAt     DateTime            @default(now())
   updatedAt     DateTime            @updatedAt
   signatures    DocumentSignature[]
+  folderId      String?
+  folder        DocumentFolder?     @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  version       Int                 @default(1)
+  replacedById  String?             @unique
+  replacedBy    Document?           @relation("VersionChain", fields: [replacedById], references: [id], onDelete: SetNull)
+  replaces      Document?           @relation("VersionChain")
 
   @@index([tenantId, active])
+  @@index([folderId])
 }
 
 model DocumentSignature {
@@ -837,4 +846,26 @@ model PayStub {
 
   @@unique([payPeriodId, employeeId])
   @@index([employeeId, generatedAt])
+}
+
+model DocumentFolder {
+  id          String   @id @default(cuid())
+  tenantId    String
+  parentId    String?
+  name        String
+  description String?
+  color       String?
+  sortOrder   Int      @default(0)
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant    Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  parent    DocumentFolder?  @relation("FolderTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children  DocumentFolder[] @relation("FolderTree")
+  createdBy User?            @relation("DocumentFoldersCreated", fields: [createdById], references: [id], onDelete: SetNull)
+  documents Document[]
+
+  @@index([tenantId])
+  @@index([parentId])
 }
