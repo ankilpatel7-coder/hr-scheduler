@@ -7,6 +7,16 @@ import LocationFilter from "@/components/location-filter";
 import { Plus, X, Check, Ban, Pencil, Trash2 } from "lucide-react";
 import { format } from "date-fns";
 
+// Format a stored time-off date as the same calendar day in every viewer's
+// timezone. Reads YYYY-MM-DD from the ISO string instead of round-tripping
+// through Date (which would shift by a day for negative-UTC viewers).
+function fmtDateSafe(iso: string): string {
+  const ymd = iso.slice(0, 10); // "2026-05-06"
+  const [y, m, d] = ymd.split("-").map(Number);
+  return format(new Date(y, m - 1, d, 12), "MMM d, yyyy");
+}
+
+
 type Req = {
   id: string;
   startDate: string;
@@ -138,8 +148,8 @@ export default function TimeOffPage() {
                       <StatusChip status={r.status} />
                     </div>
                     <div className="text-sm text-smoke">
-                      {format(new Date(r.startDate), "MMM d, yyyy")} –{" "}
-                      {format(new Date(r.endDate), "MMM d, yyyy")}
+                      {fmtDateSafe(r.startDate)} –{" "}
+                      {fmtDateSafe(r.endDate)}
                     </div>
                     {r.reason && (
                       <div className="text-sm text-ink/70 mt-2 italic">"{r.reason}"</div>
@@ -329,8 +339,8 @@ function EditTimeOffModal({
   onSaved: () => void;
 }) {
   const [form, setForm] = useState({
-    startDate: format(new Date(request.startDate), "yyyy-MM-dd"),
-    endDate: format(new Date(request.endDate), "yyyy-MM-dd"),
+    startDate: request.startDate.slice(0, 10),
+    endDate: request.endDate.slice(0, 10),
     reason: request.reason ?? "",
   });
   const [saving, setSaving] = useState(false);

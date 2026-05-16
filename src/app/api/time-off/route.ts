@@ -9,6 +9,16 @@ import { requireAuth, isStaff, getScopedEmployeeIds } from "@/lib/guards";
 import { sendEmail, baseEmailTemplate } from "@/lib/email";
 import { format } from "date-fns";
 
+// Parse a date-only string ("YYYY-MM-DD") as noon UTC of that calendar day,
+// so every viewer sees the same calendar date regardless of timezone.
+// If the input is already a full ISO string, falls back to direct parsing.
+function parseDateOnly(s: string): Date {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    return new Date(`${s}T12:00:00.000Z`);
+  }
+  return new Date(s);
+}
+
 const createSchema = z.object({
   startDate: z.string(),
   endDate: z.string(),
@@ -68,7 +78,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid input" }, { status: 400 });
   }
   const { startDate, endDate, reason } = parsed.data;
-  if (new Date(endDate) < new Date(startDate)) {
+  if (parseDateOnly(endDate) < parseDateOnly(startDate)) {
     return NextResponse.json({ error: "End date must be on or after start" }, { status: 400 });
   }
 
@@ -76,8 +86,8 @@ export async function POST(req: Request) {
     data: {
       tenantId: auth.tenantId!,
       userId: auth.userId,
-      startDate: new Date(startDate),
-      endDate: new Date(endDate),
+      startDate: parseDateOnly(startDate),
+      endDate: parseDateOnly(endDate),
       reason,
     },
     include: { user: true },
@@ -180,8 +190,8 @@ export async function PATCH(req: Request) {
   }
 
   const data: any = {};
-  if (startDate) data.startDate = new Date(startDate);
-  if (endDate) data.endDate = new Date(endDate);
+  if (startDate) data.startDate = parseDateOnly(startDate);
+  if (endDate) data.endDate = parseDateOnly(endDate);
   if (reason !== undefined) data.reason = reason;
 
   if (data.startDate && data.endDate && data.endDate < data.startDate) {

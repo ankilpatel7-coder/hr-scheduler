@@ -218,13 +218,14 @@ export default function SchedulePage() {
   }
 
   function isOnTimeOff(employeeId: string, day: Date): boolean {
-    const ds = new Date(day); ds.setHours(0, 0, 0, 0);
-    const de = new Date(day); de.setHours(23, 59, 59, 999);
+    // Compare as YYYY-MM-DD strings so timezone offsets can't bleed approved
+    // time-off into adjacent calendar days.
+    const dayKey = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
     return timeOff.some((r) => {
       if (r.userId !== employeeId) return false;
-      const s = new Date(r.startDate);
-      const e = new Date(r.endDate);
-      return s <= de && e >= ds;
+      const startKey = r.startDate.slice(0, 10);
+      const endKey = r.endDate.slice(0, 10);
+      return dayKey >= startKey && dayKey <= endKey;
     });
   }
 
