@@ -29,7 +29,7 @@ const MAX_CONTEXT_CHARS = 200_000; // Gemini Flash has 1M token context; this is
 export async function POST(req: Request) {
   if (!aiAvailable()) {
     return NextResponse.json(
-      { error: "AI not configured. Set GEMINI_API_KEY env var." },
+      { error: "AI not configured. Set GROQ_API_KEY env var (https://console.groq.com/keys)." },
       { status: 500 },
     );
   }
