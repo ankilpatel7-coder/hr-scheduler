@@ -11,6 +11,7 @@ import { FileText, ArrowLeft } from "lucide-react";
 import { format } from "date-fns";
 import DocumentUploadForm from "@/components/document-upload-form";
 import DocumentRowActions from "@/components/document-row-actions";
+import DocsReindexButton from "@/components/docs-reindex-button";
 import DocsChatWidget from "@/components/docs-chat-widget";
 
 export const dynamic = "force-dynamic";
@@ -70,6 +71,9 @@ export default async function DocumentsAdminPage({
           block clock-in until signed. Signed copies are saved on each
           employee&rsquo;s profile.
         </p>
+        <div className="mb-6">
+          <DocsReindexButton />
+        </div>
 
         <div className="grid md:grid-cols-[1fr,2fr] gap-6 items-start">
           <DocumentUploadForm />
