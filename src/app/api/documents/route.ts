@@ -1,10 +1,13 @@
 /**
- * Documents API — admin upload + list.
+ * Documents list — v2 with folder + search filters.
  *
- * GET  /api/documents                 List all documents in this tenant
- * POST /api/documents                 Upload a new PDF (admin only).
- *                                     multipart/form-data: file, title, description?, required?
- *                                     Creates DocumentSignature(PENDING) for every active employee.
+ * GET /api/documents?folderId=<id|"null">&search=<text>&includeArchived=true
+ *
+ *   - folderId: filter by folder. "null" or omit = unfiled. "all" = no filter.
+ *   - search: case-insensitive substring match on title.
+ *   - includeArchived: include active=false docs (default false).
+ *
+ * Returns same shape as before + folderName for display.
  */
 
 import { NextResponse } from "next/server";
@@ -12,26 +15,35 @@ import { put } from "@vercel/blob";
 import { prisma } from "@/lib/db";
 import { requireRole } from "@/lib/guards";
 
-export async function GET() {
+export async function GET(req: Request) {
   const auth = await requireRole(["ADMIN", "MANAGER"]);
   if ("error" in auth) return auth.error;
   if (auth.isSuperAdmin || !auth.tenantId) {
     return NextResponse.json({ error: "No tenant context" }, { status: 400 });
   }
 
+  const { searchParams } = new URL(req.url);
+  const folderId = searchParams.get("folderId");
+  const search = searchParams.get("search")?.trim();
+  const includeArchived = searchParams.get("includeArchived") === "true";
+
+  const where: any = { tenantId: auth.tenantId };
+  if (!includeArchived) where.active = true;
+  if (folderId === "null") where.folderId = null;
+  else if (folderId && folderId !== "all") where.folderId = folderId;
+  if (search) where.title = { contains: search, mode: "insensitive" };
+
   const docs = await prisma.document.findMany({
-    where: { tenantId: auth.tenantId, active: true },
+    where,
     orderBy: { createdAt: "desc" },
     include: {
       uploadedBy: { select: { id: true, name: true } },
+      folder: { select: { id: true, name: true, color: true } },
+      signatures: { select: { status: true } },
       _count: { select: { signatures: true } },
-      signatures: {
-        select: { status: true },
-      },
     },
   });
 
-  // Annotate with sign progress (signed / waived / total)
   const annotated = docs.map((d) => {
     const total = d.signatures.length;
     const signed = d.signatures.filter((s) => s.status === "SIGNED").length;
@@ -44,6 +56,9 @@ export async function GET() {
   return NextResponse.json({ documents: annotated });
 }
 
+// POST handler unchanged — keeping the existing upload logic. The folderId
+// is now optional in the upload form; we add it here.
+
 export async function POST(req: Request) {
   const auth = await requireRole(["ADMIN"]);
   if ("error" in auth) return auth.error;
@@ -52,10 +67,7 @@ export async function POST(req: Request) {
   }
   if (!process.env.BLOB_READ_WRITE_TOKEN) {
     return NextResponse.json(
-      {
-        error:
-          "Vercel Blob not configured. Set BLOB_READ_WRITE_TOKEN env var.",
-      },
+      { error: "Vercel Blob not configured. Set BLOB_READ_WRITE_TOKEN env var." },
       { status: 500 },
     );
   }
@@ -65,64 +77,61 @@ export async function POST(req: Request) {
   const title = String(formData.get("title") ?? "").trim();
   const description = String(formData.get("description") ?? "").trim() || null;
   const required = String(formData.get("required") ?? "true") === "true";
+  const folderIdRaw = String(formData.get("folderId") ?? "").trim();
+  const folderId = folderIdRaw && folderIdRaw !== "null" ? folderIdRaw : null;
 
-  if (!file) {
-    return NextResponse.json({ error: "Missing file" }, { status: 400 });
-  }
-  if (!title) {
-    return NextResponse.json({ error: "Missing title" }, { status: 400 });
-  }
+  if (!file) return NextResponse.json({ error: "Missing file" }, { status: 400 });
+  if (!title) return NextResponse.json({ error: "Missing title" }, { status: 400 });
   if (file.type !== "application/pdf") {
     return NextResponse.json({ error: "Only PDF files supported" }, { status: 400 });
   }
-  // Cap upload size at 10MB for now
   if (file.size > 10 * 1024 * 1024) {
     return NextResponse.json({ error: "File too large (max 10MB)" }, { status: 413 });
   }
 
-  // Upload to Vercel Blob with a tenant-scoped path
-  const safeName = file.name.replace(/[^\w.-]/g, "_");
-  const blobPath = `tenants/${auth.tenantId}/documents/${Date.now()}-${safeName}`;
-  const blob = await put(blobPath, file, {
-    access: "public",
-    contentType: "application/pdf",
-  });
+  // Validate folder belongs to tenant
+  if (folderId) {
+    const folder = await prisma.documentFolder.findFirst({
+      where: { id: folderId, tenantId: auth.tenantId },
+      select: { id: true },
+    });
+    if (!folder) return NextResponse.json({ error: "Folder not in your tenant" }, { status: 400 });
+  }
 
-  // Create the document record
-  // Extract searchable text from the PDF for AI Q&A. Failures are non-fatal —
-  // the doc still gets created, just without the searchable text. Admin can
-  // re-index later via /api/ai/docs-reindex.
+  // Extract text for AI Q&A using unpdf (serverless-friendly).
   let extractedText: string | null = null;
   try {
     const { extractText, getDocumentProxy } = await import("unpdf");
     const fileBuf = Buffer.from(await file.arrayBuffer());
     const pdf = await getDocumentProxy(new Uint8Array(fileBuf));
-    const { text } = await extractText(pdf, { mergePages: true });
-    const joined = (Array.isArray(text) ? text.join("\n") : text).trim();
+    const result = await extractText(pdf, { mergePages: true });
+    const text = (result as any).text;
+    const joined = (Array.isArray(text) ? text.join("\n") : (text ?? "")).trim();
     if (joined.length > 0) extractedText = joined;
   } catch (e: any) {
     console.warn("PDF text extraction failed:", e?.message ?? e);
   }
 
+  const safeName = file.name.replace(/[^\w.-]/g, "_");
+  const blobPath = `tenants/${auth.tenantId}/documents/${Date.now()}-${safeName}`;
+  const blob = await put(blobPath, file, { access: "public", contentType: "application/pdf" });
+
   const doc = await prisma.document.create({
     data: {
       tenantId: auth.tenantId,
-      extractedText,
       title,
       description,
       fileUrl: blob.url,
       fileName: file.name,
       fileSize: file.size,
+      extractedText,
       required,
+      folderId,
       uploadedById: auth.userId,
     },
   });
 
-  // Resolve recipient set based on assignMode.
-  //   "all"     → every active non-admin employee in the tenant
-  //   "custom"  → union of:
-  //       - employeeIds (explicit)
-  //       - employees assigned to any of locationIds (via EmployeeLocation)
+  // Resolve recipients (same logic as before)
   const assignMode = String(formData.get("assignMode") ?? "all");
   const employeeIdsParam = String(formData.get("employeeIds") ?? "")
     .split(",").map((s) => s.trim()).filter(Boolean);
@@ -137,18 +146,13 @@ export async function POST(req: Request) {
       const rows = await prisma.employeeLocation.findMany({
         where: {
           locationId: { in: locationIdsParam },
-          user: {
-            tenantId: auth.tenantId,
-            active: true,
-            role: { not: "ADMIN" },
-          },
+          user: { tenantId: auth.tenantId, active: true, role: { not: "ADMIN" } },
         },
         select: { userId: true },
       });
       viaLocs = rows.map((r) => r.userId);
     }
     recipientIds = Array.from(new Set([...explicit, ...viaLocs]));
-    // Verify all belong to this tenant + are non-admin + active
     if (recipientIds.length > 0) {
       const allowed = await prisma.user.findMany({
         where: {
@@ -163,11 +167,7 @@ export async function POST(req: Request) {
     }
   } else {
     const emps = await prisma.user.findMany({
-      where: {
-        tenantId: auth.tenantId,
-        active: true,
-        role: { not: "ADMIN" },
-      },
+      where: { tenantId: auth.tenantId, active: true, role: { not: "ADMIN" } },
       select: { id: true },
     });
     recipientIds = emps.map((e) => e.id);
@@ -184,9 +184,5 @@ export async function POST(req: Request) {
     });
   }
 
-  return NextResponse.json({
-    document: doc,
-    employeesAssigned: recipientIds.length,
-    assignMode,
-  });
+  return NextResponse.json({ document: doc, employeesAssigned: recipientIds.length, assignMode });
 }

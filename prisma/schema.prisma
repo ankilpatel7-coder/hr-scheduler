@@ -60,33 +60,33 @@ enum FilingStatus {
 }
 
 enum PayPeriodStatus {
-  DRAFT       // Period exists; paystubs may be regenerated
-  FINALIZED   // Locked; paystubs are immutable
+  DRAFT // Period exists; paystubs may be regenerated
+  FINALIZED // Locked; paystubs are immutable
 }
 
 enum CalendarEventType {
-  HOLIDAY   // paid holiday (e.g., Christmas, July 4)
-  MEETING   // all-hands meeting, training, etc.
-  CLOSED    // shop closed — shifts overlapping get a warning
+  HOLIDAY // paid holiday (e.g., Christmas, July 4)
+  MEETING // all-hands meeting, training, etc.
+  CLOSED // shop closed — shifts overlapping get a warning
   OTHER
 }
 
 enum DocumentSignatureStatus {
-  PENDING  // employee hasn't signed yet
-  SIGNED   // employee has signed
-  WAIVED   // admin has waived the requirement
+  PENDING // employee hasn't signed yet
+  SIGNED // employee has signed
+  WAIVED // admin has waived the requirement
 }
 
 enum ClockApprovalStatus {
-  PENDING   // awaiting admin/manager approval
-  APPROVED  // approved — counts cleanly toward payroll
-  REJECTED  // rejected — does NOT count toward payroll; should be edited/deleted
+  PENDING // awaiting admin/manager approval
+  APPROVED // approved — counts cleanly toward payroll
+  REJECTED // rejected — does NOT count toward payroll; should be edited/deleted
 }
 
 enum BreakType {
-  SHORT_15  // 15-minute break (typically PAID)
-  MEAL_30   // 30-minute meal (typically UNPAID; deducted from hours)
-  OTHER     // other duration (uses actual time)
+  SHORT_15 // 15-minute break (typically PAID)
+  MEAL_30 // 30-minute meal (typically UNPAID; deducted from hours)
+  OTHER // other duration (uses actual time)
 }
 
 enum USState {
@@ -148,46 +148,46 @@ enum USState {
 // ============================================================
 
 model Tenant {
-  id              String   @id @default(cuid())
-  slug            String   @unique  // URL subdomain, e.g. "greenreleaf" → greenreleaf.shiftwork.app
-  businessName    String
-  legalName       String?  // for tax forms; defaults to businessName
-  state           USState
-  timezone        String   @default("America/New_York")  // IANA tz, e.g. "America/Chicago". Used for "today"/week boundaries on dashboard, payroll, etc.
-  addressLine1    String?
-  addressLine2    String?
-  city            String?
-  zip             String?
-  phone           String?
-  federalEIN      String?  // 9 digits, no dash
-  stateTaxId      String?  // KY withholding account number, etc.
+  id           String  @id @default(cuid())
+  slug         String  @unique // URL subdomain, e.g. "greenreleaf" → greenreleaf.shiftwork.app
+  businessName String
+  legalName    String? // for tax forms; defaults to businessName
+  state        USState
+  timezone     String  @default("America/New_York") // IANA tz, e.g. "America/Chicago". Used for "today"/week boundaries on dashboard, payroll, etc.
+  addressLine1 String?
+  addressLine2 String?
+  city         String?
+  zip          String?
+  phone        String?
+  federalEIN   String? // 9 digits, no dash
+  stateTaxId   String? // KY withholding account number, etc.
 
   // Payroll config
-  payFrequency    String   @default("BIWEEKLY")  // BIWEEKLY only for v12; future: WEEKLY, SEMI_MONTHLY, MONTHLY
-  firstPeriodStart DateTime?  // anchor date for computing pay period boundaries
+  payFrequency     String    @default("BIWEEKLY") // BIWEEKLY only for v12; future: WEEKLY, SEMI_MONTHLY, MONTHLY
+  firstPeriodStart DateTime? // anchor date for computing pay period boundaries
 
   // Operations config (v12.6)
   // If false, clock entries auto-approve (APPROVED on create) and skip the
   // admin approval queue. Useful for small/trusted teams.
   requireClockApproval Boolean @default(true)
 
-  active          Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  users           User[]
-  locations       Location[]
-  shifts          Shift[]
-  clockEntries    ClockEntry[]
-  timeOff         TimeOffRequest[]
-  swaps           ShiftSwap[]
-  payPeriods     PayPeriod[]
-  roles           ShiftRole[]
-  shiftTags       ShiftTag[]
+  users             User[]
+  locations         Location[]
+  shifts            Shift[]
+  clockEntries      ClockEntry[]
+  timeOff           TimeOffRequest[]
+  swaps             ShiftSwap[]
+  payPeriods        PayPeriod[]
+  roles             ShiftRole[]
+  shiftTags         ShiftTag[]
   scheduleTemplates ScheduleTemplate[]
-  laborBudget    LaborBudget?
-  calendarEvents CalendarEvent[]
-  documents      Document[]
+  laborBudget       LaborBudget?
+  calendarEvents    CalendarEvent[]
+  documents         Document[]
 
   @@index([slug])
   @@index([active])
@@ -198,78 +198,78 @@ model Tenant {
 // ============================================================
 
 model User {
-  id           String       @id @default(cuid())
-  email        String       @unique
+  id           String @id @default(cuid())
+  email        String @unique
   name         String
   passwordHash String
 
   // Tenant scoping
   // - SUPER_ADMIN users have tenantId = null (they don't belong to any tenant).
   // - All other users belong to exactly one tenant.
-  tenantId     String?
-  tenant       Tenant?      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  superAdmin   Boolean      @default(false)
+  tenantId   String?
+  tenant     Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  superAdmin Boolean @default(false)
 
-  role         Role         @default(EMPLOYEE)
-  department   String?
+  role       Role      @default(EMPLOYEE)
+  department String?
   // Job role for scheduling (matches a ShiftRole.name like "Budtender",
   // "Lead", "Management"). Drives schedule grouping + auto-fills the role
   // when admins create a shift for this employee. Admin-set, free-text
   // (matches by name against ShiftRole table for color lookup).
-  jobRole      String?
-  active       Boolean      @default(true)
-  archivedAt   DateTime?
-  hourlyWage   Float        @default(0)
-  isTipped     Boolean      @default(false)
+  jobRole    String?
+  active     Boolean   @default(true)
+  archivedAt DateTime?
+  hourlyWage Float     @default(0)
+  isTipped   Boolean   @default(false)
 
   // Profile (v5+)
-  photoUrl                 String?  @db.Text
+  photoUrl                 String?        @db.Text
   phone                    String?
-  address                  String?  @db.Text
+  address                  String?        @db.Text
   dateOfBirth              DateTime?
   hireDate                 DateTime?
   employmentType           EmploymentType @default(UNSPECIFIED)
   emergencyContactName     String?
   emergencyContactPhone    String?
   emergencyContactRelation String?
-  notes                    String?  @db.Text
+  notes                    String?        @db.Text
 
   // Payroll / W-4 fields (NEW in v12)
   // Sourced from the employee's W-4 form (post-2020 design).
   // Defaults assume "Single, no other adjustments" — must be overridden per-employee
   // before payroll calculations are reliable.
-  filingStatus           FilingStatus @default(SINGLE)
-  multipleJobsCheckbox   Boolean      @default(false)  // W-4 step 2c
-  dependentsCredit       Float        @default(0)      // W-4 step 3 (annual dollars, e.g. $2000 per qualifying child)
-  otherIncome            Float        @default(0)      // W-4 step 4a (annual dollars)
-  deductionsAdjustment   Float        @default(0)      // W-4 step 4b (annual dollars beyond standard deduction)
-  extraWithholding       Float        @default(0)      // W-4 step 4c (per-pay-period dollars)
+  filingStatus         FilingStatus @default(SINGLE)
+  multipleJobsCheckbox Boolean      @default(false) // W-4 step 2c
+  dependentsCredit     Float        @default(0) // W-4 step 3 (annual dollars, e.g. $2000 per qualifying child)
+  otherIncome          Float        @default(0) // W-4 step 4a (annual dollars)
+  deductionsAdjustment Float        @default(0) // W-4 step 4b (annual dollars beyond standard deduction)
+  extraWithholding     Float        @default(0) // W-4 step 4c (per-pay-period dollars)
 
   // KY-specific (only set when employee's tax state = KY; nullable otherwise)
-  kyExemptionsAllowance  Int?         // KY DOR Form K-4
+  kyExemptionsAllowance Int? // KY DOR Form K-4
 
   // ─── Multi-state / multi-location payroll (v12.4) ───
   // Employee's "home" location — determines which LLC issues the paystub
   // (legalName, EIN, address come from this location), AND which state's
   // taxes apply (locState). When null, falls back to tenant.legalName /
   // tenant.federalEIN / tenant.state.
-  primaryLocationId      String?
-  primaryLocation        Location?    @relation("PrimaryLocation", fields: [primaryLocationId], references: [id], onDelete: SetNull)
+  primaryLocationId String?
+  primaryLocation   Location? @relation("PrimaryLocation", fields: [primaryLocationId], references: [id], onDelete: SetNull)
 
   // Local tax jurisdiction code, e.g. "LOUISVILLE_METRO" → 2.2% occupational tax.
   // Null = no local withholding. Defaults set per-location at hire time.
-  localTaxJurisdiction   String?
+  localTaxJurisdiction String?
 
   // ─── Pre-tax deductions (per pay period; biweekly assumed for v12) ───
   // 401(k) traditional contribution. Either a percent of gross OR a fixed $;
   // if both set, percent takes precedence. Reduces federal + state taxable
   // wages but NOT FICA-taxable wages.
-  preTax401kPercent      Float        @default(0)   // 0-100
-  preTax401kAmount       Float        @default(0)   // dollars per period
+  preTax401kPercent   Float @default(0) // 0-100
+  preTax401kAmount    Float @default(0) // dollars per period
   // Section 125 cafeteria plan deductions — reduce federal + FICA + state taxable.
-  preTaxHealthPremium    Float        @default(0)   // medical/dental/vision premium per period
-  preTaxHsaAmount        Float        @default(0)   // HSA contribution per period
-  preTaxFsaAmount        Float        @default(0)   // FSA contribution per period
+  preTaxHealthPremium Float @default(0) // medical/dental/vision premium per period
+  preTaxHsaAmount     Float @default(0) // HSA contribution per period
+  preTaxFsaAmount     Float @default(0) // FSA contribution per period
 
   // ─── Sensitive payroll info (v12.5) ───
   // Social Security Number — encrypted at rest using AES-256-GCM with a key
@@ -286,28 +286,28 @@ model User {
   pinHash      String?
   pinUpdatedAt DateTime?
 
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  shifts          Shift[]            @relation("EmployeeShifts")
-  createdShifts   Shift[]            @relation("ManagerShifts")
-  clockEntries    ClockEntry[]
-  locations       EmployeeLocation[]
-  availability    Availability[]
-  timeOff         TimeOffRequest[]   @relation("EmployeeTimeOff")
-  decidedTimeOff  TimeOffRequest[]   @relation("ManagerTimeOff")
-  offeredSwaps    ShiftSwap[]        @relation("OfferedSwaps")
-  claimedSwaps    ShiftSwap[]        @relation("ClaimedSwaps")
-  decidedSwaps    ShiftSwap[]        @relation("DecidedSwaps")
-  resetTokens     PasswordReset[]
-  payStubs        PayStub[]
-  createdTemplates    ScheduleTemplate[]      @relation("CreatedTemplates")
-  templateShifts      ScheduleTemplateShift[] @relation("TemplateShifts")
-  createdEvents       CalendarEvent[]         @relation("CreatedEvents")
-  uploadedDocuments   Document[]              @relation("UploadedDocuments")
-  signatures          DocumentSignature[]     @relation("EmployeeSignatures")
-  waivedSignatures    DocumentSignature[]     @relation("WaivedSignatures")
-  approvedClockEntries ClockEntry[]           @relation("ApprovedClockEntries")
+  shifts               Shift[]                 @relation("EmployeeShifts")
+  createdShifts        Shift[]                 @relation("ManagerShifts")
+  clockEntries         ClockEntry[]
+  locations            EmployeeLocation[]
+  availability         Availability[]
+  timeOff              TimeOffRequest[]        @relation("EmployeeTimeOff")
+  decidedTimeOff       TimeOffRequest[]        @relation("ManagerTimeOff")
+  offeredSwaps         ShiftSwap[]             @relation("OfferedSwaps")
+  claimedSwaps         ShiftSwap[]             @relation("ClaimedSwaps")
+  decidedSwaps         ShiftSwap[]             @relation("DecidedSwaps")
+  resetTokens          PasswordReset[]
+  payStubs             PayStub[]
+  createdTemplates     ScheduleTemplate[]      @relation("CreatedTemplates")
+  templateShifts       ScheduleTemplateShift[] @relation("TemplateShifts")
+  createdEvents        CalendarEvent[]         @relation("CreatedEvents")
+  uploadedDocuments    Document[]              @relation("UploadedDocuments")
+  signatures           DocumentSignature[]     @relation("EmployeeSignatures")
+  waivedSignatures     DocumentSignature[]     @relation("WaivedSignatures")
+  approvedClockEntries ClockEntry[]            @relation("ApprovedClockEntries")
 
   // Indexes for tenant scoping
   @@index([tenantId, active])
@@ -320,41 +320,41 @@ model User {
 // ============================================================
 
 model Location {
-  id        String   @id @default(cuid())
-  tenantId  String
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  name      String
-  address   String?  // legacy v11 single-line address; superseded by structured fields below
-  timezone  String   @default("America/New_York")
-  active    Boolean  @default(true)
-  hours     Json?
+  id                   String  @id @default(cuid())
+  tenantId             String
+  tenant               Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name                 String
+  address              String? // legacy v11 single-line address; superseded by structured fields below
+  timezone             String  @default("America/New_York")
+  active               Boolean @default(true)
+  hours                Json?
   // Geocoded lat/lng for the location's address (auto-populated on save via
   // Nominatim) — used for clock-in/out geofencing and map popups in
   // timesheets. Null until address is geocoded successfully.
-  lat       Float?
-  lng       Float?
+  lat                  Float?
+  lng                  Float?
   // Geofence radius in meters. 1609 = 1 mile (default). Editable per-location
   // for tighter (warehouse) or looser (multi-building campus) enforcement.
-  geofenceRadiusMeters Int @default(1609)
+  geofenceRadiusMeters Int     @default(1609)
 
   // LLC / payroll-issuer info (v12.2). When set, paystubs use these instead of tenant info.
   // Each location can be a distinct LLC for tax/payroll purposes.
-  legalName    String?  // "Reed KY Dispensary LLC"
+  legalName    String? // "Reed KY Dispensary LLC"
   addressLine1 String?
   addressLine2 String?
   city         String?
   locState     USState?
   zip          String?
   phone        String?
-  federalEIN   String?  // 9 digits, no dash
-  stateTaxId   String?  // KY withholding account number, etc.
+  federalEIN   String? // 9 digits, no dash
+  stateTaxId   String? // KY withholding account number, etc.
 
   createdAt DateTime @default(now())
 
-  shifts    Shift[]
-  employees EmployeeLocation[]
-  templateShifts ScheduleTemplateShift[] @relation("TemplateLocationShifts")
-  primaryEmployees User[] @relation("PrimaryLocation")
+  shifts           Shift[]
+  employees        EmployeeLocation[]
+  templateShifts   ScheduleTemplateShift[] @relation("TemplateLocationShifts")
+  primaryEmployees User[]                  @relation("PrimaryLocation")
 
   @@index([tenantId, active])
 }
@@ -374,29 +374,29 @@ model EmployeeLocation {
 // ============================================================
 
 model Shift {
-  id          String   @id @default(cuid())
-  tenantId    String
-  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  id           String    @id @default(cuid())
+  tenantId     String
+  tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   // employeeId is nullable to support "house shifts" / open shifts —
   // admins can post a shift before deciding who to assign it to.
-  employeeId  String?
-  employee    User?    @relation("EmployeeShifts", fields: [employeeId], references: [id], onDelete: Cascade)
-  managerId   String
-  manager     User     @relation("ManagerShifts", fields: [managerId], references: [id])
-  locationId  String?
-  location    Location? @relation(fields: [locationId], references: [id])
-  startTime   DateTime
-  endTime     DateTime
-  role        String?  // Free-text role name; matched against ShiftRole.name for color coding. Kept as string for backward compat.
-  tagId       String?  // Optional ShiftTag — colored pill on schedule cards (e.g. "Delivery", "Sales").
-  tag         ShiftTag? @relation(fields: [tagId], references: [id], onDelete: SetNull)
-  notes       String?
-  published   Boolean  @default(false)
-  publishedAt DateTime?
-  reminderSent Boolean @default(false)
-  createdAt   DateTime @default(now())
+  employeeId   String?
+  employee     User?     @relation("EmployeeShifts", fields: [employeeId], references: [id], onDelete: Cascade)
+  managerId    String
+  manager      User      @relation("ManagerShifts", fields: [managerId], references: [id])
+  locationId   String?
+  location     Location? @relation(fields: [locationId], references: [id])
+  startTime    DateTime
+  endTime      DateTime
+  role         String? // Free-text role name; matched against ShiftRole.name for color coding. Kept as string for backward compat.
+  tagId        String? // Optional ShiftTag — colored pill on schedule cards (e.g. "Delivery", "Sales").
+  tag          ShiftTag? @relation(fields: [tagId], references: [id], onDelete: SetNull)
+  notes        String?
+  published    Boolean   @default(false)
+  publishedAt  DateTime?
+  reminderSent Boolean   @default(false)
+  createdAt    DateTime  @default(now())
 
-  swap        ShiftSwap?
+  swap ShiftSwap?
 
   @@index([tenantId, startTime])
   @@index([employeeId, startTime])
@@ -413,7 +413,7 @@ model ShiftRole {
   id        String   @id @default(cuid())
   tenantId  String
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  name      String   // "Budtender", "Lead", "Management", etc.
+  name      String // "Budtender", "Lead", "Management", etc.
   color     String   @default("#0f6e56") // hex; matched to Shift.role for section coloring
   sortOrder Int      @default(0)
   active    Boolean  @default(true)
@@ -431,12 +431,12 @@ model ShiftTag {
   id        String   @id @default(cuid())
   tenantId  String
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  name      String   // "Delivery", "Sales", "Inventory", etc.
+  name      String // "Delivery", "Sales", "Inventory", etc.
   color     String   @default("#b8551c")
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
 
-  shifts    Shift[]
+  shifts         Shift[]
   templateShifts ScheduleTemplateShift[] @relation("TemplateTagShifts")
 
   @@unique([tenantId, name])
@@ -460,29 +460,29 @@ model ScheduleTemplate {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  shifts      ScheduleTemplateShift[]
+  shifts ScheduleTemplateShift[]
 
   @@unique([tenantId, name])
   @@index([tenantId, createdAt])
 }
 
 model ScheduleTemplateShift {
-  id          String   @id @default(cuid())
+  id          String           @id @default(cuid())
   templateId  String
   template    ScheduleTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
   // 0=Sunday ... 6=Saturday (matches JS Date.getDay())
   dayOfWeek   Int
-  startMinute Int      // minutes since midnight, 0-1439
-  endMinute   Int      // minutes since midnight, 0-1440 (overnight crosses to next day)
+  startMinute Int // minutes since midnight, 0-1439
+  endMinute   Int // minutes since midnight, 0-1440 (overnight crosses to next day)
   // Original employee — soft pointer. If employee is deleted/inactive at
   // apply time, the resulting shift becomes a house shift.
   employeeId  String?
-  employee    User?    @relation("TemplateShifts", fields: [employeeId], references: [id], onDelete: SetNull)
+  employee    User?            @relation("TemplateShifts", fields: [employeeId], references: [id], onDelete: SetNull)
   locationId  String?
-  location    Location? @relation("TemplateLocationShifts", fields: [locationId], references: [id], onDelete: SetNull)
+  location    Location?        @relation("TemplateLocationShifts", fields: [locationId], references: [id], onDelete: SetNull)
   role        String?
   tagId       String?
-  tag         ShiftTag? @relation("TemplateTagShifts", fields: [tagId], references: [id], onDelete: SetNull)
+  tag         ShiftTag?        @relation("TemplateTagShifts", fields: [tagId], references: [id], onDelete: SetNull)
   notes       String?
 
   @@index([templateId, dayOfWeek])
@@ -518,11 +518,11 @@ model LaborBudget {
 // ============================================================
 
 model CalendarEvent {
-  id          String   @id @default(cuid())
+  id          String            @id @default(cuid())
   tenantId    String
-  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant      Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   title       String
-  description String?  @db.Text
+  description String?           @db.Text
   type        CalendarEventType @default(OTHER)
   // Inclusive date range. For a single day, startDate == endDate.
   // Times normalized to midnight UTC of the date.
@@ -531,9 +531,9 @@ model CalendarEvent {
   // Optional hex color override. If null, derive from type at render time.
   color       String?
   createdById String
-  createdBy   User     @relation("CreatedEvents", fields: [createdById], references: [id])
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdBy   User              @relation("CreatedEvents", fields: [createdById], references: [id])
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
 
   @@index([tenantId, startDate])
   @@index([tenantId, type])
@@ -546,52 +546,52 @@ model CalendarEvent {
 // ============================================================
 
 model Document {
-  id            String   @id @default(cuid())
+  id            String              @id @default(cuid())
   tenantId      String
-  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant        Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   title         String
-  description   String?  @db.Text
-  fileUrl       String                 // Vercel Blob URL of the original PDF
-  fileName      String                 // original filename, for display
-  fileSize      Int                    // bytes
+  description   String?             @db.Text
+  fileUrl       String // Vercel Blob URL of the original PDF
+  fileName      String // original filename, for display
+  fileSize      Int // bytes
   // Extracted plaintext (server-side parsed via pdf-parse on upload).
   // Used as RAG context for the AI Q&A chatbot. Null = not indexed.
-  extractedText String?  @db.Text
-  required      Boolean  @default(true) // gate clock-in if true
-  active        Boolean  @default(true) // archive without delete
+  extractedText String?             @db.Text
+  required      Boolean             @default(true) // gate clock-in if true
+  active        Boolean             @default(true) // archive without delete
   uploadedById  String
-  uploadedBy    User     @relation("UploadedDocuments", fields: [uploadedById], references: [id])
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  uploadedBy    User                @relation("UploadedDocuments", fields: [uploadedById], references: [id])
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
   signatures    DocumentSignature[]
 
   @@index([tenantId, active])
 }
 
 model DocumentSignature {
-  id              String   @id @default(cuid())
-  documentId      String
-  document        Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  employeeId      String
-  employee        User     @relation("EmployeeSignatures", fields: [employeeId], references: [id], onDelete: Cascade)
-  status          DocumentSignatureStatus @default(PENDING)
+  id         String                  @id @default(cuid())
+  documentId String
+  document   Document                @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  employeeId String
+  employee   User                    @relation("EmployeeSignatures", fields: [employeeId], references: [id], onDelete: Cascade)
+  status     DocumentSignatureStatus @default(PENDING)
 
   // Signature itself (base64 PNG of the canvas drawing)
-  signatureImage  String?  @db.Text
+  signatureImage  String?   @db.Text
   // Vercel Blob URL of the merged signed PDF (signature embedded on a final page)
   signedFileUrl   String?
   signedAt        DateTime?
   signedIp        String?
-  signedUserAgent String?  @db.Text
+  signedUserAgent String?   @db.Text
 
   // Admin can waive a requirement (with audit trail)
-  waivedById      String?
-  waivedBy        User?    @relation("WaivedSignatures", fields: [waivedById], references: [id])
-  waivedAt        DateTime?
-  waiveReason     String?  @db.Text
+  waivedById  String?
+  waivedBy    User?     @relation("WaivedSignatures", fields: [waivedById], references: [id])
+  waivedAt    DateTime?
+  waiveReason String?   @db.Text
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([documentId, employeeId])
   @@index([employeeId, status])
@@ -602,36 +602,36 @@ model DocumentSignature {
 // ============================================================
 
 model ClockEntry {
-  id          String    @id @default(cuid())
-  tenantId    String
-  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  userId      String
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  clockIn     DateTime
-  clockOut    DateTime?
-  selfieIn    String?   @db.Text
-  selfieOut   String?   @db.Text
-  latIn       Float?
-  lngIn       Float?
-  latOut      Float?
-  lngOut      Float?
+  id         String    @id @default(cuid())
+  tenantId   String
+  tenant     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clockIn    DateTime
+  clockOut   DateTime?
+  selfieIn   String?   @db.Text
+  selfieOut  String?   @db.Text
+  latIn      Float?
+  lngIn      Float?
+  latOut     Float?
+  lngOut     Float?
   // Reverse-geocoded human-readable address at clock-in/out time (v12.3)
   // Captured server-side from lat/lng via OpenStreetMap Nominatim. Stored as a
   // snapshot so admins see the actual address even if geocoding service changes.
-  addressIn   String?   @db.Text
-  addressOut  String?   @db.Text
-  editedBy    String?
-  editNote    String?
-  createdAt   DateTime  @default(now())
+  addressIn  String?   @db.Text
+  addressOut String?   @db.Text
+  editedBy   String?
+  editNote   String?
+  createdAt  DateTime  @default(now())
 
   // Daily approval workflow (v12.6) — admins/managers must approve clock
   // entries before payroll generation treats them as final. Defaults to
   // PENDING on create unless tenant.requireClockApproval is false.
-  approvalStatus  ClockApprovalStatus @default(PENDING)
-  approvedById    String?
-  approvedBy      User?               @relation("ApprovedClockEntries", fields: [approvedById], references: [id])
-  approvedAt      DateTime?
-  approvalNote    String?             @db.Text
+  approvalStatus ClockApprovalStatus @default(PENDING)
+  approvedById   String?
+  approvedBy     User?               @relation("ApprovedClockEntries", fields: [approvedById], references: [id])
+  approvedAt     DateTime?
+  approvalNote   String?             @db.Text
 
   // Break tracking (v12.6) — first-class breaks instead of clocking out + in.
   breaks Break[]
@@ -647,14 +647,14 @@ model ClockEntry {
 // ============================================================
 
 model Break {
-  id           String      @id @default(cuid())
+  id           String     @id @default(cuid())
   clockEntryId String
-  clockEntry   ClockEntry  @relation(fields: [clockEntryId], references: [id], onDelete: Cascade)
+  clockEntry   ClockEntry @relation(fields: [clockEntryId], references: [id], onDelete: Cascade)
   breakStart   DateTime
-  breakEnd     DateTime?   // null while break is ongoing
-  breakType    BreakType   @default(SHORT_15)
+  breakEnd     DateTime? // null while break is ongoing
+  breakType    BreakType  @default(SHORT_15)
   notes        String?
-  createdAt    DateTime    @default(now())
+  createdAt    DateTime   @default(now())
 
   @@index([clockEntryId, breakStart])
 }
@@ -683,20 +683,20 @@ model Availability {
 // ============================================================
 
 model TimeOffRequest {
-  id           String         @id @default(cuid())
+  id           String        @id @default(cuid())
   tenantId     String
-  tenant       Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   userId       String
-  user         User           @relation("EmployeeTimeOff", fields: [userId], references: [id], onDelete: Cascade)
+  user         User          @relation("EmployeeTimeOff", fields: [userId], references: [id], onDelete: Cascade)
   startDate    DateTime
   endDate      DateTime
   reason       String?
-  status       RequestStatus  @default(PENDING)
+  status       RequestStatus @default(PENDING)
   decidedBy    String?
-  decider      User?          @relation("ManagerTimeOff", fields: [decidedBy], references: [id])
+  decider      User?         @relation("ManagerTimeOff", fields: [decidedBy], references: [id])
   decidedAt    DateTime?
   decisionNote String?
-  createdAt    DateTime       @default(now())
+  createdAt    DateTime      @default(now())
 
   @@index([tenantId, status])
   @@index([userId, startDate])
@@ -707,21 +707,21 @@ model TimeOffRequest {
 // ============================================================
 
 model ShiftSwap {
-  id           String     @id @default(cuid())
-  tenantId     String
-  tenant       Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  shiftId      String     @unique
-  shift        Shift      @relation(fields: [shiftId], references: [id], onDelete: Cascade)
-  offeredById  String
-  offeredBy    User       @relation("OfferedSwaps", fields: [offeredById], references: [id])
-  claimedById  String?
-  claimedBy    User?      @relation("ClaimedSwaps", fields: [claimedById], references: [id])
-  status       SwapStatus @default(OFFERED)
-  decidedById  String?
-  decidedBy    User?      @relation("DecidedSwaps", fields: [decidedById], references: [id])
-  decidedAt    DateTime?
-  note         String?
-  createdAt    DateTime   @default(now())
+  id          String     @id @default(cuid())
+  tenantId    String
+  tenant      Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  shiftId     String     @unique
+  shift       Shift      @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  offeredById String
+  offeredBy   User       @relation("OfferedSwaps", fields: [offeredById], references: [id])
+  claimedById String?
+  claimedBy   User?      @relation("ClaimedSwaps", fields: [claimedById], references: [id])
+  status      SwapStatus @default(OFFERED)
+  decidedById String?
+  decidedBy   User?      @relation("DecidedSwaps", fields: [decidedById], references: [id])
+  decidedAt   DateTime?
+  note        String?
+  createdAt   DateTime   @default(now())
 
   @@index([tenantId, status])
 }
@@ -731,13 +731,13 @@ model ShiftSwap {
 // ============================================================
 
 model PasswordReset {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  token     String   @unique
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String    @unique
   expiresAt DateTime
   usedAt    DateTime?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   @@index([token])
 }
@@ -747,25 +747,25 @@ model PasswordReset {
 // ============================================================
 
 model PayPeriod {
-  id            String          @id @default(cuid())
-  tenantId      String
-  tenant        Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  periodStart   DateTime        // Inclusive
-  periodEnd     DateTime        // Inclusive
-  payDate       DateTime        // Date employees are paid (typically a few days after periodEnd)
-  status        PayPeriodStatus @default(DRAFT)
-  finalizedAt   DateTime?
-  finalizedBy   String?         // userId of admin who finalized
-  notes         String?         @db.Text
+  id          String          @id @default(cuid())
+  tenantId    String
+  tenant      Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  periodStart DateTime // Inclusive
+  periodEnd   DateTime // Inclusive
+  payDate     DateTime // Date employees are paid (typically a few days after periodEnd)
+  status      PayPeriodStatus @default(DRAFT)
+  finalizedAt DateTime?
+  finalizedBy String? // userId of admin who finalized
+  notes       String?         @db.Text
 
   // Year-to-date snapshot AT the time of finalization (for accurate Additional Medicare,
   // Social Security wage cap enforcement, etc.). Nullable until finalized.
   ytdGrossSnapshotJson Json?
 
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  payStubs      PayStub[]
+  payStubs PayStub[]
 
   @@unique([tenantId, periodStart, periodEnd])
   @@index([tenantId, payDate])
@@ -773,52 +773,52 @@ model PayPeriod {
 }
 
 model PayStub {
-  id              String    @id @default(cuid())
-  payPeriodId     String
-  payPeriod       PayPeriod @relation(fields: [payPeriodId], references: [id], onDelete: Cascade)
-  employeeId      String
-  employee        User      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  id          String    @id @default(cuid())
+  payPeriodId String
+  payPeriod   PayPeriod @relation(fields: [payPeriodId], references: [id], onDelete: Cascade)
+  employeeId  String
+  employee    User      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   // Hours
-  regularHours    Float     // <= 40 hrs per week summed across the pay period
-  overtimeHours   Float     // > 40 hrs per week
+  regularHours  Float // <= 40 hrs per week summed across the pay period
+  overtimeHours Float // > 40 hrs per week
   // Note: KY follows federal FLSA — OT is computed per workweek, not per pay period.
 
   // Pay
-  hourlyRate      Float     // Snapshot at time of stub generation
-  regularPay      Float
-  overtimePay     Float
-  grossPay        Float
+  hourlyRate  Float // Snapshot at time of stub generation
+  regularPay  Float
+  overtimePay Float
+  grossPay    Float
 
   // Federal taxes
-  federalIncomeTax        Float
-  socialSecurityTax       Float
-  medicareTax             Float
-  additionalMedicareTax   Float    // 0 unless YTD wages > $200k
+  federalIncomeTax      Float
+  socialSecurityTax     Float
+  medicareTax           Float
+  additionalMedicareTax Float // 0 unless YTD wages > $200k
 
   // State taxes (KY)
-  stateIncomeTax          Float
+  stateIncomeTax Float
 
   // Local taxes (placeholder for future; 0 in v12)
-  localIncomeTax          Float    @default(0)
+  localIncomeTax Float @default(0)
 
   // Pre-tax deductions — sum of all four breakdowns below.
-  preTaxDeductions        Float    @default(0)
+  preTaxDeductions Float @default(0)
   // Breakdown for paystub display + audit (all per-period dollars)
-  preTax401k              Float    @default(0)
-  preTaxHealth            Float    @default(0)
-  preTaxHsa               Float    @default(0)
-  preTaxFsa               Float    @default(0)
+  preTax401k       Float @default(0)
+  preTaxHealth     Float @default(0)
+  preTaxHsa        Float @default(0)
+  preTaxFsa        Float @default(0)
 
   // Tax jurisdiction snapshot (what was applied at generation time)
-  taxState                USState?
-  localTaxJurisdiction    String?
+  taxState             USState?
+  localTaxJurisdiction String?
 
   // Post-tax deductions
-  extraWithholding        Float    // From W-4 step 4c
+  extraWithholding Float // From W-4 step 4c
 
-  totalDeductions         Float    // sum of all taxes + deductions
-  netPay                  Float
+  totalDeductions Float // sum of all taxes + deductions
+  netPay          Float
 
   // Snapshot of W-4 settings at stub time (for audit / explanation)
   filingStatusSnapshot         FilingStatus
@@ -828,12 +828,12 @@ model PayStub {
   deductionsAdjustmentSnapshot Float
 
   // PDF storage (base64 or external URL — TBD; for v12 we generate on-demand, no storage)
-  pdfUrl          String?   @db.Text
+  pdfUrl String? @db.Text
 
-  generatedAt     DateTime  @default(now())
+  generatedAt DateTime @default(now())
 
   // Optional notes / corrections
-  notes           String?   @db.Text
+  notes String? @db.Text
 
   @@unique([payPeriodId, employeeId])
   @@index([employeeId, generatedAt])
