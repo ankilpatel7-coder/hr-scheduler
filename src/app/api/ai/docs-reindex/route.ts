@@ -1,11 +1,9 @@
 /**
- * POST /api/ai/docs-reindex  — admin only
+ * POST /api/ai/docs-reindex?force=true — admin only.
  *
- * Extracts text from every Document.fileUrl in this tenant and stores it
- * in Document.extractedText. Skips docs already indexed unless ?force=true.
- *
- * Used to backfill existing docs uploaded before extraction was wired into
- * the upload route.
+ * Extracts text from every Document.fileUrl in this tenant and stores in
+ * Document.extractedText. Uses unpdf (built for serverless). Always returns
+ * JSON, even on internal failures.
  */
 
 import { NextResponse } from "next/server";
@@ -31,22 +29,19 @@ export async function POST(req: Request) {
       select: { id: true, title: true, fileUrl: true },
     });
 
-    // Load pdf-parse via its inner module to skip the buggy test snippet
-    // in the package's index.js that fails on Vercel.
-    let pdfParse: (buf: Buffer) => Promise<{ text: string }>;
+    // Load unpdf — serverless-friendly PDF text extractor.
+    let extractFromBuffer: (buf: Buffer) => Promise<string>;
     try {
       const { extractText, getDocumentProxy } = await import("unpdf");
-      pdfParse = async (buf: Buffer) => {
+      extractFromBuffer = async (buf: Buffer) => {
         const pdf = await getDocumentProxy(new Uint8Array(buf));
-        const { text } = await extractText(pdf, { mergePages: true });
-        return { text: Array.isArray(text) ? text.join("\n") : text };
+        const result = await extractText(pdf, { mergePages: true });
+        const text = (result as any).text;
+        return Array.isArray(text) ? text.join("\n") : (text ?? "");
       };
     } catch (e: any) {
       return NextResponse.json(
         { error: `Could not load unpdf library: ${e.message}` },
-        { status: 500 },
-      );
-    }` },
         { status: 500 },
       );
     }
@@ -60,8 +55,7 @@ export async function POST(req: Request) {
         const res = await fetch(d.fileUrl);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const buf = Buffer.from(await res.arrayBuffer());
-        const parsed = await pdfParse(buf);
-        const text = (parsed.text || "").trim();
+        const text = (await extractFromBuffer(buf)).trim();
         await prisma.document.update({
           where: { id: d.id },
           data: { extractedText: text || null },
@@ -80,7 +74,6 @@ export async function POST(req: Request) {
       errors: errors.slice(0, 10),
     });
   } catch (e: any) {
-    // Belt-and-suspenders: any unexpected error returns JSON, not HTML.
     return NextResponse.json(
       { error: `Reindex crashed: ${e.message}` },
       { status: 500 },
