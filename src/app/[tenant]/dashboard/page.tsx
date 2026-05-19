@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import AnimatedNumber from "@/components/animated-number";
 
+import PendingDocsBanner from "@/components/pending-docs-banner";
 export const dynamic = "force-dynamic";
 
 
@@ -146,6 +147,7 @@ export default async function Dashboard({ searchParams }: { searchParams?: { ros
     <div className="min-h-screen">
       <Navbar />
       <main className="max-w-[1500px] mx-auto px-6 py-10 animate-fade-in">
+        <PendingDocsBanner />
         {/* Hero */}
         <div className="mb-10 animate-slide-up hero-aurora">
           <div className="flex items-center gap-3 mb-4">

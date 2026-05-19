@@ -6,6 +6,7 @@ import Link from "next/link";
 import Navbar from "@/components/navbar";
 import BreakControls from "@/components/break-controls";
 import ClockCamera from "@/components/clock-camera";
+import PendingDocsBanner from "@/components/pending-docs-banner";
 import { MapPin, CheckCircle2, AlertTriangle, RefreshCw, Loader2, FileText } from "lucide-react";
 
 type OpenEntry = {
@@ -185,6 +186,7 @@ export default function ClockPage() {
     <div className="min-h-screen">
       <Navbar />
       <main className="max-w-3xl mx-auto px-6 py-10">
+        <PendingDocsBanner />
         
         {blockedDocs.length > 0 && (
           <div
