@@ -42,7 +42,12 @@ export async function PATCH(req: Request) {
   const body = await req.json();
   const parsed = patchSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ error: "Invalid input" }, { status: 400 });
+    const first = parsed.error.issues[0];
+    const field = first.path.length > 0 ? first.path.join(".") : "input";
+    return NextResponse.json(
+      { error: `Invalid ${field}: ${first.message}`, issues: parsed.error.issues },
+      { status: 400 },
+    );
   }
 
   const tenant = await prisma.tenant.update({
