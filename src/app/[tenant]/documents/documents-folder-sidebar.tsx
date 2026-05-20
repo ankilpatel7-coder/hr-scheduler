@@ -1,14 +1,18 @@
 "use client";
 
 /**
- * Folder tree sidebar — nested folders with expand/collapse, kebab menu,
- * and document counts.
+ * Folder tree sidebar v2 — adds:
+ *   - Drop targets (folders accept dragged documents → move on drop)
+ *   - Move Up / Move Down in the kebab menu (sortOrder via PATCH)
+ *   - "All" + "Unfiled" zones are also drop targets (drop a doc on Unfiled
+ *     to clear its folder)
  *
- * Selecting "All", "Unfiled", or a specific folder filters the main list.
- * The kebab menu on each folder opens rename / color / delete actions.
+ * Uses @dnd-kit/core's useDroppable. Folder reordering is via buttons, not
+ * vertical drag — keeps the implementation simple and accessible.
  */
 
 import { useState, useMemo } from "react";
+import { useDroppable } from "@dnd-kit/core";
 import {
   Folder,
   FolderOpen,
@@ -18,6 +22,8 @@ import {
   Plus,
   Files,
   Archive,
+  ArrowUp,
+  ArrowDown,
 } from "lucide-react";
 
 export type FolderNode = {
@@ -37,6 +43,7 @@ type FolderTreeProps = {
   onNewFolder: (parentId: string | null) => void;
   onEditFolder: (folder: FolderNode) => void;
   onDeleteFolder: (folder: FolderNode) => void;
+  onReorder: (folderId: string, direction: "up" | "down") => void;
   totalDocs: number;
   unfiledCount: number;
 };
@@ -73,6 +80,7 @@ export default function FolderSidebar({
   onNewFolder,
   onEditFolder,
   onDeleteFolder,
+  onReorder,
   totalDocs,
   unfiledCount,
 }: FolderTreeProps) {
@@ -110,20 +118,24 @@ export default function FolderSidebar({
 
         <nav className="py-2">
           <FolderRow
+            droppableId="all"
             label="All documents"
             count={totalDocs}
             icon={<Files className="w-4 h-4" />}
             active={selectedId === "all"}
             onClick={() => onSelect("all")}
             indent={0}
+            droppable={false}
           />
           <FolderRow
+            droppableId="unfiled"
             label="Unfiled"
             count={unfiledCount}
             icon={<Archive className="w-4 h-4" />}
             active={selectedId === "unfiled"}
             onClick={() => onSelect("unfiled")}
             indent={0}
+            droppable
           />
           {folders.length > 0 && (
             <div className="my-1 mx-3 border-t border-slate-100" />
@@ -142,6 +154,7 @@ export default function FolderSidebar({
               onNewSub={(pid) => onNewFolder(pid)}
               onEdit={onEditFolder}
               onDelete={onDeleteFolder}
+              onReorder={onReorder}
             />
           ))}
         </nav>
@@ -151,29 +164,40 @@ export default function FolderSidebar({
 }
 
 function FolderRow({
+  droppableId,
   label,
   count,
   icon,
   active,
   onClick,
   indent,
+  droppable,
 }: {
+  droppableId: string;
   label: string;
   count: number;
   icon: React.ReactNode;
   active: boolean;
   onClick: () => void;
   indent: number;
+  droppable: boolean;
 }) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: `folder-drop-${droppableId}`,
+    disabled: !droppable,
+    data: { type: "folder-drop", folderId: droppableId === "unfiled" ? null : droppableId },
+  });
+
   return (
     <button
+      ref={droppable ? setNodeRef : undefined}
       type="button"
       onClick={onClick}
       className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition ${
         active
           ? "bg-emerald-50 text-emerald-900 font-medium"
           : "text-slate-700 hover:bg-slate-50"
-      }`}
+      } ${isOver ? "ring-2 ring-emerald-400 ring-inset" : ""}`}
       style={{ paddingLeft: `${12 + indent * 16}px` }}
     >
       <span className="text-slate-400">{icon}</span>
@@ -195,6 +219,7 @@ function TreeBranch({
   onNewSub,
   onEdit,
   onDelete,
+  onReorder,
 }: {
   node: TreeNode;
   indent: number;
@@ -207,19 +232,26 @@ function TreeBranch({
   onNewSub: (parentId: string) => void;
   onEdit: (folder: FolderNode) => void;
   onDelete: (folder: FolderNode) => void;
+  onReorder: (folderId: string, direction: "up" | "down") => void;
 }) {
   const isExpanded = expanded.has(node.id);
   const isActive = selectedId === node.id;
   const hasChildren = node.children.length > 0;
 
+  const { setNodeRef, isOver } = useDroppable({
+    id: `folder-drop-${node.id}`,
+    data: { type: "folder-drop", folderId: node.id },
+  });
+
   return (
     <div>
       <div
+        ref={setNodeRef}
         className={`group flex items-center gap-1 pr-2 transition ${
           isActive
             ? "bg-emerald-50 text-emerald-900 font-medium"
             : "text-slate-700 hover:bg-slate-50"
-        }`}
+        } ${isOver ? "ring-2 ring-emerald-400 ring-inset" : ""}`}
         style={{ paddingLeft: `${4 + indent * 16}px` }}
       >
         <button
@@ -284,6 +316,27 @@ function TreeBranch({
                   type="button"
                   onClick={() => {
                     setMenuOpenId(null);
+                    onReorder(node.id, "up");
+                  }}
+                  className="w-full text-left px-3 py-1.5 hover:bg-slate-50 inline-flex items-center gap-2"
+                >
+                  <ArrowUp className="w-3.5 h-3.5" /> Move up
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMenuOpenId(null);
+                    onReorder(node.id, "down");
+                  }}
+                  className="w-full text-left px-3 py-1.5 hover:bg-slate-50 inline-flex items-center gap-2"
+                >
+                  <ArrowDown className="w-3.5 h-3.5" /> Move down
+                </button>
+                <div className="my-1 border-t border-slate-100" />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMenuOpenId(null);
                     onNewSub(node.id);
                   }}
                   className="w-full text-left px-3 py-1.5 hover:bg-slate-50"
@@ -298,7 +351,7 @@ function TreeBranch({
                   }}
                   className="w-full text-left px-3 py-1.5 hover:bg-slate-50"
                 >
-                  Rename / color
+                  Rename / color / parent
                 </button>
                 <div className="my-1 border-t border-slate-100" />
                 <button
@@ -332,6 +385,7 @@ function TreeBranch({
               onNewSub={onNewSub}
               onEdit={onEdit}
               onDelete={onDelete}
+              onReorder={onReorder}
             />
           ))}
         </div>

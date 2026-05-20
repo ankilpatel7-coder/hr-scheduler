@@ -1,17 +1,32 @@
 "use client";
 
 /**
- * Main client component for /[tenant]/documents (admin).
+ * Main client component for /[tenant]/documents (admin) — v2 with DnD.
  *
- * Renders the folder sidebar + filtered document list + bulk action bar +
- * folder/doc modals. Calls /api/document-folders and /api/documents/bulk.
- *
- * State only — no drag-and-drop yet (Phase 3 wires @dnd-kit).
+ * New in v2:
+ *   - DndContext wraps the page; doc rows are draggable; folder rows are
+ *     droppable. Drop a doc on a folder/Unfiled to move it.
+ *   - Folder kebab menu now has Move Up / Move Down; this client calls
+ *     PATCH /api/document-folders/[id] with new sortOrder for the dragged
+ *     folder + its swap target (in parallel).
+ *   - Folder edit modal now includes a "parent folder" picker for nesting
+ *     without DnD (works on mobile + with keyboard).
  */
 
 import { useState, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  useDraggable,
+  type DragEndEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
 import {
   ArrowLeft,
   Search,
@@ -26,6 +41,8 @@ import {
   MoreHorizontal,
   Loader2,
   ExternalLink,
+  GripVertical,
+  FileText,
 } from "lucide-react";
 import { format } from "date-fns";
 import FolderSidebar, { FolderNode } from "./documents-folder-sidebar";
@@ -82,6 +99,13 @@ export default function DocumentsClient({
   const [replaceDoc, setReplaceDoc] = useState<DocRow | null>(null);
   const [docMenuId, setDocMenuId] = useState<string | null>(null);
 
+  // --- DnD state ---
+  const [draggingDoc, setDraggingDoc] = useState<DocRow | null>(null);
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor),
+  );
+
   // --- derived ---
   const unfiledCount = useMemo(
     () => initialDocs.filter((d) => !d.folderId).length,
@@ -100,7 +124,6 @@ export default function DocumentsClient({
     return list;
   }, [initialDocs, selectedFolderId, search]);
 
-  // ---- bulk actions ----
   const allVisibleSelected =
     visibleDocs.length > 0 && visibleDocs.every((d) => selected.has(d.id));
 
@@ -131,6 +154,8 @@ export default function DocumentsClient({
 
   const clearSelection = () => setSelected(new Set());
 
+  // ---- bulk actions ----
+
   const bulkAction = async (
     action: "archive" | "setRequired",
     extra?: { required?: boolean },
@@ -157,8 +182,8 @@ export default function DocumentsClient({
     }
   };
 
-  const bulkMoveTo = async (folderId: string | null) => {
-    const ids = Array.from(selected);
+  const bulkMoveTo = async (folderId: string | null, idsOverride?: string[]) => {
+    const ids = idsOverride ?? Array.from(selected);
     if (ids.length === 0) return;
     try {
       const res = await fetch("/api/documents/bulk", {
@@ -170,7 +195,7 @@ export default function DocumentsClient({
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error ?? `HTTP ${res.status}`);
       }
-      clearSelection();
+      if (!idsOverride) clearSelection();
       setMoveModalOpen(false);
       router.refresh();
     } catch (e: any) {
@@ -179,6 +204,7 @@ export default function DocumentsClient({
   };
 
   // ---- folder actions ----
+
   const createFolder = async (data: {
     name: string;
     parentId: string | null;
@@ -199,7 +225,12 @@ export default function DocumentsClient({
 
   const updateFolder = async (
     id: string,
-    data: { name?: string; color?: string | null },
+    data: {
+      name?: string;
+      color?: string | null;
+      parentId?: string | null;
+      sortOrder?: number;
+    },
   ) => {
     const res = await fetch(`/api/document-folders/${id}`, {
       method: "PATCH",
@@ -211,7 +242,6 @@ export default function DocumentsClient({
       throw new Error(err.error ?? `HTTP ${res.status}`);
     }
     setEditFolder(null);
-    router.refresh();
   };
 
   const deleteFolderAction = async (id: string) => {
@@ -226,6 +256,66 @@ export default function DocumentsClient({
     router.refresh();
   };
 
+  // ---- folder reorder (up/down arrows) ----
+
+  const reorderFolder = async (folderId: string, direction: "up" | "down") => {
+    const target = initialFolders.find((f) => f.id === folderId);
+    if (!target) return;
+    // Get siblings (same parentId)
+    const siblings = initialFolders
+      .filter((f) => f.parentId === target.parentId)
+      .sort((a, b) =>
+        a.sortOrder !== b.sortOrder
+          ? a.sortOrder - b.sortOrder
+          : a.name.localeCompare(b.name),
+      );
+    const idx = siblings.findIndex((f) => f.id === folderId);
+    const swapIdx = direction === "up" ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= siblings.length) return; // already at edge
+    const swap = siblings[swapIdx];
+    // Swap sortOrders
+    try {
+      await Promise.all([
+        fetch(`/api/document-folders/${target.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sortOrder: swap.sortOrder }),
+        }),
+        fetch(`/api/document-folders/${swap.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sortOrder: target.sortOrder }),
+        }),
+      ]);
+      router.refresh();
+    } catch (e: any) {
+      alert(`Reorder failed: ${e.message}`);
+    }
+  };
+
+  // ---- DnD handlers ----
+
+  const handleDragStart = (event: DragStartEvent) => {
+    const doc = initialDocs.find((d) => `doc-${d.id}` === event.active.id);
+    if (doc) setDraggingDoc(doc);
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    setDraggingDoc(null);
+    const { active, over } = event;
+    if (!over) return;
+    const activeId = String(active.id);
+    if (!activeId.startsWith("doc-")) return;
+    const docId = activeId.replace(/^doc-/, "");
+    const data = over.data.current as { type?: string; folderId?: string | null } | undefined;
+    if (!data || data.type !== "folder-drop") return;
+    const targetFolderId = data.folderId ?? null;
+    const doc = initialDocs.find((d) => d.id === docId);
+    if (!doc) return;
+    if (doc.folderId === targetFolderId) return; // no-op
+    bulkMoveTo(targetFolderId, [docId]);
+  };
+
   // ---- folder name for header ----
   const headerLabel =
     selectedFolderId === "all"
@@ -236,358 +326,442 @@ export default function DocumentsClient({
           "Folder");
 
   return (
-    <div>
-      <Link
-        href={`/${tenantSlug}/dashboard`}
-        className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 mb-4"
-      >
-        <ArrowLeft className="w-4 h-4" /> Dashboard
-      </Link>
+    <DndContext
+      sensors={sensors}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+    >
+      <div>
+        <Link
+          href={`/${tenantSlug}/dashboard`}
+          className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 mb-4"
+        >
+          <ArrowLeft className="w-4 h-4" /> Dashboard
+        </Link>
 
-      <div className="flex items-baseline justify-between mb-6 flex-wrap gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900">Documents</h1>
-          <p className="text-sm text-slate-500 mt-1">
-            Upload, organize, and track signatures.
-          </p>
+        <div className="flex items-baseline justify-between mb-6 flex-wrap gap-4">
+          <div>
+            <h1 className="text-3xl font-bold text-slate-900">Documents</h1>
+            <p className="text-sm text-slate-500 mt-1">
+              Upload, organize, and track signatures.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <DocsReindexButton />
+            <button
+              type="button"
+              onClick={() => setShowUpload(true)}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700"
+            >
+              <Upload className="w-4 h-4" /> Upload document
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <DocsReindexButton />
-          <button
-            type="button"
-            onClick={() => setShowUpload(true)}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700"
-          >
-            <Upload className="w-4 h-4" /> Upload document
-          </button>
-        </div>
-      </div>
 
-      <div className="flex flex-col md:flex-row gap-6">
-        <FolderSidebar
-          folders={initialFolders}
-          selectedId={selectedFolderId}
-          onSelect={setSelectedFolderId}
-          onNewFolder={(parentId) => setShowNewFolder({ parentId })}
-          onEditFolder={(f) => setEditFolder(f)}
-          onDeleteFolder={(f) => setDeleteFolder(f)}
-          totalDocs={initialDocs.length}
-          unfiledCount={unfiledCount}
-        />
+        <div className="flex flex-col md:flex-row gap-6">
+          <FolderSidebar
+            folders={initialFolders}
+            selectedId={selectedFolderId}
+            onSelect={setSelectedFolderId}
+            onNewFolder={(parentId) => setShowNewFolder({ parentId })}
+            onEditFolder={(f) => setEditFolder(f)}
+            onDeleteFolder={(f) => setDeleteFolder(f)}
+            onReorder={reorderFolder}
+            totalDocs={initialDocs.length}
+            unfiledCount={unfiledCount}
+          />
 
-        <section className="flex-1 min-w-0">
-          <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
-            {/* Toolbar */}
-            <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-3 flex-wrap">
-              <h2 className="font-semibold text-slate-800 text-lg flex-1 min-w-0 truncate">
-                {headerLabel}
-                <span className="ml-2 text-sm font-normal text-slate-400">
-                  {visibleDocs.length} doc{visibleDocs.length === 1 ? "" : "s"}
-                </span>
-              </h2>
-              <div className="relative">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                <input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search docs…"
-                  className="pl-8 pr-3 py-1.5 text-sm rounded-lg ring-1 ring-slate-200 focus:ring-emerald-500 focus:outline-none w-56"
-                />
+          <section className="flex-1 min-w-0">
+            <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
+              {/* Toolbar */}
+              <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-3 flex-wrap">
+                <h2 className="font-semibold text-slate-800 text-lg flex-1 min-w-0 truncate">
+                  {headerLabel}
+                  <span className="ml-2 text-sm font-normal text-slate-400">
+                    {visibleDocs.length} doc
+                    {visibleDocs.length === 1 ? "" : "s"}
+                  </span>
+                </h2>
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Search docs…"
+                    className="pl-8 pr-3 py-1.5 text-sm rounded-lg ring-1 ring-slate-200 focus:ring-emerald-500 focus:outline-none w-56"
+                  />
+                </div>
               </div>
-            </div>
 
-            {/* Bulk action bar */}
-            {selected.size > 0 && (
-              <div className="px-4 py-2 bg-emerald-50 border-b border-emerald-100 flex items-center gap-3 text-sm flex-wrap">
-                <span className="font-medium text-emerald-900">
-                  {selected.size} selected
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setMoveModalOpen(true)}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-white ring-1 ring-emerald-200 text-emerald-800 hover:bg-emerald-100"
-                >
-                  <FolderInput className="w-3.5 h-3.5" /> Move to folder
-                </button>
-                <button
-                  type="button"
-                  onClick={() => bulkAction("setRequired", { required: true })}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-white ring-1 ring-emerald-200 text-emerald-800 hover:bg-emerald-100"
-                >
-                  <Star className="w-3.5 h-3.5" /> Mark required
-                </button>
-                <button
-                  type="button"
-                  onClick={() => bulkAction("setRequired", { required: false })}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-white ring-1 ring-emerald-200 text-emerald-800 hover:bg-emerald-100"
-                >
-                  <StarOff className="w-3.5 h-3.5" /> Mark optional
-                </button>
-                <button
-                  type="button"
-                  onClick={() => bulkAction("archive")}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-white ring-1 ring-rose-200 text-rose-700 hover:bg-rose-50"
-                >
-                  <ArchiveX className="w-3.5 h-3.5" /> Archive
-                </button>
-                <button
-                  type="button"
-                  onClick={clearSelection}
-                  className="ml-auto inline-flex items-center gap-1 text-slate-500 hover:text-slate-700"
-                >
-                  <X className="w-3.5 h-3.5" /> Clear
-                </button>
-              </div>
-            )}
-
-            {/* Doc list */}
-            {visibleDocs.length === 0 ? (
-              <div className="px-6 py-16 text-center text-slate-500">
-                {search.trim()
-                  ? `No documents match "${search}".`
-                  : selectedFolderId === "unfiled"
-                    ? "No unfiled documents."
-                    : "No documents in this folder yet."}
-              </div>
-            ) : (
-              <ul className="divide-y divide-slate-100">
-                <li className="px-4 py-2 bg-slate-50 text-xs uppercase tracking-wide text-slate-500 flex items-center gap-3">
+              {/* Bulk action bar */}
+              {selected.size > 0 && (
+                <div className="px-4 py-2 bg-emerald-50 border-b border-emerald-100 flex items-center gap-3 text-sm flex-wrap">
+                  <span className="font-medium text-emerald-900">
+                    {selected.size} selected
+                  </span>
                   <button
                     type="button"
-                    onClick={toggleSelectAll}
-                    aria-label={
-                      allVisibleSelected ? "Deselect all" : "Select all"
-                    }
+                    onClick={() => setMoveModalOpen(true)}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-white ring-1 ring-emerald-200 text-emerald-800 hover:bg-emerald-100"
                   >
-                    {allVisibleSelected ? (
-                      <CheckSquare className="w-4 h-4 text-emerald-600" />
-                    ) : (
-                      <Square className="w-4 h-4 text-slate-400" />
-                    )}
+                    <FolderInput className="w-3.5 h-3.5" /> Move to folder
                   </button>
-                  <span className="flex-1">Document</span>
-                  <span className="w-28 text-right hidden sm:inline">
-                    Sigs
-                  </span>
-                  <span className="w-28 text-right hidden md:inline">
-                    Uploaded
-                  </span>
-                  <span className="w-10" />
-                </li>
-                {visibleDocs.map((d) => (
-                  <li
-                    key={d.id}
-                    className={`px-4 py-3 flex items-center gap-3 group ${
-                      selected.has(d.id) ? "bg-emerald-50/50" : "hover:bg-slate-50"
-                    }`}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      bulkAction("setRequired", { required: true })
+                    }
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-white ring-1 ring-emerald-200 text-emerald-800 hover:bg-emerald-100"
                   >
+                    <Star className="w-3.5 h-3.5" /> Mark required
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      bulkAction("setRequired", { required: false })
+                    }
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-white ring-1 ring-emerald-200 text-emerald-800 hover:bg-emerald-100"
+                  >
+                    <StarOff className="w-3.5 h-3.5" /> Mark optional
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => bulkAction("archive")}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-white ring-1 ring-rose-200 text-rose-700 hover:bg-rose-50"
+                  >
+                    <ArchiveX className="w-3.5 h-3.5" /> Archive
+                  </button>
+                  <button
+                    type="button"
+                    onClick={clearSelection}
+                    className="ml-auto inline-flex items-center gap-1 text-slate-500 hover:text-slate-700"
+                  >
+                    <X className="w-3.5 h-3.5" /> Clear
+                  </button>
+                </div>
+              )}
+
+              {/* Doc list */}
+              {visibleDocs.length === 0 ? (
+                <div className="px-6 py-16 text-center text-slate-500">
+                  {search.trim()
+                    ? `No documents match "${search}".`
+                    : selectedFolderId === "unfiled"
+                      ? "No unfiled documents."
+                      : "No documents in this folder yet."}
+                </div>
+              ) : (
+                <ul className="divide-y divide-slate-100">
+                  <li className="px-4 py-2 bg-slate-50 text-xs uppercase tracking-wide text-slate-500 flex items-center gap-3">
                     <button
                       type="button"
-                      onClick={() => toggleSelected(d.id)}
-                      aria-label={selected.has(d.id) ? "Deselect" : "Select"}
+                      onClick={toggleSelectAll}
+                      aria-label={
+                        allVisibleSelected ? "Deselect all" : "Select all"
+                      }
                     >
-                      {selected.has(d.id) ? (
+                      {allVisibleSelected ? (
                         <CheckSquare className="w-4 h-4 text-emerald-600" />
                       ) : (
                         <Square className="w-4 h-4 text-slate-400" />
                       )}
                     </button>
-                    <div className="flex-1 min-w-0">
-                      <Link
-                        href={`/${tenantSlug}/documents/${d.id}`}
-                        className="font-medium text-slate-900 hover:text-emerald-700 truncate block"
-                      >
-                        {d.title}
-                      </Link>
-                      <div className="flex items-center gap-2 text-xs text-slate-500 mt-0.5 flex-wrap">
-                        {d.version > 1 && (
-                          <span className="px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 font-medium">
-                            v{d.version}
-                          </span>
-                        )}
-                        {d.required && (
-                          <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-medium">
-                            Required
-                          </span>
-                        )}
-                        {d.folderName && selectedFolderId === "all" && (
-                          <span
-                            className="px-1.5 py-0.5 rounded text-white font-medium"
-                            style={{
-                              backgroundColor: d.folderColor ?? "#64748b",
-                            }}
-                          >
-                            {d.folderName}
-                          </span>
-                        )}
-                        <span className="truncate">{d.fileName}</span>
-                      </div>
-                    </div>
-                    <div className="w-28 text-right text-xs hidden sm:block">
-                      <span className="font-medium text-slate-900">
-                        {d.signed}/{d.total}
-                      </span>
-                      {d.pending > 0 && (
-                        <span className="text-amber-600 ml-1">
-                          ({d.pending} pending)
-                        </span>
-                      )}
-                    </div>
-                    <div className="w-28 text-right text-xs text-slate-500 hidden md:block">
-                      {format(new Date(d.createdAt), "MMM d, yyyy")}
-                    </div>
-                    <div className="relative">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setDocMenuId(docMenuId === d.id ? null : d.id)
-                        }
-                        className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100"
-                        aria-label="Document actions"
-                      >
-                        <MoreHorizontal className="w-4 h-4" />
-                      </button>
-                      {docMenuId === d.id && (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => setDocMenuId(null)}
-                            className="fixed inset-0 z-30 cursor-default"
-                            aria-label="Close menu"
-                          />
-                          <div className="absolute right-0 top-7 z-40 w-48 rounded-lg bg-white shadow-lg ring-1 ring-slate-200 py-1 text-sm">
-                            <a
-                              href={d.fileUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50"
-                            >
-                              <ExternalLink className="w-3.5 h-3.5" /> Open PDF
-                            </a>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setDocMenuId(null);
-                                setReplaceDoc(d);
-                              }}
-                              className="w-full text-left px-3 py-1.5 hover:bg-slate-50"
-                            >
-                              Replace with new version
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setDocMenuId(null);
-                                setSelected(new Set([d.id]));
-                                setMoveModalOpen(true);
-                              }}
-                              className="w-full text-left px-3 py-1.5 hover:bg-slate-50"
-                            >
-                              Move to folder
-                            </button>
-                            <div className="my-1 border-t border-slate-100" />
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setDocMenuId(null);
-                                setSelected(new Set([d.id]));
-                                bulkAction("archive");
-                              }}
-                              className="w-full text-left px-3 py-1.5 text-rose-600 hover:bg-rose-50"
-                            >
-                              Archive
-                            </button>
-                          </div>
-                        </>
-                      )}
-                    </div>
+                    <span className="flex-1">Document</span>
+                    <span className="w-28 text-right hidden sm:inline">
+                      Sigs
+                    </span>
+                    <span className="w-28 text-right hidden md:inline">
+                      Uploaded
+                    </span>
+                    <span className="w-10" />
                   </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </section>
+                  {visibleDocs.map((d) => (
+                    <DocListRow
+                      key={d.id}
+                      doc={d}
+                      selected={selected.has(d.id)}
+                      onToggleSelect={() => toggleSelected(d.id)}
+                      tenantSlug={tenantSlug}
+                      docMenuId={docMenuId}
+                      setDocMenuId={setDocMenuId}
+                      onReplace={() => setReplaceDoc(d)}
+                      onMove={() => {
+                        setSelected(new Set([d.id]));
+                        setMoveModalOpen(true);
+                      }}
+                      onArchive={() => {
+                        setSelected(new Set([d.id]));
+                        bulkAction("archive");
+                      }}
+                      showFolderBadge={selectedFolderId === "all"}
+                    />
+                  ))}
+                </ul>
+              )}
+            </div>
+          </section>
+        </div>
+
+        {/* ---------------- Modals ---------------- */}
+
+        {showUpload && (
+          <Modal onClose={() => setShowUpload(false)} title="Upload document">
+            <DocumentUploadForm />
+            <p className="mt-3 text-xs text-slate-500">
+              After upload, refresh to see the new document.
+            </p>
+          </Modal>
+        )}
+
+        {showNewFolder && (
+          <FolderFormModal
+            title="New folder"
+            parentId={showNewFolder.parentId}
+            folders={initialFolders}
+            onClose={() => setShowNewFolder(null)}
+            onSubmit={(data) => createFolder(data)}
+          />
+        )}
+
+        {editFolder && (
+          <FolderFormModal
+            title="Edit folder"
+            initial={editFolder}
+            parentId={editFolder.parentId}
+            folders={initialFolders}
+            currentFolderId={editFolder.id}
+            onClose={() => setEditFolder(null)}
+            onSubmit={async (data) => {
+              await updateFolder(editFolder.id, data);
+              router.refresh();
+            }}
+          />
+        )}
+
+        {deleteFolder && (
+          <Modal
+            onClose={() => setDeleteFolder(null)}
+            title={`Delete "${deleteFolder.name}"?`}
+          >
+            <p className="text-sm text-slate-600">
+              Documents inside become <strong>unfiled</strong>, not deleted.
+              Child folders are also deleted.
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setDeleteFolder(null)}
+                className="px-3 py-1.5 text-sm rounded ring-1 ring-slate-200 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => deleteFolderAction(deleteFolder.id)}
+                className="px-3 py-1.5 text-sm rounded bg-rose-600 text-white hover:bg-rose-700"
+              >
+                Delete folder
+              </button>
+            </div>
+          </Modal>
+        )}
+
+        {moveModalOpen && (
+          <MoveToFolderModal
+            folders={initialFolders}
+            onClose={() => setMoveModalOpen(false)}
+            onPick={(id) => bulkMoveTo(id)}
+          />
+        )}
+
+        {replaceDoc && (
+          <ReplaceDocModal
+            doc={replaceDoc}
+            onClose={() => setReplaceDoc(null)}
+            onDone={() => {
+              setReplaceDoc(null);
+              router.refresh();
+            }}
+          />
+        )}
       </div>
 
-      {/* ---------------- Modals ---------------- */}
-
-      {showUpload && (
-        <Modal onClose={() => setShowUpload(false)} title="Upload document">
-          <DocumentUploadForm />
-          <p className="mt-3 text-xs text-slate-500">
-            After upload, refresh to see the new document.
-          </p>
-        </Modal>
-      )}
-
-      {showNewFolder && (
-        <FolderFormModal
-          title="New folder"
-          parentId={showNewFolder.parentId}
-          onClose={() => setShowNewFolder(null)}
-          onSubmit={(data) => createFolder(data)}
-        />
-      )}
-
-      {editFolder && (
-        <FolderFormModal
-          title="Rename folder"
-          initial={editFolder}
-          parentId={editFolder.parentId}
-          onClose={() => setEditFolder(null)}
-          onSubmit={(data) =>
-            updateFolder(editFolder.id, { name: data.name, color: data.color })
-          }
-        />
-      )}
-
-      {deleteFolder && (
-        <Modal
-          onClose={() => setDeleteFolder(null)}
-          title={`Delete "${deleteFolder.name}"?`}
-        >
-          <p className="text-sm text-slate-600">
-            Documents inside become <strong>unfiled</strong>, not deleted.
-            Child folders are also deleted.
-          </p>
-          <div className="mt-4 flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => setDeleteFolder(null)}
-              className="px-3 py-1.5 text-sm rounded ring-1 ring-slate-200 hover:bg-slate-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={() => deleteFolderAction(deleteFolder.id)}
-              className="px-3 py-1.5 text-sm rounded bg-rose-600 text-white hover:bg-rose-700"
-            >
-              Delete folder
-            </button>
+      {/* Drag preview */}
+      <DragOverlay>
+        {draggingDoc && (
+          <div className="px-3 py-2 rounded-lg bg-white shadow-2xl ring-2 ring-emerald-400 text-sm font-medium text-slate-900 inline-flex items-center gap-2 max-w-xs">
+            <FileText className="w-4 h-4 text-slate-400 shrink-0" />
+            <span className="truncate">{draggingDoc.title}</span>
           </div>
-        </Modal>
-      )}
+        )}
+      </DragOverlay>
+    </DndContext>
+  );
+}
 
-      {moveModalOpen && (
-        <MoveToFolderModal
-          folders={initialFolders}
-          onClose={() => setMoveModalOpen(false)}
-          onPick={(id) => bulkMoveTo(id)}
-        />
-      )}
+/* =================== draggable doc row =================== */
 
-      {replaceDoc && (
-        <ReplaceDocModal
-          doc={replaceDoc}
-          onClose={() => setReplaceDoc(null)}
-          onDone={() => {
-            setReplaceDoc(null);
-            router.refresh();
-          }}
-        />
-      )}
-    </div>
+function DocListRow({
+  doc,
+  selected,
+  onToggleSelect,
+  tenantSlug,
+  docMenuId,
+  setDocMenuId,
+  onReplace,
+  onMove,
+  onArchive,
+  showFolderBadge,
+}: {
+  doc: DocRow;
+  selected: boolean;
+  onToggleSelect: () => void;
+  tenantSlug: string;
+  docMenuId: string | null;
+  setDocMenuId: (id: string | null) => void;
+  onReplace: () => void;
+  onMove: () => void;
+  onArchive: () => void;
+  showFolderBadge: boolean;
+}) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `doc-${doc.id}`,
+  });
+
+  return (
+    <li
+      ref={setNodeRef}
+      className={`px-4 py-3 flex items-center gap-3 group transition ${
+        selected
+          ? "bg-emerald-50/50"
+          : isDragging
+            ? "opacity-30"
+            : "hover:bg-slate-50"
+      }`}
+    >
+      <button
+        type="button"
+        {...listeners}
+        {...attributes}
+        className="cursor-grab active:cursor-grabbing p-1 -ml-1 text-slate-300 hover:text-slate-500 touch-none"
+        aria-label="Drag to move"
+        title="Drag onto a folder to move"
+      >
+        <GripVertical className="w-4 h-4" />
+      </button>
+      <button
+        type="button"
+        onClick={onToggleSelect}
+        aria-label={selected ? "Deselect" : "Select"}
+      >
+        {selected ? (
+          <CheckSquare className="w-4 h-4 text-emerald-600" />
+        ) : (
+          <Square className="w-4 h-4 text-slate-400" />
+        )}
+      </button>
+      <div className="flex-1 min-w-0">
+        <Link
+          href={`/${tenantSlug}/documents/${doc.id}`}
+          className="font-medium text-slate-900 hover:text-emerald-700 truncate block"
+        >
+          {doc.title}
+        </Link>
+        <div className="flex items-center gap-2 text-xs text-slate-500 mt-0.5 flex-wrap">
+          {doc.version > 1 && (
+            <span className="px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 font-medium">
+              v{doc.version}
+            </span>
+          )}
+          {doc.required && (
+            <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-medium">
+              Required
+            </span>
+          )}
+          {doc.folderName && showFolderBadge && (
+            <span
+              className="px-1.5 py-0.5 rounded text-white font-medium"
+              style={{ backgroundColor: doc.folderColor ?? "#64748b" }}
+            >
+              {doc.folderName}
+            </span>
+          )}
+          <span className="truncate">{doc.fileName}</span>
+        </div>
+      </div>
+      <div className="w-28 text-right text-xs hidden sm:block">
+        <span className="font-medium text-slate-900">
+          {doc.signed}/{doc.total}
+        </span>
+        {doc.pending > 0 && (
+          <span className="text-amber-600 ml-1">({doc.pending} pending)</span>
+        )}
+      </div>
+      <div className="w-28 text-right text-xs text-slate-500 hidden md:block">
+        {format(new Date(doc.createdAt), "MMM d, yyyy")}
+      </div>
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() => setDocMenuId(docMenuId === doc.id ? null : doc.id)}
+          className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100"
+          aria-label="Document actions"
+        >
+          <MoreHorizontal className="w-4 h-4" />
+        </button>
+        {docMenuId === doc.id && (
+          <>
+            <button
+              type="button"
+              onClick={() => setDocMenuId(null)}
+              className="fixed inset-0 z-30 cursor-default"
+              aria-label="Close menu"
+            />
+            <div className="absolute right-0 top-7 z-40 w-48 rounded-lg bg-white shadow-lg ring-1 ring-slate-200 py-1 text-sm">
+              <a
+                href={doc.fileUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50"
+              >
+                <ExternalLink className="w-3.5 h-3.5" /> Open PDF
+              </a>
+              <button
+                type="button"
+                onClick={() => {
+                  setDocMenuId(null);
+                  onReplace();
+                }}
+                className="w-full text-left px-3 py-1.5 hover:bg-slate-50"
+              >
+                Replace with new version
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setDocMenuId(null);
+                  onMove();
+                }}
+                className="w-full text-left px-3 py-1.5 hover:bg-slate-50"
+              >
+                Move to folder
+              </button>
+              <div className="my-1 border-t border-slate-100" />
+              <button
+                type="button"
+                onClick={() => {
+                  setDocMenuId(null);
+                  onArchive();
+                }}
+                className="w-full text-left px-3 py-1.5 text-rose-600 hover:bg-rose-50"
+              >
+                Archive
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </li>
   );
 }
 
@@ -634,12 +808,16 @@ function FolderFormModal({
   title,
   parentId,
   initial,
+  folders,
+  currentFolderId,
   onClose,
   onSubmit,
 }: {
   title: string;
   parentId: string | null;
   initial?: { name: string; color: string | null };
+  folders: FolderNode[];
+  currentFolderId?: string;
   onClose: () => void;
   onSubmit: (data: {
     name: string;
@@ -649,8 +827,26 @@ function FolderFormModal({
 }) {
   const [name, setName] = useState(initial?.name ?? "");
   const [color, setColor] = useState(initial?.color ?? "");
+  const [pickedParent, setPickedParent] = useState<string | null>(parentId);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  // Prevent picking self or descendants as parent (cycle protection).
+  const invalidParents = useMemo(() => {
+    if (!currentFolderId) return new Set<string>();
+    const invalid = new Set<string>([currentFolderId]);
+    let added = true;
+    while (added) {
+      added = false;
+      for (const f of folders) {
+        if (f.parentId && invalid.has(f.parentId) && !invalid.has(f.id)) {
+          invalid.add(f.id);
+          added = true;
+        }
+      }
+    }
+    return invalid;
+  }, [folders, currentFolderId]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -660,7 +856,7 @@ function FolderFormModal({
     try {
       await onSubmit({
         name: name.trim(),
-        parentId,
+        parentId: pickedParent,
         color: color.trim() || null,
       });
     } catch (e: any) {
@@ -694,6 +890,26 @@ function FolderFormModal({
             placeholder="e.g. Onboarding"
             maxLength={80}
           />
+        </div>
+        <div>
+          <label className="text-xs font-medium text-slate-700">
+            Parent folder
+          </label>
+          <select
+            value={pickedParent ?? ""}
+            onChange={(e) => setPickedParent(e.target.value || null)}
+            className="mt-1 w-full px-3 py-1.5 rounded-lg ring-1 ring-slate-200 focus:ring-emerald-500 focus:outline-none text-sm"
+          >
+            <option value="">— Top level —</option>
+            {folders
+              .filter((f) => !invalidParents.has(f.id))
+              .sort((a, b) => a.name.localeCompare(b.name))
+              .map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.name}
+                </option>
+              ))}
+          </select>
         </div>
         <div>
           <label className="text-xs font-medium text-slate-700">

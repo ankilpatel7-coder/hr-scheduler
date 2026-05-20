@@ -13,6 +13,7 @@ const patchSchema = z.object({
   description: z.string().nullable().optional(),
   parentId: z.string().nullable().optional(),
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().optional(),
+  sortOrder: z.number().int().optional(),
 });
 
 export async function PATCH(
