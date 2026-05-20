@@ -23,8 +23,8 @@ const createSchema = z.object({
   locationId: z.string().optional().nullable(),
   startTime: z.string(),
   endTime: z.string(),
-  role: z.string().optional(),
-  notes: z.string().optional(),
+  role: z.string().optional().nullable(),
+  notes: z.string().optional().nullable(),
   tagId: z.string().optional().nullable(),
 });
 
@@ -135,7 +135,12 @@ export async function POST(req: Request) {
   const body = await req.json();
   const parsed = createSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ error: "Invalid input" }, { status: 400 });
+    const first = parsed.error.issues[0];
+    const field = first.path.length > 0 ? first.path.join(".") : "input";
+    return NextResponse.json(
+      { error: `Invalid ${field}: ${first.message}`, issues: parsed.error.issues },
+      { status: 400 },
+    );
   }
   const { employeeId, locationId, startTime, endTime, role: shiftRole, notes, tagId } = parsed.data;
 
