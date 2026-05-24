@@ -113,8 +113,18 @@ export async function PATCH(req: Request) {
     if (typeof isTipped === "boolean") data.isTipped = isTipped;
   }
   if (active === true) data.archivedAt = null;
+  if (active === false) data.archivedAt = data.archivedAt ?? new Date();
 
   await prisma.user.update({ where: { id }, data });
+
+  // If we just deactivated, unassign their future shifts so they become
+  // house shifts (matches DELETE soft-archive behavior).
+  if (active === false) {
+    await prisma.shift.updateMany({
+      where: { employeeId: id, startTime: { gte: new Date() } },
+      data: { employeeId: null },
+    });
+  }
 
   if (Array.isArray(locationIds)) {
     // Verify all locations are in this tenant
@@ -201,9 +211,19 @@ export async function DELETE(req: Request) {
     return NextResponse.json({ ok: true, deleted: "permanent" });
   }
 
-  await prisma.user.update({
-    where: { id },
-    data: { active: false, archivedAt: new Date() },
+  // Unassign future shifts BEFORE archiving so they become house shifts
+  // (employeeId = null). Past shifts stay tied to the archived user for
+  // historical attendance accuracy.
+  const _archiveAt = new Date();
+  await prisma.$transaction(async (tx) => {
+    await tx.shift.updateMany({
+      where: { employeeId: id, startTime: { gte: _archiveAt } },
+      data: { employeeId: null },
+    });
+    await tx.user.update({
+      where: { id },
+      data: { active: false, archivedAt: _archiveAt },
+    });
   });
   return NextResponse.json({ ok: true, archived: true });
 }
