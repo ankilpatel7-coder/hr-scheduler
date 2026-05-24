@@ -70,7 +70,7 @@ export const authOptions: NextAuthOptions = {
         const user = await prisma.user.findUnique({
           where: { email: credentials.email.toLowerCase() },
         });
-        if (!user || !user.active) return null;
+        if (!user || !user.active || user.archivedAt) return null;
 
         let ok = await bcrypt.compare(credentials.password, user.passwordHash);
         if (!ok && /^\d{4}$/.test(credentials.password) && user.pinHash) {
