@@ -65,7 +65,7 @@ export type Row = {
   shifts: Shift[];
 };
 
-type Range = "day" | "week" | "month";
+type Range = "day" | "week" | "month" | "custom";
 
 function gradeColor(score: number): { bg: string; text: string; ring: string } {
   if (score >= 90)
@@ -81,11 +81,15 @@ export default function AttendanceClient({
   tenantSlug,
   range,
   anchorYmd,
+  customFrom,
+  customTo,
   rows,
 }: {
   tenantSlug: string;
   range: Range;
   anchorYmd: string;
+  customFrom?: string | null;
+  customTo?: string | null;
   rows: Row[];
 }) {
   const router = useRouter();
@@ -102,12 +106,71 @@ export default function AttendanceClient({
     });
   }
 
-  function setUrl(nextRange: Range, nextDate: string) {
-    const params = new URLSearchParams(searchParams?.toString() ?? "");
+  function setUrl(
+    nextRange: Range,
+    nextDate: string,
+    customFromParam?: string,
+    customToParam?: string,
+  ) {
+    const params = new URLSearchParams();
     params.set("range", nextRange);
     params.set("date", nextDate);
+    if (nextRange === "custom" && customFromParam && customToParam) {
+      params.set("from", customFromParam);
+      params.set("to", customToParam);
+    }
     router.push(`${pathname}?${params.toString()}`);
     router.refresh();
+  }
+
+  function setCustomRange(f: string, t: string) {
+    setUrl("custom", anchorYmd, f, t);
+  }
+
+  function jumpQuick(kind: "last-week" | "last-month" | "last-30" | "last-quarter" | "ytd") {
+    const today = new Date();
+    let from: Date, to: Date, useRange: Range;
+    switch (kind) {
+      case "last-week": {
+        const lastSunday = new Date(today);
+        lastSunday.setDate(today.getDate() - today.getDay() - 7);
+        const lastSat = new Date(lastSunday);
+        lastSat.setDate(lastSunday.getDate() + 6);
+        from = lastSunday;
+        to = lastSat;
+        useRange = "custom";
+        break;
+      }
+      case "last-month": {
+        const firstOfThis = new Date(today.getFullYear(), today.getMonth(), 1);
+        const firstOfLast = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+        from = firstOfLast;
+        to = new Date(firstOfThis.getTime() - 1);
+        useRange = "custom";
+        break;
+      }
+      case "last-30": {
+        from = new Date(today);
+        from.setDate(today.getDate() - 30);
+        to = today;
+        useRange = "custom";
+        break;
+      }
+      case "last-quarter": {
+        from = new Date(today);
+        from.setDate(today.getDate() - 90);
+        to = today;
+        useRange = "custom";
+        break;
+      }
+      case "ytd": {
+        from = new Date(today.getFullYear(), 0, 1);
+        to = today;
+        useRange = "custom";
+        break;
+      }
+    }
+    setUrl(useRange, format(today, "yyyy-MM-dd"), format(from, "yyyy-MM-dd"), format(to, "yyyy-MM-dd"));
   }
 
   function navigate(direction: -1 | 1) {
@@ -143,11 +206,13 @@ export default function AttendanceClient({
 
   const anchor = parseISO(anchorYmd);
   const rangeLabel =
-    range === "day"
-      ? format(anchor, "EEEE, MMM d, yyyy")
-      : range === "week"
-        ? `Week of ${format(anchor, "MMM d, yyyy")}`
-        : format(anchor, "MMMM yyyy");
+    range === "custom" && customFrom && customTo
+      ? `${format(parseISO(customFrom), "MMM d, yyyy")} \u2014 ${format(parseISO(customTo), "MMM d, yyyy")}`
+      : range === "day"
+        ? format(anchor, "EEEE, MMM d, yyyy")
+        : range === "week"
+          ? `Week of ${format(anchor, "MMM d, yyyy")}`
+          : format(anchor, "MMMM yyyy");
 
   return (
     <>
@@ -169,52 +234,92 @@ export default function AttendanceClient({
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {(["day", "week", "month"] as Range[]).map((r) => (
+          {(["day", "week", "month", "custom"] as Range[]).map((r) => (
             <button
               key={r}
-              onClick={() => setUrl(r, anchorYmd)}
+              onClick={() => {
+                if (r === "custom") {
+                  // Default to last 30 days when entering custom mode
+                  const today = new Date();
+                  const past = new Date(today);
+                  past.setDate(today.getDate() - 30);
+                  setUrl("custom", format(today, "yyyy-MM-dd"), format(past, "yyyy-MM-dd"), format(today, "yyyy-MM-dd"));
+                } else {
+                  setUrl(r, anchorYmd);
+                }
+              }}
               className={`btn btn-secondary ${
                 range === r ? "!bg-ink !text-paper !border-ink" : ""
               }`}
             >
-              {r === "day" ? "Day" : r === "week" ? "Week" : "Month"}
+              {r === "day" ? "Day" : r === "week" ? "Week" : r === "month" ? "Month" : "Custom"}
             </button>
           ))}
         </div>
       </div>
 
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
         <div className="text-sm text-smoke">{rangeLabel}</div>
-        <div className="inline-flex items-center gap-1 border border-dust rounded-full px-1 py-0.5 bg-paper">
-          <button
-            onClick={() => navigate(-1)}
-            className="w-7 h-7 rounded-full hover:bg-ink/5 flex items-center justify-center transition"
-            aria-label="Previous"
-          >
-            <ChevronLeft size={14} className="text-smoke" />
-          </button>
-          <span className="text-[11px] text-ink px-2">
-            {range === "day"
-              ? format(anchor, "MMM d")
-              : range === "week"
+        {range === "custom" ? (
+          <div className="inline-flex items-center gap-2 border border-dust rounded-full px-2 py-1 bg-paper text-[11px]">
+            <span className="text-smoke">From</span>
+            <input
+              type="date"
+              value={customFrom ?? ""}
+              onChange={(e) => e.target.value && customTo && setCustomRange(e.target.value, customTo)}
+              className="text-[11px] border-0 bg-transparent w-[120px]"
+            />
+            <span className="text-smoke">to</span>
+            <input
+              type="date"
+              value={customTo ?? ""}
+              onChange={(e) => e.target.value && customFrom && setCustomRange(customFrom, e.target.value)}
+              className="text-[11px] border-0 bg-transparent w-[120px]"
+            />
+          </div>
+        ) : (
+          <div className="inline-flex items-center gap-1 border border-dust rounded-full px-1 py-0.5 bg-paper">
+            <button
+              onClick={() => navigate(-1)}
+              className="w-7 h-7 rounded-full hover:bg-ink/5 flex items-center justify-center transition"
+              aria-label="Previous"
+              title={range === "month" ? "Previous month" : range === "week" ? "Previous week" : "Previous day"}
+            >
+              <ChevronLeft size={14} className="text-smoke" />
+            </button>
+            <span className="text-[11px] text-ink px-2">
+              {range === "day"
                 ? format(anchor, "MMM d")
-                : format(anchor, "MMM yyyy")}
-          </span>
-          <button
-            onClick={() => navigate(1)}
-            className="w-7 h-7 rounded-full hover:bg-ink/5 flex items-center justify-center transition"
-            aria-label="Next"
-          >
-            <ChevronRight size={14} className="text-smoke" />
-          </button>
-          <span className="w-px h-4 bg-dust mx-0.5" />
-          <input
-            type="date"
-            value={anchorYmd}
-            onChange={(e) => e.target.value && setUrl(range, e.target.value)}
-            className="text-[11px] border-0 bg-transparent w-[110px]"
-          />
-        </div>
+                : range === "week"
+                  ? format(anchor, "MMM d")
+                  : format(anchor, "MMM yyyy")}
+            </span>
+            <button
+              onClick={() => navigate(1)}
+              className="w-7 h-7 rounded-full hover:bg-ink/5 flex items-center justify-center transition"
+              aria-label="Next"
+              title={range === "month" ? "Next month" : range === "week" ? "Next week" : "Next day"}
+            >
+              <ChevronRight size={14} className="text-smoke" />
+            </button>
+            <span className="w-px h-4 bg-dust mx-0.5" />
+            <input
+              type="date"
+              value={anchorYmd}
+              onChange={(e) => e.target.value && setUrl(range, e.target.value)}
+              className="text-[11px] border-0 bg-transparent w-[110px]"
+            />
+          </div>
+        )}
+      </div>
+
+      <div className="flex items-center gap-2 flex-wrap text-[11px] mb-6">
+        <span className="text-smoke font-medium uppercase tracking-wider">Quick:</span>
+        <button onClick={() => jumpQuick("last-week")} className="px-2 py-1 rounded-full border border-dust hover:bg-ink/5 text-ink">Last week</button>
+        <button onClick={() => jumpQuick("last-month")} className="px-2 py-1 rounded-full border border-dust hover:bg-ink/5 text-ink">Last month</button>
+        <button onClick={() => jumpQuick("last-30")} className="px-2 py-1 rounded-full border border-dust hover:bg-ink/5 text-ink">Last 30 days</button>
+        <button onClick={() => jumpQuick("last-quarter")} className="px-2 py-1 rounded-full border border-dust hover:bg-ink/5 text-ink">Last 90 days</button>
+        <button onClick={() => jumpQuick("ytd")} className="px-2 py-1 rounded-full border border-dust hover:bg-ink/5 text-ink">YTD</button>
       </div>
 
       {/* KPI strip */}

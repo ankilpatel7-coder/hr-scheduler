@@ -40,12 +40,23 @@ import AttendanceClient, { type Row, type Shift } from "./attendance-client";
 
 export const dynamic = "force-dynamic";
 
-type Range = "day" | "week" | "month";
+type Range = "day" | "week" | "month" | "custom";
 
 const LATE_MIN = 10; // minutes
 const MATCH_WINDOW_MS = 2 * 60 * 60 * 1000; // ±2h to match clock entry to shift
 
-function resolveRange(range: Range, anchor: Date) {
+function resolveRange(
+  range: Range,
+  anchor: Date,
+  customFrom?: string,
+  customTo?: string,
+): { from: Date; to: Date } {
+  if (range === "custom" && customFrom && customTo) {
+    return {
+      from: startOfDay(new Date(customFrom)),
+      to: endOfDay(new Date(customTo)),
+    };
+  }
   if (range === "day") return { from: startOfDay(anchor), to: endOfDay(anchor) };
   if (range === "week")
     return {
@@ -84,7 +95,7 @@ export default async function AttendancePage({
   searchParams,
 }: {
   params: { tenant: string };
-  searchParams?: { range?: Range; date?: string };
+  searchParams?: { range?: Range; date?: string; from?: string; to?: string };
 }) {
   const session = await getServerAuth();
   if (!session) redirect(`/login?from=/${params.tenant}/attendance`);
@@ -102,7 +113,7 @@ export default async function AttendancePage({
 
   const range = (searchParams?.range as Range) ?? "week";
   const anchor = searchParams?.date ? new Date(searchParams.date) : new Date();
-  const { from, to } = resolveRange(range, anchor);
+  const { from, to } = resolveRange(range, anchor, searchParams?.from, searchParams?.to);
 
   const [shifts, clockEntries, employees] = await Promise.all([
     prisma.shift.findMany({
@@ -260,6 +271,8 @@ export default async function AttendancePage({
           tenantSlug={params.tenant}
           range={range}
           anchorYmd={anchorYmd}
+          customFrom={searchParams?.from ?? null}
+          customTo={searchParams?.to ?? null}
           rows={list}
         />
       </main>
