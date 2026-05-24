@@ -40,6 +40,7 @@ export const authOptions: NextAuthOptions = {
             where: {
               tenantId: tenant.id,
               active: true,
+              archivedAt: null,
               pinHash: { not: null },
             },
           });

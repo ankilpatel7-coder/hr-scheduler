@@ -98,6 +98,9 @@ export default async function AttendancePage({
         published: true,
         employeeId: { not: null },
         startTime: { gte: from, lte: to },
+        // Exclude shifts whose assigned employee is inactive/archived so
+        // stale shifts from ex-employees don't pollute attendance reports.
+        employee: { active: true, archivedAt: null },
       },
       select: {
         id: true,
