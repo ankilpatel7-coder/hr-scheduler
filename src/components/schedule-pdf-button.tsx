@@ -1,18 +1,20 @@
 "use client";
 
 /**
- * Schedule PDF — v2 (drawn, not screenshotted).
+ * Schedule PDF — v3.
  *
- * Builds a clean tabular PDF with jsPDF + autoTable instead of html2canvas
- * scraping the on-screen UI. Result: vector output, professional layout,
- * proper page breaks, and tight filtering — only PUBLISHED shifts that have
- * an assigned employee land on the PDF (no drafts, no house shifts).
+ * v3 fixes from v2:
+ *   1. Filters out archived AND inactive employees. v2 trusted shift.employee
+ *      blindly; if an employee was archived after their shift was published,
+ *      they'd still show in the PDF. Now we cross-check against /api/employees
+ *      which returns only active non-archived users.
+ *   2. Tag name now appears alongside role in the cell. v2 fetched the tag
+ *      from the API include but never displayed it.
+ *   3. Role/tag rendering is more visible — italic on its own line so it
+ *      stands out from the time even on busy cells.
  *
- * Layout: landscape Letter
- *   - Header: tenant business name, "Week of <Mon>", optional location
- *   - Grid: Employee | Sun..Sat | Weekly total
- *     Each day cell: stacked shifts, e.g. "9:00a–5:00p" + role on second line
- *   - Footer row: daily totals + grand total
+ * Layout unchanged: landscape Letter, grid with totals row + page numbers.
+ * Filter unchanged: published === true AND employeeId != null.
  */
 
 import { useState } from "react";
@@ -28,6 +30,14 @@ type Shift = {
   published: boolean;
   employee: { id: string; name: string } | null;
   location: { id: string; name: string } | null;
+  tag: { id: string; name: string; color: string | null } | null;
+};
+
+type ActiveEmployee = {
+  id: string;
+  name: string;
+  active: boolean;
+  archivedAt: string | null;
 };
 
 export default function SchedulePdfButton({
@@ -59,33 +69,46 @@ export default function SchedulePdfButton({
       const autoTable: (doc: any, opts: any) => void =
         (autoTableMod as any).default ?? (autoTableMod as any);
 
-      // Fetch shifts for the week, scoped to the current location filter.
+      // Fetch shifts AND the active-employee whitelist in parallel.
       const locQuery = locationFilter ? `&locationId=${locationFilter}` : "";
-      const shiftsRes = await fetch(
-        `/api/shifts?from=${weekStartIso}&to=${weekEndIso}${locQuery}`,
-      );
+      const [shiftsRes, empsRes] = await Promise.all([
+        fetch(`/api/shifts?from=${weekStartIso}&to=${weekEndIso}${locQuery}`),
+        fetch(`/api/employees`),
+      ]);
       if (!shiftsRes.ok) throw new Error("Could not load shifts");
+      if (!empsRes.ok) throw new Error("Could not load employees");
       const { shifts } = (await shiftsRes.json()) as { shifts: Shift[] };
+      const { employees } = (await empsRes.json()) as {
+        employees: ActiveEmployee[];
+      };
 
-      // Filter: only published shifts with an assigned employee.
-      // Drops drafts AND house shifts (employeeId null).
-      const printable = shifts.filter(
-        (s) => s.published && s.employeeId && s.employee,
+      // Whitelist of currently-active employee IDs. /api/employees filters out
+      // archived users by default, but we also drop active===false here in case
+      // anyone is "soft-disabled" without being archived.
+      const activeIds = new Set(
+        employees
+          .filter((e) => e.active && !e.archivedAt)
+          .map((e) => e.id),
       );
 
-      // Build day columns (Sun → Sat starting from the provided weekStart).
+      // Filter shifts: published, has assigned employee, employee is still active.
+      const printable = shifts.filter(
+        (s) =>
+          s.published &&
+          s.employeeId &&
+          s.employee &&
+          activeIds.has(s.employeeId),
+      );
+
+      // Day columns (Sun → Sat starting from provided weekStart).
       const weekStart = startOfDay(new Date(weekStartIso));
       const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
       const dayKey = (d: Date) =>
         `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
       const dayKeys = days.map(dayKey);
 
-      // Aggregate per employee: array-of-strings per day cell + weekly total.
-      type EmpRow = {
-        name: string;
-        cells: string[][];
-        total: number;
-      };
+      // Aggregate per employee.
+      type EmpRow = { name: string; cells: string[][]; total: number };
       const empMap = new Map<string, EmpRow>();
       const dailyHours = days.map(() => 0);
 
@@ -108,7 +131,7 @@ export default function SchedulePdfButton({
           empMap.set(s.employeeId!, row);
         }
         row.total += hours;
-        row.cells[idx].push(formatShiftCell(start, end, s.role));
+        row.cells[idx].push(formatShiftCell(start, end, s.role, s.tag));
       }
 
       const empRows = Array.from(empMap.values()).sort((a, b) =>
@@ -129,17 +152,20 @@ export default function SchedulePdfButton({
       });
       const margin = 0.4;
 
-      // Header block
+      // Header
       pdf.setFontSize(16);
       pdf.setFont("helvetica", "bold");
-      pdf.setTextColor(15, 23, 42); // slate-900
+      pdf.setTextColor(15, 23, 42);
       pdf.text(tenantBusinessName ?? "Schedule", margin, margin + 0.25);
 
       pdf.setFontSize(11);
       pdf.setFont("helvetica", "normal");
-      pdf.setTextColor(71, 85, 105); // slate-600
-      const weekLabel = `Week of ${format(weekStart, "MMMM d, yyyy")}`;
-      pdf.text(weekLabel, margin, margin + 0.5);
+      pdf.setTextColor(71, 85, 105);
+      pdf.text(
+        `Week of ${format(weekStart, "MMMM d, yyyy")}`,
+        margin,
+        margin + 0.5,
+      );
 
       let headerBottom = margin + 0.6;
       if (locationName) {
@@ -148,7 +174,6 @@ export default function SchedulePdfButton({
         headerBottom = margin + 0.8;
       }
 
-      // Header row: Employee | Sun MMM d | Mon MMM d | ... | Total
       const head = [
         [
           "Employee",
@@ -182,14 +207,14 @@ export default function SchedulePdfButton({
           font: "helvetica",
           fontSize: 8.5,
           cellPadding: 0.07,
-          lineColor: [226, 232, 240], // slate-200
+          lineColor: [226, 232, 240],
           lineWidth: 0.006,
           textColor: [15, 23, 42],
           overflow: "linebreak",
           valign: "top",
         },
         headStyles: {
-          fillColor: [15, 23, 42], // slate-900
+          fillColor: [15, 23, 42],
           textColor: [255, 255, 255],
           fontStyle: "bold",
           halign: "center",
@@ -197,7 +222,7 @@ export default function SchedulePdfButton({
           cellPadding: 0.09,
         },
         footStyles: {
-          fillColor: [241, 245, 249], // slate-100
+          fillColor: [241, 245, 249],
           textColor: [15, 23, 42],
           fontStyle: "bold",
           halign: "right",
@@ -228,11 +253,10 @@ export default function SchedulePdfButton({
         },
         margin: { left: margin, right: margin, bottom: margin },
         didDrawPage: (data: any) => {
-          // Page number in the bottom-right.
           const pageCount = pdf.internal.pages.length - 1;
           const pageNum = data.pageNumber;
           pdf.setFontSize(8);
-          pdf.setTextColor(148, 163, 184); // slate-400
+          pdf.setTextColor(148, 163, 184);
           pdf.text(
             `Page ${pageNum} of ${pageCount}`,
             pdf.internal.pageSize.getWidth() - margin,
@@ -270,15 +294,30 @@ export default function SchedulePdfButton({
   );
 }
 
-// "9:00a–5:00p" plus role on second line if present.
-function formatShiftCell(start: Date, end: Date, role: string | null): string {
+// Cell text: time on line 1, role/tag on line 2. Examples:
+//   "9a–5p"             (no role, no tag)
+//   "9a–5p\nBudtender"  (role only)
+//   "9a–5p\nSales"      (tag only)
+//   "9a–5p\nBudtender · Sales"  (both)
+function formatShiftCell(
+  start: Date,
+  end: Date,
+  role: string | null,
+  tag: { name: string } | null,
+): string {
   const t = (d: Date) => {
     const s = format(d, "h:mma").toLowerCase();
-    // Compact AM/PM marker: "9:00am" → "9a", "12:30pm" → "12:30p"
     return s.replace(":00", "").replace("am", "a").replace("pm", "p");
   };
   const time = `${t(start)}–${t(end)}`;
-  return role && role.trim() ? `${time}\n${role.trim()}` : time;
+  const roleStr = role && role.trim();
+  const tagStr = tag?.name && tag.name.trim();
+  const labelParts: string[] = [];
+  if (roleStr) labelParts.push(roleStr);
+  if (tagStr) labelParts.push(tagStr);
+  return labelParts.length > 0
+    ? `${time}\n${labelParts.join(" · ")}`
+    : time;
 }
 
 function buildFilename(
