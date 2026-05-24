@@ -11,11 +11,10 @@ import { format } from "date-fns";
 // timezone. Reads YYYY-MM-DD from the ISO string instead of round-tripping
 // through Date (which would shift by a day for negative-UTC viewers).
 function fmtDateSafe(iso: string): string {
-  const ymd = iso.slice(0, 10); // "2026-05-06"
+  const ymd = iso.slice(0, 10);
   const [y, m, d] = ymd.split("-").map(Number);
   return format(new Date(y, m - 1, d, 12), "MMM d, yyyy");
 }
-
 
 type Req = {
   id: string;
@@ -28,6 +27,8 @@ type Req = {
   user: { id: string; name: string; department: string | null };
   decider: { name: string } | null;
 };
+
+type EmpLite = { id: string; name: string };
 
 export default function TimeOffPage() {
   const { data: session, status } = useSession();
@@ -148,8 +149,7 @@ export default function TimeOffPage() {
                       <StatusChip status={r.status} />
                     </div>
                     <div className="text-sm text-smoke">
-                      {fmtDateSafe(r.startDate)} –{" "}
-                      {fmtDateSafe(r.endDate)}
+                      {fmtDateSafe(r.startDate)} – {fmtDateSafe(r.endDate)}
                     </div>
                     {r.reason && (
                       <div className="text-sm text-ink/70 mt-2 italic">"{r.reason}"</div>
@@ -213,6 +213,7 @@ export default function TimeOffPage() {
 
       {showCreate && (
         <CreateModal
+          canCreateForOthers={canApprove}
           onClose={() => setShowCreate(false)}
           onCreated={() => {
             setShowCreate(false);
@@ -245,24 +246,53 @@ function StatusChip({ status }: { status: string }) {
 }
 
 function CreateModal({
+  canCreateForOthers,
   onClose,
   onCreated,
 }: {
+  canCreateForOthers: boolean;
   onClose: () => void;
   onCreated: () => void;
 }) {
-  const [form, setForm] = useState({ startDate: "", endDate: "", reason: "" });
+  const [form, setForm] = useState({
+    startDate: "",
+    endDate: "",
+    reason: "",
+    userId: "", // empty = "for myself"
+  });
+  const [employees, setEmployees] = useState<EmpLite[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!canCreateForOthers) return;
+    fetch("/api/employees")
+      .then((r) => (r.ok ? r.json() : { employees: [] }))
+      .then((d) => {
+        const list: EmpLite[] = (d.employees ?? []).map((e: any) => ({
+          id: e.id,
+          name: e.name,
+        }));
+        setEmployees(list.sort((a, b) => a.name.localeCompare(b.name)));
+      })
+      .catch(() => {});
+  }, [canCreateForOthers]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setErr(null);
     setSaving(true);
+    const payload: any = {
+      startDate: form.startDate,
+      endDate: form.endDate,
+      reason: form.reason || undefined,
+    };
+    if (canCreateForOthers && form.userId) payload.userId = form.userId;
+
     const res = await fetch("/api/time-off", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form),
+      body: JSON.stringify(payload),
     });
     setSaving(false);
     if (!res.ok) {
@@ -286,6 +316,29 @@ function CreateModal({
           <h2 className="display text-2xl">Time off</h2>
         </div>
         <form onSubmit={submit} className="space-y-3">
+          {canCreateForOthers && (
+            <div>
+              <label>Employee</label>
+              <select
+                value={form.userId}
+                onChange={(e) => setForm({ ...form, userId: e.target.value })}
+              >
+                <option value="">Myself</option>
+                <optgroup label="On behalf of (auto-approved)">
+                  {employees.map((e) => (
+                    <option key={e.id} value={e.id}>
+                      {e.name}
+                    </option>
+                  ))}
+                </optgroup>
+              </select>
+              {form.userId && (
+                <div className="text-[11px] text-moss mt-1">
+                  Auto-approved when admin creates on behalf of an employee.
+                </div>
+              )}
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label>Start date</label>

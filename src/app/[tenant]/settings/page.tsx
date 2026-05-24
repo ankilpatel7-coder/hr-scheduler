@@ -4,6 +4,7 @@ import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Navbar from "@/components/navbar";
 import ClockApprovalPanel from "@/components/clock-approval-panel";
+import TenantPrefsPanel from "@/components/tenant-prefs-panel";
 import {
   Mail,
   Check,
@@ -38,6 +39,7 @@ export default function SettingsPage() {
 
         <div className="space-y-6">
           <ClockApprovalPanel />
+          <TenantPrefsPanel />
           <DatabasePanel />
           <EmailPanel email={session?.user?.email ?? ""} />
         </div>

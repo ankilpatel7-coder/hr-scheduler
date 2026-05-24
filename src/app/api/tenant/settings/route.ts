@@ -15,6 +15,8 @@ import { requireRole } from "@/lib/guards";
 
 const patchSchema = z.object({
   requireClockApproval: z.boolean().optional(),
+  enableHouseShifts: z.boolean().optional(),
+  requireBreakSelfie: z.boolean().optional(),
 });
 
 export async function GET() {
@@ -26,7 +28,12 @@ export async function GET() {
 
   const tenant = await prisma.tenant.findUnique({
     where: { id: auth.tenantId },
-    select: { requireClockApproval: true, businessName: true },
+    select: {
+      requireClockApproval: true,
+      enableHouseShifts: true,
+      requireBreakSelfie: true,
+      businessName: true,
+    },
   });
 
   return NextResponse.json({ tenant });
@@ -53,7 +60,12 @@ export async function PATCH(req: Request) {
   const tenant = await prisma.tenant.update({
     where: { id: auth.tenantId },
     data: parsed.data,
-    select: { requireClockApproval: true, businessName: true },
+    select: {
+      requireClockApproval: true,
+      enableHouseShifts: true,
+      requireBreakSelfie: true,
+      businessName: true,
+    },
   });
 
   return NextResponse.json({ tenant });

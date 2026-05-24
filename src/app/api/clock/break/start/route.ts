@@ -19,7 +19,8 @@ import { prisma } from "@/lib/db";
 import { getServerAuth } from "@/lib/auth";
 
 const startSchema = z.object({
-  type: z.enum(["SHORT_15", "MEAL_30", "OTHER"]).optional().default("SHORT_15"),
+  type: z.enum(["SHORT_15", "MEAL_30", "OTHER"]),
+  selfieStart: z.string().nullable().optional().optional().default("SHORT_15"),
 });
 
 async function getOpenShift(userId: string, tenantId: string) {
@@ -68,6 +69,7 @@ export async function POST(req: Request) {
         clockEntryId: open.id,
         breakStart: new Date(),
         breakType: parsed.data.type,
+        selfieStart: parsed.data.selfieStart ?? null,
       },
     });
     return NextResponse.json({ break: br });

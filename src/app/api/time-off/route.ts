@@ -23,6 +23,9 @@ const createSchema = z.object({
   startDate: z.string(),
   endDate: z.string(),
   reason: z.string().optional(),
+  // Admin/manager only: create on behalf of another employee.
+  // Ignored for staff.
+  userId: z.string().optional(),
 });
 
 function ensureTenant(auth: any) {
@@ -82,18 +85,41 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
-  const { startDate, endDate, reason } = parsed.data;
+  const { startDate, endDate, reason, userId: overrideUserId } = parsed.data;
   if (parseDateOnly(endDate) < parseDateOnly(startDate)) {
     return NextResponse.json({ error: "End date must be on or after start" }, { status: 400 });
+  }
+
+  // Admin/manager can submit on behalf of another employee, auto-approved.
+  const isPrivileged = auth.role === "ADMIN" || auth.role === "MANAGER";
+  const targetUserId = (isPrivileged && overrideUserId) ? overrideUserId : auth.userId;
+
+  if (targetUserId !== auth.userId) {
+    const target = await prisma.user.findUnique({
+      where: { id: targetUserId },
+      select: { tenantId: true },
+    });
+    if (!target || target.tenantId !== auth.tenantId) {
+      return NextResponse.json(
+        { error: "That employee is not in your tenant" },
+        { status: 403 },
+      );
+    }
   }
 
   const request = await prisma.timeOffRequest.create({
     data: {
       tenantId: auth.tenantId!,
-      userId: auth.userId,
+      userId: targetUserId,
       startDate: parseDateOnly(startDate),
       endDate: parseDateOnly(endDate),
       reason,
+      ...(isPrivileged && overrideUserId ? {
+        status: "APPROVED" as const,
+        decidedBy: auth.userId,
+        decidedAt: new Date(),
+        decisionNote: "Auto-approved (created by admin)",
+      } : {}),
     },
     include: { user: true },
   });

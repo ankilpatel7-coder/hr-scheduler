@@ -170,6 +170,11 @@ model Tenant {
   // If false, clock entries auto-approve (APPROVED on create) and skip the
   // admin approval queue. Useful for small/trusted teams.
   requireClockApproval Boolean @default(true)
+  // When false (default), House Shifts UI on schedule is hidden. Admins
+  // can flip this on under Settings if they want unassigned/open shifts.
+  enableHouseShifts    Boolean @default(false)
+  // When true (default), employees must take a selfie when starting a break.
+  requireBreakSelfie   Boolean @default(true)
 
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
@@ -663,6 +668,9 @@ model Break {
   breakEnd     DateTime? // null while break is ongoing
   breakType    BreakType  @default(SHORT_15)
   notes        String?
+  // Selfie captured when starting a break (base64). Optional; only required
+  // when tenant.requireBreakSelfie === true.
+  selfieStart  String?    @db.Text
   createdAt    DateTime   @default(now())
 
   @@index([clockEntryId, breakStart])

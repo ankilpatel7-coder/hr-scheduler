@@ -114,6 +114,7 @@ export default function SchedulePage() {
   const [roles, setRoles] = useState<ShiftRole[]>([]);
   const [tags, setTags] = useState<ShiftTag[]>([]);
   const [timeOff, setTimeOff] = useState<{ userId: string; startDate: string; endDate: string; status: string }[]>([]);
+  const [enableHouseShifts, setEnableHouseShifts] = useState(false);
   const [clockEntries, setClockEntries] = useState<{ userId: string; clockIn: string; clockOut: string | null }[]>([]);
   const [availability, setAvailability] = useState<{ userId: string; dayOfWeek: number; startMinute: number; endMinute: number; available: boolean }[]>([]);
   const [locationFilter, setLocationFilter] = useState<string>("");
@@ -138,6 +139,14 @@ export default function SchedulePage() {
       window.removeEventListener("scroll", close, true);
     };
   }, [menu]);
+
+  // Tenant setting: hide House Shifts unless enabled.
+  useEffect(() => {
+    fetch("/api/tenant/settings")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (j?.tenant?.enableHouseShifts) setEnableHouseShifts(true); })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (status === "unauthenticated") router.push("/login");
@@ -566,6 +575,7 @@ export default function SchedulePage() {
           <div className="text-smoke">Loading…</div>
         ) : (
           <div className="space-y-3">
+            {enableHouseShifts && (<>
             {/* House Shifts — open shifts not yet assigned to an employee */}
             <div className="card overflow-hidden" style={{ borderLeft: "4px solid #d97706" }}>
               <div
@@ -644,6 +654,8 @@ export default function SchedulePage() {
                 </table>
               </div>
             </div>
+
+            </>)}
 
             {/* Role sections — grouped by employee.jobRole */}
             {sectionsList.map((roleName) => {
