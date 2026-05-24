@@ -52,6 +52,7 @@ export default function DateNav({
     else params.set(paramName, toDate);
     const qs = params.toString();
     router.push(qs ? `${pathname}?${qs}` : pathname);
+    router.refresh();
   }
 
   const cur = parseISO(current);

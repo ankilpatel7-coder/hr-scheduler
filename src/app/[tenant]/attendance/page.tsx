@@ -1,38 +1,51 @@
 /**
- * /[tenant]/attendance — admin attendance report.
+ * /[tenant]/attendance — admin attendance report v2.
  *
- * Per-person table for the selected date range showing:
- *   - Scheduled hours
- *   - Actual hours (sum of completed clock entries)
- *   - Missed shifts (had a published shift but no matching clock entry)
- *   - Early/late clock-ins (vs the matching scheduled shift start time)
+ * Server-side: pull shifts + clock entries for the range, match them, compute
+ * per-person scoreboard rows + per-shift detail rows. Pass to the client
+ * component which handles charts, sorting, expand/collapse, and date arrows.
  *
- * Matching: a clock entry is associated with a shift if both belong to
- * the same employee AND the clock-in time is within ±2h of the shift start.
+ * Scoring model (industry-standard "attendance points", inverted to a 0-100
+ * reliability score so higher = better):
  *
- * Includes everyone with shifts OR clock entries in the range — including
- * admins.
+ *   - Start at 100
+ *   - Each missed shift:                 -15
+ *   - Each shift late by >=10 minutes:    -5
+ *   - Each shift early by >=10 minutes:    0 (no penalty, no bonus)
+ *   - Each shift within +/-10 minutes:     0 (on time)
+ *
+ * Grade: A+ (95+), A (90+), B+ (85+), B (80+), C+ (75+), C (70+), D (60+), F.
+ *
+ * Threshold: shifts with no matching clock-in within ±2h of scheduled start
+ * count as MISSED. Otherwise, the difference between actual clock-in and
+ * scheduled start is bucketed into Early (>=10 min before), On-time
+ * (within ±10 min), or Late (>=10 min after).
  */
 
 import { redirect } from "next/navigation";
-import Link from "next/link";
 import Navbar from "@/components/navbar";
 import { getServerAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import {
-  ArrowLeft,
-  ClipboardCheck,
-  AlertTriangle,
-  CheckCircle2,
-  Clock,
-} from "lucide-react";
-import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfDay, endOfDay } from "date-fns";
+  startOfWeek,
+  endOfWeek,
+  startOfMonth,
+  endOfMonth,
+  startOfDay,
+  endOfDay,
+  addDays,
+  format,
+} from "date-fns";
+import AttendanceClient, { type Row, type Shift } from "./attendance-client";
 
 export const dynamic = "force-dynamic";
 
 type Range = "day" | "week" | "month";
 
-function resolveRange(range: Range, anchor: Date): { from: Date; to: Date } {
+const LATE_MIN = 10; // minutes
+const MATCH_WINDOW_MS = 2 * 60 * 60 * 1000; // ±2h to match clock entry to shift
+
+function resolveRange(range: Range, anchor: Date) {
   if (range === "day") return { from: startOfDay(anchor), to: endOfDay(anchor) };
   if (range === "week")
     return {
@@ -40,6 +53,17 @@ function resolveRange(range: Range, anchor: Date): { from: Date; to: Date } {
       to: endOfWeek(anchor, { weekStartsOn: 1 }),
     };
   return { from: startOfMonth(anchor), to: endOfMonth(anchor) };
+}
+
+function letterGrade(score: number): string {
+  if (score >= 95) return "A+";
+  if (score >= 90) return "A";
+  if (score >= 85) return "B+";
+  if (score >= 80) return "B";
+  if (score >= 75) return "C+";
+  if (score >= 70) return "C";
+  if (score >= 60) return "D";
+  return "F";
 }
 
 export default async function AttendancePage({
@@ -67,7 +91,6 @@ export default async function AttendancePage({
   const anchor = searchParams?.date ? new Date(searchParams.date) : new Date();
   const { from, to } = resolveRange(range, anchor);
 
-  // Pull published shifts + clock entries for the range.
   const [shifts, clockEntries, employees] = await Promise.all([
     prisma.shift.findMany({
       where: {
@@ -85,16 +108,8 @@ export default async function AttendancePage({
       orderBy: { startTime: "asc" },
     }),
     prisma.clockEntry.findMany({
-      where: {
-        tenantId,
-        clockIn: { gte: from, lte: to },
-      },
-      select: {
-        id: true,
-        userId: true,
-        clockIn: true,
-        clockOut: true,
-      },
+      where: { tenantId, clockIn: { gte: from, lte: to } },
+      select: { id: true, userId: true, clockIn: true, clockOut: true },
       orderBy: { clockIn: "asc" },
     }),
     prisma.user.findMany({
@@ -103,19 +118,7 @@ export default async function AttendancePage({
     }),
   ]);
 
-  // Build per-employee aggregation.
-  type Row = {
-    userId: string;
-    name: string;
-    role: string;
-    scheduledHours: number;
-    actualHours: number;
-    missedShifts: number;
-    earlyMinutes: number; // sum of "early" across all matched shifts
-    lateMinutes: number; // sum of "late" across all matched shifts
-    shiftsCount: number;
-    matchedCount: number;
-  };
+  // Aggregate per employee.
   const rows = new Map<string, Row>();
   const ensure = (uid: string) => {
     if (!rows.has(uid)) {
@@ -126,17 +129,21 @@ export default async function AttendancePage({
         role: u?.role ?? "—",
         scheduledHours: 0,
         actualHours: 0,
-        missedShifts: 0,
-        earlyMinutes: 0,
-        lateMinutes: 0,
-        shiftsCount: 0,
-        matchedCount: 0,
+        shiftsScheduled: 0,
+        shiftsMatched: 0,
+        missedCount: 0,
+        lateCount: 0,
+        earlyCount: 0,
+        totalLateMinutes: 0,
+        totalEarlyMinutes: 0,
+        score: 100,
+        grade: "A+",
+        shifts: [],
       });
     }
     return rows.get(uid)!;
   };
 
-  // Index clock entries by user for fast lookup.
   const ceByUser = new Map<string, typeof clockEntries>();
   for (const ce of clockEntries) {
     const list = ceByUser.get(ce.userId) ?? [];
@@ -144,256 +151,91 @@ export default async function AttendancePage({
     ceByUser.set(ce.userId, list);
   }
 
-  // Process shifts: aggregate scheduled + try to match to a clock entry.
+  // Iterate every published shift; match + classify.
   for (const s of shifts) {
     if (!s.employeeId) continue;
     const row = ensure(s.employeeId);
-    const hours = (s.endTime.getTime() - s.startTime.getTime()) / 3_600_000;
-    row.scheduledHours += hours;
-    row.shiftsCount += 1;
+    const schedHrs = (s.endTime.getTime() - s.startTime.getTime()) / 3_600_000;
+    row.scheduledHours += schedHrs;
+    row.shiftsScheduled += 1;
 
-    // Match: clock entry by same user with clockIn within ±2h of shift start.
     const candidates = ceByUser.get(s.employeeId) ?? [];
-    const WINDOW = 2 * 60 * 60 * 1000;
     let best: { ce: any; diff: number } | null = null;
     for (const ce of candidates) {
       const diff = Math.abs(ce.clockIn.getTime() - s.startTime.getTime());
-      if (diff > WINDOW) continue;
+      if (diff > MATCH_WINDOW_MS) continue;
       if (!best || diff < best.diff) best = { ce, diff };
     }
 
+    let status: Shift["status"];
+    let deltaMin = 0;
     if (!best) {
-      row.missedShifts += 1;
+      row.missedCount += 1;
+      status = "missed";
     } else {
-      row.matchedCount += 1;
-      const minDelta =
+      row.shiftsMatched += 1;
+      deltaMin =
         (best.ce.clockIn.getTime() - s.startTime.getTime()) / 60_000;
-      if (minDelta < 0) row.earlyMinutes += -minDelta;
-      else row.lateMinutes += minDelta;
+      if (deltaMin <= -LATE_MIN) {
+        row.earlyCount += 1;
+        row.totalEarlyMinutes += -deltaMin;
+        status = "early";
+      } else if (deltaMin >= LATE_MIN) {
+        row.lateCount += 1;
+        row.totalLateMinutes += deltaMin;
+        status = "late";
+      } else {
+        status = "on-time";
+      }
     }
+
+    row.shifts.push({
+      id: s.id,
+      dateIso: s.startTime.toISOString(),
+      scheduledStart: format(s.startTime, "h:mma").toLowerCase(),
+      scheduledEnd: format(s.endTime, "h:mma").toLowerCase(),
+      actualClockIn: best ? format(best.ce.clockIn, "h:mma").toLowerCase() : null,
+      status,
+      deltaMin: best ? Math.round(deltaMin) : null,
+    });
   }
 
-  // Add actual hours from ALL clock entries (matched or not).
+  // Sum actual hours from ALL clock entries (matched or not).
   for (const ce of clockEntries) {
     if (!ce.clockOut) continue;
     const row = ensure(ce.userId);
     row.actualHours += (ce.clockOut.getTime() - ce.clockIn.getTime()) / 3_600_000;
   }
 
-  // Sort: missed shifts desc, then name asc.
+  // Compute scores + grades, sort shifts within each row by date desc.
+  for (const r of rows.values()) {
+    let s = 100;
+    s -= r.missedCount * 15;
+    s -= r.lateCount * 5;
+    r.score = Math.max(0, Math.round(s));
+    r.grade = letterGrade(r.score);
+    r.shifts.sort((a, b) => b.dateIso.localeCompare(a.dateIso));
+  }
+
   const list = Array.from(rows.values()).sort((a, b) => {
-    if (b.missedShifts !== a.missedShifts) return b.missedShifts - a.missedShifts;
+    if (b.score !== a.score) return b.score - a.score;
     return a.name.localeCompare(b.name);
   });
 
-  const totals = list.reduce(
-    (acc, r) => ({
-      scheduled: acc.scheduled + r.scheduledHours,
-      actual: acc.actual + r.actualHours,
-      missed: acc.missed + r.missedShifts,
-    }),
-    { scheduled: 0, actual: 0, missed: 0 },
-  );
-
-  const rangeLabel =
-    range === "day"
-      ? format(from, "EEEE, MMM d, yyyy")
-      : range === "week"
-        ? `Week of ${format(from, "MMM d")} – ${format(to, "MMM d, yyyy")}`
-        : format(from, "MMMM yyyy");
+  // Date for the date picker URL state.
+  const anchorYmd = format(anchor, "yyyy-MM-dd");
 
   return (
     <div className="min-h-screen">
       <Navbar />
       <main className="max-w-6xl mx-auto px-6 py-10">
-        <Link
-          href={`/${params.tenant}/dashboard`}
-          className="inline-flex items-center gap-1 text-xs text-rust hover:underline mb-3"
-        >
-          <ArrowLeft size={12} /> Back to dashboard
-        </Link>
-
-        <div className="flex items-baseline justify-between flex-wrap gap-4 mb-2">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <ClipboardCheck size={22} className="text-rust" />
-              <h1 className="display text-4xl text-ink">Attendance</h1>
-            </div>
-            <p className="text-sm text-smoke">
-              Scheduled vs. actual, missed shifts, early & late punches.
-            </p>
-          </div>
-          <div className="flex gap-2">
-            {(["day", "week", "month"] as Range[]).map((r) => (
-              <Link
-                key={r}
-                href={`/${params.tenant}/attendance?range=${r}${
-                  searchParams?.date ? `&date=${searchParams.date}` : ""
-                }`}
-                className={`btn btn-secondary ${
-                  range === r ? "!bg-ink !text-paper !border-ink" : ""
-                }`}
-              >
-                {r === "day" ? "Day" : r === "week" ? "Week" : "Month"}
-              </Link>
-            ))}
-          </div>
-        </div>
-
-        <div className="text-sm text-smoke mb-6">{rangeLabel}</div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <SummaryCard
-            label="Scheduled"
-            value={`${totals.scheduled.toFixed(1)}h`}
-            icon={<Clock size={16} />}
-          />
-          <SummaryCard
-            label="Actual"
-            value={`${totals.actual.toFixed(1)}h`}
-            icon={<CheckCircle2 size={16} />}
-            tone={
-              totals.actual < totals.scheduled * 0.95
-                ? "warning"
-                : totals.actual > totals.scheduled * 1.05
-                  ? "warning"
-                  : "ok"
-            }
-          />
-          <SummaryCard
-            label="Missed shifts"
-            value={`${totals.missed}`}
-            icon={<AlertTriangle size={16} />}
-            tone={totals.missed > 0 ? "warning" : "ok"}
-          />
-        </div>
-
-        {list.length === 0 ? (
-          <div className="card p-8 text-center text-sm text-smoke italic">
-            No scheduled shifts or clock entries in this {range}.
-          </div>
-        ) : (
-          <div className="card overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-50 text-xs uppercase tracking-wider text-smoke">
-                <tr>
-                  <th className="text-left px-4 py-2">Person</th>
-                  <th className="text-right px-4 py-2">Scheduled</th>
-                  <th className="text-right px-4 py-2">Actual</th>
-                  <th className="text-right px-4 py-2">Δ</th>
-                  <th className="text-right px-4 py-2">Missed</th>
-                  <th className="text-right px-4 py-2">Early (min)</th>
-                  <th className="text-right px-4 py-2">Late (min)</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {list.map((r) => {
-                  const delta = r.actualHours - r.scheduledHours;
-                  const deltaSign = delta > 0 ? "+" : "";
-                  return (
-                    <tr key={r.userId}>
-                      <td className="px-4 py-2">
-                        <div className="font-medium text-ink">{r.name}</div>
-                        <div className="text-[11px] text-smoke">
-                          {r.role.toLowerCase()}
-                        </div>
-                      </td>
-                      <td className="px-4 py-2 text-right tabular-nums">
-                        {r.scheduledHours.toFixed(1)}h
-                      </td>
-                      <td className="px-4 py-2 text-right tabular-nums">
-                        {r.actualHours.toFixed(1)}h
-                      </td>
-                      <td
-                        className={`px-4 py-2 text-right tabular-nums ${
-                          Math.abs(delta) < 0.25
-                            ? "text-smoke"
-                            : delta < 0
-                              ? "text-amber-700"
-                              : "text-moss"
-                        }`}
-                      >
-                        {deltaSign}
-                        {delta.toFixed(1)}h
-                      </td>
-                      <td
-                        className={`px-4 py-2 text-right tabular-nums ${
-                          r.missedShifts > 0
-                            ? "text-rust font-semibold"
-                            : "text-smoke"
-                        }`}
-                      >
-                        {r.missedShifts > 0 ? r.missedShifts : "—"}
-                      </td>
-                      <td className="px-4 py-2 text-right tabular-nums text-smoke">
-                        {r.earlyMinutes > 0 ? Math.round(r.earlyMinutes) : "—"}
-                      </td>
-                      <td
-                        className={`px-4 py-2 text-right tabular-nums ${
-                          r.lateMinutes > 5
-                            ? "text-amber-700 font-medium"
-                            : "text-smoke"
-                        }`}
-                      >
-                        {r.lateMinutes > 0 ? Math.round(r.lateMinutes) : "—"}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-              <tfoot className="bg-slate-50 text-xs font-semibold text-ink">
-                <tr>
-                  <td className="px-4 py-2">Totals</td>
-                  <td className="px-4 py-2 text-right tabular-nums">
-                    {totals.scheduled.toFixed(1)}h
-                  </td>
-                  <td className="px-4 py-2 text-right tabular-nums">
-                    {totals.actual.toFixed(1)}h
-                  </td>
-                  <td className="px-4 py-2" />
-                  <td className="px-4 py-2 text-right tabular-nums">
-                    {totals.missed}
-                  </td>
-                  <td className="px-4 py-2" />
-                  <td className="px-4 py-2" />
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-        )}
-
-        <p className="mt-6 text-xs text-smoke">
-          Matching: a clock-in is associated with a scheduled shift if they
-          belong to the same employee and the clock-in is within ±2 hours of
-          the shift start. Outside that window the shift counts as missed.
-        </p>
+        <AttendanceClient
+          tenantSlug={params.tenant}
+          range={range}
+          anchorYmd={anchorYmd}
+          rows={list}
+        />
       </main>
-    </div>
-  );
-}
-
-function SummaryCard({
-  label,
-  value,
-  icon,
-  tone = "ok",
-}: {
-  label: string;
-  value: string;
-  icon: React.ReactNode;
-  tone?: "ok" | "warning";
-}) {
-  const cls =
-    tone === "warning"
-      ? "border-amber-300 bg-amber-50/40"
-      : "border-slate-200 bg-white";
-  return (
-    <div className={`rounded-2xl ring-1 ${cls} px-4 py-3`}>
-      <div className="inline-flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-smoke font-semibold">
-        {icon}
-        {label}
-      </div>
-      <div className="display text-2xl text-ink mt-1">{value}</div>
     </div>
   );
 }

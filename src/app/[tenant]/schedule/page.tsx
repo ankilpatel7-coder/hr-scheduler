@@ -118,6 +118,23 @@ export default function SchedulePage() {
   const [clockEntries, setClockEntries] = useState<{ userId: string; clockIn: string; clockOut: string | null }[]>([]);
   const [availability, setAvailability] = useState<{ userId: string; dayOfWeek: number; startMinute: number; endMinute: number; available: boolean }[]>([]);
   const [locationFilter, setLocationFilter] = useState<string>("");
+  // Default to last-picked location (or first) once locations load.
+  useEffect(() => {
+    if (locationFilter) return;
+    if (!locations || locations.length === 0) return;
+    let preferred: string | null = null;
+    try {
+      const stored = typeof window !== "undefined" ? localStorage.getItem("shiftwork:lastLocationId") : null;
+      if (stored && locations.some((l: any) => l.id === stored)) preferred = stored;
+    } catch {}
+    setLocationFilter(preferred ?? locations[0].id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locations]);
+  // Persist on every change.
+  useEffect(() => {
+    if (!locationFilter) return;
+    try { localStorage.setItem("shiftwork:lastLocationId", locationFilter); } catch {}
+  }, [locationFilter]);
   const [loading, setLoading] = useState(true);
   const [modalSlot, setModalSlot] = useState<{ day: Date; employeeId: string; defaultRole?: string } | null>(null);
   const [editingShift, setEditingShift] = useState<Shift | null>(null);

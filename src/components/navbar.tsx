@@ -1,10 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useSession, signOut } from "next-auth/react";
-import { useEffect, useRef, useState } from "react";
 import {
+  ClipboardCheck, usePathname } from "next/navigation";
+import {
+  ClipboardCheck, useSession, signOut } from "next-auth/react";
+import {
+  ClipboardCheck, useEffect, useRef, useState } from "react";
+import {
+  ClipboardCheck,
   LogOut, Shield, Key, Hash, Menu, X, ChevronDown,
   LayoutDashboard, Clock, Calendar, CalendarCheck, CalendarDays,
   Users, MapPin, Plane, ArrowLeftRight, ClipboardList, DollarSign,
@@ -106,6 +110,7 @@ export default function Navbar() {
     { href: tlink("/swaps"),         label: "Swaps",        icon: <ArrowLeftRight size={14} />,  show: !isSuperAdmin },
     { href: tlink("/timesheets"),    label: "Timesheets",   icon: <ClipboardList size={14} />,   show: !isSuperAdmin },
     { href: tlink("/payroll"),       label: "Payroll",      icon: <DollarSign size={14} />,      show: isAdmin },
+    { href: tlink("/attendance"),    label: "Attendance",   icon: <ClipboardCheck size={14} />,  show: isAdmin || isManager },
     { href: tlink("/documents"),     label: "Documents",    icon: <FileText size={14} />,        show: isAdmin },
     { href: tlink("/calendar"),      label: "Calendar",     icon: <Calendar size={14} />,        show: isAdmin || isManager },
     { href: tlink("/profile"),       label: "Profile",      icon: <UserIcon size={14} />,        show: isStaff },
