@@ -55,6 +55,19 @@ function resolveRange(range: Range, anchor: Date) {
   return { from: startOfMonth(anchor), to: endOfMonth(anchor) };
 }
 
+function fmtTimeInTz(d: Date, tz: string): string {
+  // "9:45am" / "1:45pm" — lowercase, no space, in the tenant's timezone.
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  })
+    .format(d)
+    .toLowerCase()
+    .replace(/\s/g, "");
+}
+
 function letterGrade(score: number): string {
   if (score >= 95) return "A+";
   if (score >= 90) return "A";
@@ -83,7 +96,7 @@ export default async function AttendancePage({
 
   const tenant = await prisma.tenant.findUnique({
     where: { slug: params.tenant },
-    select: { id: true, businessName: true },
+    select: { id: true, businessName: true, timezone: true },
   });
   if (!tenant || tenant.id !== tenantId) redirect("/login");
 
@@ -116,7 +129,13 @@ export default async function AttendancePage({
       orderBy: { startTime: "asc" },
     }),
     prisma.clockEntry.findMany({
-      where: { tenantId, clockIn: { gte: from, lte: to } },
+      where: {
+        tenantId,
+        clockIn: { gte: from, lte: to },
+        // Exclude clock entries from archived/inactive users so they don't
+        // appear as "Unknown 0/0" on the leaderboard.
+        user: { active: true, archivedAt: null },
+      },
       select: { id: true, userId: true, clockIn: true, clockOut: true },
       orderBy: { clockIn: "asc" },
     }),
@@ -200,9 +219,9 @@ export default async function AttendancePage({
     row.shifts.push({
       id: s.id,
       dateIso: s.startTime.toISOString(),
-      scheduledStart: format(s.startTime, "h:mma").toLowerCase(),
-      scheduledEnd: format(s.endTime, "h:mma").toLowerCase(),
-      actualClockIn: best ? format(best.ce.clockIn, "h:mma").toLowerCase() : null,
+      scheduledStart: fmtTimeInTz(s.startTime, tenant.timezone),
+      scheduledEnd: fmtTimeInTz(s.endTime, tenant.timezone),
+      actualClockIn: best ? fmtTimeInTz(best.ce.clockIn, tenant.timezone) : null,
       status,
       deltaMin: best ? Math.round(deltaMin) : null,
     });
