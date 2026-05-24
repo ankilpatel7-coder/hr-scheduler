@@ -1,14 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { useSession, signOut } from "next-auth/react";
+import { useEffect, useRef, useState } from "react";
 import {
-  ClipboardCheck, usePathname } from "next/navigation";
-import {
-  ClipboardCheck, useSession, signOut } from "next-auth/react";
-import {
-  ClipboardCheck, useEffect, useRef, useState } from "react";
-import {
-  ClipboardCheck,
   LogOut, Shield, Key, Hash, Menu, X, ChevronDown,
   LayoutDashboard, Clock, Calendar, CalendarCheck, CalendarDays,
   Users, MapPin, Plane, ArrowLeftRight, ClipboardList, DollarSign,
