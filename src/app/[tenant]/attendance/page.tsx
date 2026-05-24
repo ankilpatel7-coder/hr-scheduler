@@ -98,6 +98,11 @@ export default async function AttendancePage({
         published: true,
         employeeId: { not: null },
         startTime: { gte: from, lte: to },
+        // Only count shifts that have actually ended. Future and in-progress
+        // shifts can't be evaluated yet, and including them makes new hires
+        // (or anyone with upcoming shifts) appear "missed" before their
+        // first actual workday.
+        endTime: { lte: new Date() },
         // Exclude shifts whose assigned employee is inactive/archived so
         // stale shifts from ex-employees don't pollute attendance reports.
         employee: { active: true, archivedAt: null },
