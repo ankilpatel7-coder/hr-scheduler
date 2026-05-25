@@ -146,6 +146,11 @@ export default async function AttendancePage({
         // Exclude clock entries from archived/inactive users so they don't
         // appear as "Unknown 0/0" on the leaderboard.
         user: { active: true, archivedAt: null },
+        // Only APPROVED clock entries count toward attendance. PENDING
+        // (not-yet-reviewed) and REJECTED entries are excluded — pending
+        // shows once admin approves, rejected never shows. Stricter audit
+        // trail: admins must review before today's work appears.
+        approvalStatus: "APPROVED",
       },
       select: { id: true, userId: true, clockIn: true, clockOut: true },
       orderBy: { clockIn: "asc" },
