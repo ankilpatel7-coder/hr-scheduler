@@ -734,6 +734,16 @@ function DocListRow({
                 type="button"
                 onClick={() => {
                   setDocMenuId(null);
+                  onAssign();
+                }}
+                className="w-full text-left px-3 py-1.5 hover:bg-slate-50 inline-flex items-center gap-2"
+              >
+                <UserPlus className="w-3.5 h-3.5" /> Assign to more employees
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setDocMenuId(null);
                   onReplace();
                 }}
                 className="w-full text-left px-3 py-1.5 hover:bg-slate-50"
