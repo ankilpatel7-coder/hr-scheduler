@@ -13,7 +13,7 @@
  *     without DnD (works on mobile + with keyboard).
  */
 
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -484,6 +484,7 @@ export default function DocumentsClient({
                       tenantSlug={tenantSlug}
                       docMenuId={docMenuId}
                       setDocMenuId={setDocMenuId}
+                      onAssign={() => setAssignDoc(d)}
                       onReplace={() => setReplaceDoc(d)}
                       onMove={() => {
                         setSelected(new Set([d.id]));
@@ -608,6 +609,7 @@ function DocListRow({
   tenantSlug,
   docMenuId,
   setDocMenuId,
+  onAssign,
   onReplace,
   onMove,
   onArchive,
@@ -619,6 +621,7 @@ function DocListRow({
   tenantSlug: string;
   docMenuId: string | null;
   setDocMenuId: (id: string | null) => void;
+  onAssign: () => void;
   onReplace: () => void;
   onMove: () => void;
   onArchive: () => void;
@@ -1086,3 +1089,166 @@ function ReplaceDocModal({
     </Modal>
   );
 }
+
+/* =================== assign-to-more-employees modal =================== */
+
+function AssignDocModal({
+  doc,
+  onClose,
+  onDone,
+}: {
+  doc: DocRow;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [candidates, setCandidates] = useState<
+    { id: string; name: string; alreadyAssigned: boolean }[] | null
+  >(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [result, setResult] = useState<{ assignedCount: number; skippedCount: number } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [empsRes, docRes] = await Promise.all([
+          fetch("/api/employees"),
+          fetch(`/api/documents/${doc.id}`),
+        ]);
+        if (!empsRes.ok) throw new Error("Could not load employees");
+        const { employees } = await empsRes.json();
+        let assignedIds = new Set<string>();
+        if (docRes.ok) {
+          const docData = await docRes.json();
+          const sigs = docData?.document?.signatures ?? docData?.signatures ?? [];
+          assignedIds = new Set(sigs.map((s: any) => s.employeeId));
+        }
+        if (cancelled) return;
+        // Only non-admin, non-archived active employees
+        const list = employees
+          .filter((e: any) => e.active && !e.archivedAt && e.role !== "ADMIN")
+          .map((e: any) => ({
+            id: e.id,
+            name: e.name,
+            alreadyAssigned: assignedIds.has(e.id),
+          }))
+          .sort((a: any, b: any) => a.name.localeCompare(b.name));
+        setCandidates(list);
+      } catch (e: any) {
+        if (!cancelled) setErr(e.message);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [doc.id]);
+
+  function toggle(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function submit() {
+    if (selected.size === 0) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const res = await fetch(`/api/documents/${doc.id}/assign`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ employeeIds: Array.from(selected) }),
+      });
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}));
+        throw new Error(e.error ?? `HTTP ${res.status}`);
+      }
+      const j = await res.json();
+      setResult({ assignedCount: j.assignedCount, skippedCount: j.skippedCount });
+      // Auto-close after brief success display
+      setTimeout(() => onDone(), 1500);
+    } catch (e: any) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal onClose={onClose} title={`Assign "${doc.title}" to employees`}>
+      {result ? (
+        <div className="text-sm text-emerald-700 bg-emerald-50 rounded-lg p-4">
+          <strong>Assigned {result.assignedCount} employee{result.assignedCount === 1 ? "" : "s"}.</strong>
+          {result.skippedCount > 0 && (
+            <div className="text-xs mt-1 text-emerald-800/80">
+              Skipped {result.skippedCount} who already had a signature row.
+            </div>
+          )}
+        </div>
+      ) : !candidates ? (
+        <div className="text-sm text-slate-500">Loading employees…</div>
+      ) : (
+        <>
+          <div className="text-xs text-slate-600 mb-3">
+            Already-assigned employees are checked + disabled. New employees you
+            select will get a PENDING signature row and the doc will be required
+            for them until signed.
+          </div>
+          <div className="max-h-72 overflow-auto -mx-2 border-y border-slate-100">
+            {candidates.length === 0 ? (
+              <div className="text-sm text-slate-500 italic p-3">No employees to assign.</div>
+            ) : (
+              candidates.map((c) => (
+                <label
+                  key={c.id}
+                  className={`flex items-center gap-2 px-3 py-2 text-sm cursor-pointer ${
+                    c.alreadyAssigned ? "opacity-60 cursor-not-allowed" : "hover:bg-slate-50"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={c.alreadyAssigned || selected.has(c.id)}
+                    disabled={c.alreadyAssigned}
+                    onChange={() => !c.alreadyAssigned && toggle(c.id)}
+                    className="w-4 h-4"
+                  />
+                  <span className="flex-1">{c.name}</span>
+                  {c.alreadyAssigned && (
+                    <span className="text-[10px] uppercase tracking-wider text-slate-400">
+                      assigned
+                    </span>
+                  )}
+                </label>
+              ))
+            )}
+          </div>
+          {err && <div className="text-xs text-rose-600 mt-3">{err}</div>}
+          <div className="flex justify-end gap-2 mt-4">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-3 py-1.5 text-sm rounded ring-1 ring-slate-200 hover:bg-slate-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={submit}
+              disabled={busy || selected.size === 0}
+              className="px-3 py-1.5 text-sm rounded bg-emerald-600 text-white hover:bg-emerald-700 disabled:bg-slate-300 inline-flex items-center gap-1"
+            >
+              {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+              Assign {selected.size > 0 ? `(${selected.size})` : ""}
+            </button>
+          </div>
+        </>
+      )}
+    </Modal>
+  );
+}
+

@@ -124,6 +124,16 @@ export async function PATCH(req: Request) {
       where: { employeeId: id, startTime: { gte: new Date() } },
       data: { employeeId: null },
     });
+    // Also waive any PENDING signatures
+    await prisma.documentSignature.updateMany({
+      where: { employeeId: id, status: "PENDING" },
+      data: {
+        status: "WAIVED",
+        waivedById: auth.userId,
+        waivedAt: new Date(),
+        waiveReason: "Employee deactivated",
+      },
+    });
   }
 
   if (Array.isArray(locationIds)) {
@@ -219,6 +229,17 @@ export async function DELETE(req: Request) {
     await tx.shift.updateMany({
       where: { employeeId: id, startTime: { gte: _archiveAt } },
       data: { employeeId: null },
+    });
+    // Waive any PENDING document signatures so archived users don't pollute
+    // pending counts (they can't log in anyway).
+    await tx.documentSignature.updateMany({
+      where: { employeeId: id, status: "PENDING" },
+      data: {
+        status: "WAIVED",
+        waivedById: auth.userId,
+        waivedAt: _archiveAt,
+        waiveReason: "Employee archived",
+      },
     });
     await tx.user.update({
       where: { id },
