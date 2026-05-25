@@ -29,6 +29,7 @@ import {
 } from "@dnd-kit/core";
 import {
   ArrowLeft,
+  UserPlus,
   Search,
   Upload,
   CheckSquare,
