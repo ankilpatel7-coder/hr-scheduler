@@ -97,6 +97,7 @@ export default function DocumentsClient({
   const [deleteFolder, setDeleteFolder] = useState<FolderNode | null>(null);
   const [moveModalOpen, setMoveModalOpen] = useState(false);
   const [replaceDoc, setReplaceDoc] = useState<DocRow | null>(null);
+  const [assignDoc, setAssignDoc] = useState<DocRow | null>(null);
   const [docMenuId, setDocMenuId] = useState<string | null>(null);
 
   // --- DnD state ---
