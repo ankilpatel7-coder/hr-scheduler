@@ -13,6 +13,7 @@ import Link from "next/link";
 import {
   Check,
   X,
+  Pencil,
   RotateCcw,
   ListChecks,
   AlertCircle,
@@ -22,6 +23,7 @@ import {
   User,
 } from "lucide-react";
 import { format } from "date-fns";
+import EditEntryModal from "@/components/edit-entry-modal";
 
 type BreakRow = {
   breakStart: string;
@@ -85,6 +87,7 @@ export default function ApprovalQueue({
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   async function actOne(entryId: string, action: "approve" | "reject" | "reset") {
     setBusy(entryId);
@@ -308,6 +311,14 @@ export default function ApprovalQueue({
                         {e.approvalStatus === "PENDING" && (
                           <>
                             <button
+                              onClick={() => setEditingId(e.id)}
+                              disabled={busy === e.id}
+                              className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded border border-ink/10 hover:bg-ink/5 disabled:opacity-50"
+                              title="Adjust clock-in/out before approving"
+                            >
+                              <Pencil size={11} /> Edit
+                            </button>
+                            <button
                               onClick={() => actOne(e.id, "approve")}
                               disabled={busy === e.id}
                               className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded text-white font-medium disabled:opacity-50"
@@ -352,6 +363,23 @@ export default function ApprovalQueue({
           );
         })
       )}
+      {editingId && (() => {
+        const ent = entries.find((x) => x.id === editingId);
+        if (!ent) return null;
+        return (
+          <EditEntryModal
+            entryId={ent.id}
+            displayName={ent.userName}
+            clockIn={ent.clockIn}
+            clockOut={ent.clockOut}
+            onClose={() => setEditingId(null)}
+            onSaved={() => {
+              setEditingId(null);
+              router.refresh();
+            }}
+          />
+        );
+      })()}
     </div>
   );
 }
