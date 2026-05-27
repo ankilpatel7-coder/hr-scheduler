@@ -93,6 +93,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Forbidden — user not in your tenant" }, { status: 403 });
   }
 
+  // Manual entries created by admin/manager are auto-approved — the creator
+  // is effectively the approver, so making them re-approve is redundant.
+  // Matches the admin-on-behalf-of behavior for time-off requests.
   const entry = await prisma.clockEntry.create({
     data: {
       userId,
@@ -101,6 +104,10 @@ export async function POST(req: Request) {
       clockOut: clockOut ? new Date(clockOut) : null,
       editedBy: auth.userId,
       editNote: editNote ?? "Created by manager",
+      approvalStatus: "APPROVED",
+      approvedById: auth.userId,
+      approvedAt: new Date(),
+      approvalNote: "Auto-approved (manual entry by admin)",
     },
   });
   return NextResponse.json({ entry });
