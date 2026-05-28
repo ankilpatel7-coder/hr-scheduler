@@ -55,6 +55,7 @@ export default async function TodayTimelineWidget({
   tenantSlug,
   timezone,
   date,
+  locationId,
 }: {
   tenantId: string;
   tenantSlug: string;
