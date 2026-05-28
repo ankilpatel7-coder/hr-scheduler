@@ -13,6 +13,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
+import LocationFilter from "@/components/location-filter";
 import {
   ResponsiveContainer,
   BarChart,
@@ -38,6 +39,7 @@ import {
 import { format, addDays, addWeeks, addMonths, parseISO } from "date-fns";
 
 export type Shift = {
+  shiftId: string;
   id: string;
   dateIso: string;
   scheduledStart: string;
@@ -83,6 +85,8 @@ export default function AttendanceClient({
   anchorYmd,
   customFrom,
   customTo,
+  locationId,
+  viewerIsAdmin,
   rows,
 }: {
   tenantSlug: string;
@@ -90,6 +94,8 @@ export default function AttendanceClient({
   anchorYmd: string;
   customFrom?: string | null;
   customTo?: string | null;
+  locationId?: string | null;
+  viewerIsAdmin?: boolean;
   rows: Row[];
 }) {
   const router = useRouter();
@@ -233,7 +239,16 @@ export default function AttendanceClient({
             Scoreboard for scheduled vs actual, missed shifts, and punctuality.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <LocationFilter
+            value={locationId ?? ""}
+            onChange={(id) => {
+              const params = new URLSearchParams(searchParams?.toString() ?? "");
+              if (id) params.set("locationId", id); else params.delete("locationId");
+              router.push(`${pathname}?${params.toString()}`);
+              router.refresh();
+            }}
+          />
           {(["day", "week", "month", "custom"] as Range[]).map((r) => (
             <button
               key={r}
@@ -555,7 +570,7 @@ function KpiCard({
   );
 }
 
-function ShiftDetail({ shifts }: { shifts: Shift[] }) {
+function ShiftDetail({ shifts, viewerIsAdmin, onRefresh }: { shifts: Shift[]; viewerIsAdmin?: boolean; onRefresh: () => void }) {
   if (shifts.length === 0)
     return <div className="text-xs text-smoke italic">No shifts in range.</div>;
   return (
@@ -568,11 +583,12 @@ function ShiftDetail({ shifts }: { shifts: Shift[] }) {
             <th className="text-left py-1.5">Clock-in</th>
             <th className="text-left py-1.5">Status</th>
             <th className="text-right py-1.5">Δ minutes</th>
+            {viewerIsAdmin && <th className="text-right py-1.5 w-16">Action</th>}
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-200">
           {shifts.map((s) => (
-            <StatusRow key={s.id} shift={s} />
+            <StatusRow key={s.id} shift={s} viewerIsAdmin={viewerIsAdmin} onRefresh={onRefresh} />
           ))}
         </tbody>
       </table>
@@ -580,8 +596,31 @@ function ShiftDetail({ shifts }: { shifts: Shift[] }) {
   );
 }
 
-function StatusRow({ shift: s }: { shift: Shift }) {
+function StatusRow({ shift: s, viewerIsAdmin, onRefresh }: { shift: Shift; viewerIsAdmin?: boolean; onRefresh: () => void }) {
   const meta = STATUS_META[s.status];
+  const [busy, setBusy] = useState(false);
+
+  async function ignoreShift() {
+    const reason = window.prompt("Why ignore this shift? (e.g. 'New hire — onboarding day')") ?? "";
+    if (busy) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/shifts/${s.shiftId}/ignore`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: reason || null }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        alert(`Failed: ${j.error ?? "unknown"}`);
+      } else {
+        onRefresh();
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <tr>
       <td className="py-1.5 text-ink">
@@ -612,6 +651,19 @@ function StatusRow({ shift: s }: { shift: Shift }) {
             ? `+${s.deltaMin}`
             : `${s.deltaMin}`}
       </td>
+      {viewerIsAdmin && (
+        <td className="py-1.5 text-right">
+          <button
+            type="button"
+            onClick={ignoreShift}
+            disabled={busy}
+            className="text-[10px] text-smoke hover:text-rust hover:underline disabled:opacity-50"
+            title="Exclude this shift from attendance scoring (e.g. onboarding)"
+          >
+            {busy ? "…" : "Ignore"}
+          </button>
+        </td>
+      )}
     </tr>
   );
 }

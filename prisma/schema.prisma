@@ -381,27 +381,33 @@ model EmployeeLocation {
 // ============================================================
 
 model Shift {
-  id           String    @id @default(cuid())
-  tenantId     String
-  tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  id                     String    @id @default(cuid())
+  tenantId               String
+  tenant                 Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   // employeeId is nullable to support "house shifts" / open shifts —
   // admins can post a shift before deciding who to assign it to.
-  employeeId   String?
-  employee     User?     @relation("EmployeeShifts", fields: [employeeId], references: [id], onDelete: Cascade)
-  managerId    String
-  manager      User      @relation("ManagerShifts", fields: [managerId], references: [id])
-  locationId   String?
-  location     Location? @relation(fields: [locationId], references: [id])
-  startTime    DateTime
-  endTime      DateTime
-  role         String? // Free-text role name; matched against ShiftRole.name for color coding. Kept as string for backward compat.
-  tagId        String? // Optional ShiftTag — colored pill on schedule cards (e.g. "Delivery", "Sales").
-  tag          ShiftTag? @relation(fields: [tagId], references: [id], onDelete: SetNull)
-  notes        String?
-  published    Boolean   @default(false)
-  publishedAt  DateTime?
-  reminderSent Boolean   @default(false)
-  createdAt    DateTime  @default(now())
+  employeeId             String?
+  employee               User?     @relation("EmployeeShifts", fields: [employeeId], references: [id], onDelete: Cascade)
+  managerId              String
+  manager                User      @relation("ManagerShifts", fields: [managerId], references: [id])
+  locationId             String?
+  location               Location? @relation(fields: [locationId], references: [id])
+  startTime              DateTime
+  endTime                DateTime
+  role                   String? // Free-text role name; matched against ShiftRole.name for color coding. Kept as string for backward compat.
+  tagId                  String? // Optional ShiftTag — colored pill on schedule cards (e.g. "Delivery", "Sales").
+  tag                    ShiftTag? @relation(fields: [tagId], references: [id], onDelete: SetNull)
+  notes                  String?
+  published              Boolean   @default(false)
+  publishedAt            DateTime?
+  reminderSent           Boolean   @default(false)
+  // Attendance ignore — admin can mark a missed shift as "don't count it"
+  // (e.g. new hire being onboarded). Filtered out of attendance scoring.
+  attendanceIgnored      Boolean   @default(false)
+  attendanceIgnoredById  String?
+  attendanceIgnoredAt    DateTime?
+  attendanceIgnoreReason String?
+  createdAt              DateTime  @default(now())
 
   swap ShiftSwap?
 

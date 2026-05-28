@@ -32,7 +32,7 @@ export const dynamic = "force-dynamic";
 
 
 
-export default async function Dashboard({ searchParams }: { searchParams?: { rosterDate?: string } }) {
+export default async function Dashboard({ searchParams }: { searchParams?: { rosterDate?: string; locationId?: string } }) {
   const session = await getServerAuth();
   if (!session) redirect("/login");
   const role = (session.user as any).role;
@@ -314,7 +314,7 @@ export default async function Dashboard({ searchParams }: { searchParams?: { ros
             <KpiStrip tenantId={tenantId!} />
 
             {/* Analytics: today's roster, charts */}
-            {tenantId && tenantSlug && (<div className="grid md:grid-cols-2 gap-6"><TodayTimelineWidget tenantId={tenantId} tenantSlug={tenantSlug} timezone={tenantTimezone} date={searchParams?.rosterDate} /><OvertimeRiskWidget tenantId={tenantId} tenantSlug={tenantSlug} /></div>)}
+            {tenantId && tenantSlug && (<div className="grid md:grid-cols-2 gap-6"><TodayTimelineWidget tenantId={tenantId} tenantSlug={tenantSlug} timezone={tenantTimezone} date={searchParams?.rosterDate} locationId={searchParams?.locationId} /><OvertimeRiskWidget tenantId={tenantId} tenantSlug={tenantSlug} /></div>)}
 
             {/* Labor cost panel */}
             <LaborWowChart tenantId={tenantId!} />

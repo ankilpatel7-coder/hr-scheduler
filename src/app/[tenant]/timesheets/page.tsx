@@ -19,6 +19,7 @@ import {
   Camera,
   MapPin,
   AlertTriangle, LayoutGrid, ClipboardCheck } from "lucide-react";
+import ManualEntryModal from "@/components/manual-entry-modal";
 import { format, startOfWeek, endOfWeek, subDays } from "date-fns";
 
 type GeoSide = {
@@ -482,7 +483,7 @@ export default function TimesheetsPage() {
         />
       )}
       {showAdd && (
-        <AddEntryModal
+        <ManualEntryModal
           employees={employees}
           onClose={() => setShowAdd(false)}
           onSaved={() => {

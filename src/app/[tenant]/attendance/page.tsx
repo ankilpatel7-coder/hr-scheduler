@@ -95,7 +95,7 @@ export default async function AttendancePage({
   searchParams,
 }: {
   params: { tenant: string };
-  searchParams?: { range?: Range; date?: string; from?: string; to?: string };
+  searchParams?: { range?: Range; date?: string; from?: string; to?: string; locationId?: string };
 }) {
   const session = await getServerAuth();
   if (!session) redirect(`/login?from=/${params.tenant}/attendance`);
@@ -122,6 +122,9 @@ export default async function AttendancePage({
         published: true,
         employeeId: { not: null },
         startTime: { gte: from, lte: to },
+        // Exclude admin-ignored shifts (new hire onboarding, etc.)
+        attendanceIgnored: false,
+        ...(searchParams?.locationId ? { locationId: searchParams.locationId } : {}),
         // Only count shifts that have actually ended. Future and in-progress
         // shifts can't be evaluated yet, and including them makes new hires
         // (or anyone with upcoming shifts) appear "missed" before their
@@ -233,6 +236,7 @@ export default async function AttendancePage({
     }
 
     row.shifts.push({
+      shiftId: s.id,
       id: s.id,
       dateIso: s.startTime.toISOString(),
       scheduledStart: fmtTimeInTz(s.startTime, tenant.timezone),
@@ -278,6 +282,8 @@ export default async function AttendancePage({
           anchorYmd={anchorYmd}
           customFrom={searchParams?.from ?? null}
           customTo={searchParams?.to ?? null}
+          locationId={searchParams?.locationId ?? null}
+          viewerIsAdmin={role === "ADMIN"}
           rows={list}
         />
       </main>

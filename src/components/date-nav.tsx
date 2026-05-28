@@ -51,8 +51,12 @@ export default function DateNav({
     if (toDate === null) params.delete(paramName);
     else params.set(paramName, toDate);
     const qs = params.toString();
-    router.push(qs ? `${pathname}?${qs}` : pathname);
-    router.refresh();
+    const url = qs ? `${pathname}?${qs}` : pathname;
+    // Use replace (no history bloat) + a microtask refresh so the server
+    // component re-renders even when Next.js's router thinks the route hasn't
+    // changed (only searchParams differ).
+    router.replace(url);
+    setTimeout(() => router.refresh(), 0);
   }
 
   const cur = parseISO(current);

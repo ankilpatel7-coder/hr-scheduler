@@ -60,6 +60,7 @@ export default async function TodayTimelineWidget({
   tenantSlug: string;
   timezone?: string;
   date?: string;
+  locationId?: string;
 }) {
   const tz = timezone || DEFAULT_TZ;
   const now = new Date();
@@ -77,6 +78,7 @@ export default async function TodayTimelineWidget({
         tenantId,
         published: true,
         startTime: { gte: dayStart, lte: dayEnd },
+        ...(locationId ? { locationId } : {}),
         employee: { role: "EMPLOYEE", active: true },
       },
       include: { employee: { select: { id: true, name: true } } },
