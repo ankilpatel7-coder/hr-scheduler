@@ -52,11 +52,14 @@ export default function DateNav({
     else params.set(paramName, toDate);
     const qs = params.toString();
     const url = qs ? `${pathname}?${qs}` : pathname;
-    // Use replace (no history bloat) + a microtask refresh so the server
-    // component re-renders even when Next.js's router thinks the route hasn't
-    // changed (only searchParams differ).
-    router.replace(url);
-    setTimeout(() => router.refresh(), 0);
+    // Hard navigate: router.push/replace + refresh weren't reliably triggering
+    // server-component re-render for searchParam-only changes. window.location
+    // forces a fresh load and the date always advances.
+    if (typeof window !== "undefined") {
+      window.location.assign(url);
+    } else {
+      router.replace(url);
+    }
   }
 
   const cur = parseISO(current);

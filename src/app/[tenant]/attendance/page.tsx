@@ -148,7 +148,13 @@ export default async function AttendancePage({
         clockIn: { gte: from, lte: to },
         // Exclude clock entries from archived/inactive users so they don't
         // appear as "Unknown 0/0" on the leaderboard.
-        user: { active: true, archivedAt: null },
+        user: {
+          active: true,
+          archivedAt: null,
+          ...(searchParams?.locationId
+            ? { locations: { some: { locationId: searchParams.locationId } } }
+            : {}),
+        },
         // Only APPROVED clock entries count toward attendance. PENDING
         // (not-yet-reviewed) and REJECTED entries are excluded — pending
         // shows once admin approves, rejected never shows. Stricter audit

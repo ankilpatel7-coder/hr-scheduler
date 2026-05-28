@@ -4,6 +4,7 @@ import { getServerAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import Navbar from "@/components/navbar";
 import TodayTimelineWidget from "@/components/today-timeline-widget";
+import RosterLocationFilter from "@/components/roster-location-filter";
 import OvertimeRiskWidget from "@/components/overtime-risk-widget";
 import KpiStrip from "@/components/kpi-strip";
 import LaborWowChart from "@/components/labor-wow-chart";
@@ -314,7 +315,10 @@ export default async function Dashboard({ searchParams }: { searchParams?: { ros
             <KpiStrip tenantId={tenantId!} />
 
             {/* Analytics: today's roster, charts */}
-            {tenantId && tenantSlug && (<div className="grid md:grid-cols-2 gap-6"><TodayTimelineWidget tenantId={tenantId} tenantSlug={tenantSlug} timezone={tenantTimezone} date={searchParams?.rosterDate} locationId={searchParams?.locationId} /><OvertimeRiskWidget tenantId={tenantId} tenantSlug={tenantSlug} /></div>)}
+            {tenantId && tenantSlug && (<>
+            <div className="flex justify-end mb-3"><RosterLocationFilter /></div>
+            <div className="grid md:grid-cols-2 gap-6"><TodayTimelineWidget tenantId={tenantId} tenantSlug={tenantSlug} timezone={tenantTimezone} date={searchParams?.rosterDate} locationId={searchParams?.locationId} /><OvertimeRiskWidget tenantId={tenantId} tenantSlug={tenantSlug} /></div>
+            </>)}
 
             {/* Labor cost panel */}
             <LaborWowChart tenantId={tenantId!} />
