@@ -26,6 +26,7 @@ import { format } from "date-fns";
 import EditEntryModal from "@/components/edit-entry-modal";
 
 type BreakRow = {
+  id: string;
   breakStart: string;
   breakEnd: string | null;
   breakType: "SHORT_15" | "MEAL_30" | "OTHER";

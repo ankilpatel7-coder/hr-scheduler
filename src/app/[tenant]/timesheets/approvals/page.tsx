@@ -126,6 +126,7 @@ export default async function ClockApprovalsPage({
             addressIn: e.addressIn,
             addressOut: e.addressOut,
             breaks: e.breaks.map((b: any) => ({
+              id: b.id,
               breakStart: b.breakStart.toISOString(),
               breakEnd: b.breakEnd ? b.breakEnd.toISOString() : null,
               breakType: b.breakType as "SHORT_15" | "MEAL_30" | "OTHER",
