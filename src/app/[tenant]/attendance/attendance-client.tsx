@@ -500,7 +500,7 @@ export default function AttendanceClient({
                     {isOpen && (
                       <tr key={`${r.userId}-detail`}>
                         <td colSpan={10} className="px-3 py-3 bg-slate-50/50">
-                          <ShiftDetail shifts={r.shifts} />
+                          <ShiftDetail shifts={r.shifts} viewerIsAdmin={viewerIsAdmin} onRefresh={() => router.refresh()} />
                         </td>
                       </tr>
                     )}
