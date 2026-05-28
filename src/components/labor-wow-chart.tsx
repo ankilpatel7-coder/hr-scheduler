@@ -13,7 +13,7 @@ function durationHours(a: Date, b: Date) {
   return Math.max(0, (b.getTime() - a.getTime()) / 36e5);
 }
 
-export default async function LaborWowChart({ tenantId }: { tenantId: string }) {
+export default async function LaborWowChart({ tenantId, locationId }: { tenantId: string; locationId?: string }) {
   const now = new Date();
   const thisWeekStart = startOfWeek(now, { weekStartsOn: 1 });
   const eightWeeksAgo = subWeeks(thisWeekStart, SPARK_WEEKS - 1);
@@ -24,6 +24,7 @@ export default async function LaborWowChart({ tenantId }: { tenantId: string }) 
       tenantId,
       clockIn: { gte: eightWeeksAgo, lte: thisWeekEnd },
       NOT: { clockOut: null },
+      ...(locationId ? { user: { locations: { some: { locationId } } } } : {}),
     },
     select: {
       clockIn: true, clockOut: true,

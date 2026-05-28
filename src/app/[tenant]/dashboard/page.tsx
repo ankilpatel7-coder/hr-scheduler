@@ -149,6 +149,7 @@ export default async function Dashboard({ searchParams }: { searchParams?: { ros
       <Navbar />
       <main className="max-w-[1500px] mx-auto px-6 py-10 animate-fade-in">
         <PendingDocsBanner />
+        <div className="flex justify-end mb-4"><RosterLocationFilter /></div>
         {/* Hero */}
         <div className="mb-10 animate-slide-up hero-aurora">
           <div className="flex items-center gap-3 mb-4">
@@ -316,8 +317,7 @@ export default async function Dashboard({ searchParams }: { searchParams?: { ros
 
             {/* Analytics: today's roster, charts */}
             {tenantId && tenantSlug && (<>
-            <div className="flex justify-end mb-3"><RosterLocationFilter /></div>
-            <div className="grid md:grid-cols-2 gap-6"><TodayTimelineWidget tenantId={tenantId} tenantSlug={tenantSlug} timezone={tenantTimezone} date={searchParams?.rosterDate} locationId={searchParams?.locationId} /><OvertimeRiskWidget tenantId={tenantId} tenantSlug={tenantSlug} /></div>
+            <div className="grid md:grid-cols-2 gap-6"><TodayTimelineWidget tenantId={tenantId} tenantSlug={tenantSlug} timezone={tenantTimezone} date={searchParams?.rosterDate} locationId={searchParams?.locationId} /><OvertimeRiskWidget tenantId={tenantId} tenantSlug={tenantSlug} locationId={searchParams?.locationId} /></div>
             </>)}
 
             {/* Labor cost panel */}

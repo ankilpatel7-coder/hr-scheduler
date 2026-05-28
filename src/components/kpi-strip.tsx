@@ -18,7 +18,7 @@ function durationHours(a: Date, b: Date) {
   return Math.max(0, (b.getTime() - a.getTime()) / 36e5);
 }
 
-export default async function KpiStrip({ tenantId }: { tenantId: string }) {
+export default async function KpiStrip({ tenantId, locationId }: { tenantId: string; locationId?: string }) {
   const now = new Date();
   const thisWeekStart = startOfWeek(now, { weekStartsOn: 1 });
   const thisWeekEnd = endOfWeek(now, { weekStartsOn: 1 });
@@ -27,11 +27,20 @@ export default async function KpiStrip({ tenantId }: { tenantId: string }) {
   const eightWeeksAgo = subWeeks(thisWeekStart, SPARK_WEEKS - 1);
 
   const activeCount = await prisma.user.count({
-    where: { tenantId, active: true, role: { in: ["EMPLOYEE", "LEAD", "MANAGER"] } },
+    where: {
+      tenantId,
+      active: true,
+      role: { in: ["EMPLOYEE", "LEAD", "MANAGER"] },
+      ...(locationId ? { locations: { some: { locationId } } } : {}),
+    },
   });
 
   const allEntries = await prisma.clockEntry.findMany({
-    where: { tenantId, clockIn: { gte: eightWeeksAgo, lte: thisWeekEnd } },
+    where: {
+      tenantId,
+      clockIn: { gte: eightWeeksAgo, lte: thisWeekEnd },
+      ...(locationId ? { user: { locations: { some: { locationId } } } } : {}),
+    },
     select: {
       userId: true, clockIn: true, clockOut: true,
       user: { select: { hourlyWage: true } },

@@ -15,9 +15,11 @@ function durationHours(a: Date, b: Date) {
 export default async function CoverageForecast({
   tenantId,
   tenantSlug,
+  locationId,
 }: {
   tenantId: string;
   tenantSlug: string;
+  locationId?: string;
 }) {
   const now = new Date();
   const today = startOfDay(now);
@@ -30,6 +32,7 @@ export default async function CoverageForecast({
         tenantId, published: true,
         startTime: { gte: today, lte: next7End },
         employee: { role: "EMPLOYEE", active: true },
+        ...(locationId ? { locationId } : {}),
       },
       select: { startTime: true, endTime: true },
     }),
@@ -38,6 +41,7 @@ export default async function CoverageForecast({
         tenantId, published: true,
         startTime: { gte: past28Start, lt: today },
         employee: { role: "EMPLOYEE" },
+        ...(locationId ? { locationId } : {}),
       },
       select: { startTime: true, endTime: true },
     }),

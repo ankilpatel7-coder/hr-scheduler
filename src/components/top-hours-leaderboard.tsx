@@ -37,9 +37,11 @@ function initials(name: string) {
 export default async function TopHoursLeaderboard({
   tenantId,
   tenantSlug,
+  locationId,
 }: {
   tenantId: string;
   tenantSlug: string;
+  locationId?: string;
 }) {
   const now = new Date();
   const ws = startOfWeek(now, { weekStartsOn: 1 });
@@ -48,6 +50,7 @@ export default async function TopHoursLeaderboard({
   const entries = await prisma.clockEntry.findMany({
     where: {
       tenantId,
+      ...(locationId ? { user: { locations: { some: { locationId } } } } : {}),
       clockIn: { gte: ws, lte: we },
       user: { active: true, role: { not: "ADMIN" } },
     },

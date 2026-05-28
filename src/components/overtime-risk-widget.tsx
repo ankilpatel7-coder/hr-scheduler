@@ -15,9 +15,11 @@ function durationHours(a: Date, b: Date) {
 export default async function OvertimeRiskWidget({
   tenantId,
   tenantSlug,
+  locationId,
 }: {
   tenantId: string;
   tenantSlug: string;
+  locationId?: string;
 }) {
   const now = new Date();
   const weekStart = startOfWeek(now, { weekStartsOn: 1 });
@@ -25,11 +27,20 @@ export default async function OvertimeRiskWidget({
 
   const [employees, entries, scheduled] = await Promise.all([
     prisma.user.findMany({
-      where: { tenantId, active: true, role: "EMPLOYEE" },
+      where: {
+        tenantId,
+        active: true,
+        role: "EMPLOYEE",
+        ...(locationId ? { locations: { some: { locationId } } } : {}),
+      },
       select: { id: true, name: true, email: true },
     }),
     prisma.clockEntry.findMany({
-      where: { tenantId, clockIn: { gte: weekStart, lte: weekEnd } },
+      where: {
+        tenantId,
+        clockIn: { gte: weekStart, lte: weekEnd },
+        ...(locationId ? { user: { locations: { some: { locationId } } } } : {}),
+      },
       select: { userId: true, clockIn: true, clockOut: true },
     }),
     prisma.shift.findMany({
@@ -37,6 +48,7 @@ export default async function OvertimeRiskWidget({
         tenantId, published: true,
         startTime: { gte: now, lte: weekEnd },
         employee: { role: "EMPLOYEE" },
+        ...(locationId ? { locationId } : {}),
       },
       select: { employeeId: true, startTime: true, endTime: true },
     }),
