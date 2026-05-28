@@ -372,6 +372,13 @@ export default function ApprovalQueue({
             displayName={ent.userName}
             clockIn={ent.clockIn}
             clockOut={ent.clockOut}
+            breaks={(ent.breaks ?? []).map((b: any) => ({
+              id: b.id,
+              breakStart: b.breakStart,
+              breakEnd: b.breakEnd,
+              breakType: b.breakType,
+              notes: b.notes ?? null,
+            }))}
             onClose={() => setEditingId(null)}
             onSaved={() => {
               setEditingId(null);
