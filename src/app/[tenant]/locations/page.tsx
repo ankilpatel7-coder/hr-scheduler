@@ -51,7 +51,6 @@ const DEFAULT_HOURS: Hours = {
 export default function LocationsPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
-  const params = useParams() as { tenant?: string };
   useEffect(() => {
     if (status === "unauthenticated") {
       router.push("/login");
@@ -61,9 +60,10 @@ export default function LocationsPage() {
       status === "authenticated" &&
       (session?.user as any)?.role !== "ADMIN"
     ) {
-      router.push(params.tenant ? `/${params.tenant}/dashboard` : "/dashboard");
+      const tenant = window.location.pathname.split("/")[1] || "";
+      router.push(tenant ? `/${tenant}/dashboard` : "/dashboard");
     }
-  }, [status, session, router, params.tenant]);
+  }, [status, session, router]);
   const params = useParams<{ tenant: string }>();
   const [locations, setLocations] = useState<Location[]>([]);
   const [loading, setLoading] = useState(true);
