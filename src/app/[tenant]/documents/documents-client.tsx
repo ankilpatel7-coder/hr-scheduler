@@ -587,6 +587,17 @@ export default function DocumentsClient({
             }}
           />
         )}
+
+        {assignDoc && (
+          <AssignDocModal
+            doc={assignDoc}
+            onClose={() => setAssignDoc(null)}
+            onDone={() => {
+              setAssignDoc(null);
+              router.refresh();
+            }}
+          />
+        )}
       </div>
 
       {/* Drag preview */}
