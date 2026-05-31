@@ -374,7 +374,7 @@ export default function DocumentsClient({
           />
 
           <section className="flex-1 min-w-0">
-            <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
+            <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200">
               {/* Toolbar */}
               <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-3 flex-wrap">
                 <h2 className="font-semibold text-slate-800 text-lg flex-1 min-w-0 truncate">
@@ -722,8 +722,12 @@ function DocListRow({
           type="button"
           onClick={(e) => {
             const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-            const spaceBelow = window.innerHeight - rect.bottom;
-            setMenuDir(spaceBelow < 220 ? "up" : "down");
+            // Estimated menu height (~220px for 5 items + dividers + padding).
+            // If opening downward would push past viewport, flip up.
+            const ESTIMATED_MENU_HEIGHT = 240;
+            const wouldOverflow =
+              rect.bottom + ESTIMATED_MENU_HEIGHT > window.innerHeight;
+            setMenuDir(wouldOverflow ? "up" : "down");
             setDocMenuId(docMenuId === doc.id ? null : doc.id);
           }}
           className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100"
