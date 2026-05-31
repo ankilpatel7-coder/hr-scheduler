@@ -25,7 +25,7 @@ export default async function DocumentsAdminPage({
   const isSuperAdmin = (session.user as any).superAdmin === true;
   if (isSuperAdmin) redirect("/superadmin");
   if (!tenantId) redirect("/login");
-  if (role !== "ADMIN") redirect(`/${params.tenant}/dashboard`);
+  if (role !== "ADMIN" && role !== "MANAGER") redirect(`/${params.tenant}/dashboard`);
 
   const tenant = await prisma.tenant.findUnique({
     where: { slug: params.tenant },

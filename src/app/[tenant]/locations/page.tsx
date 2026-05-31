@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
+// Admin-only page — managers + staff get redirected to dashboard.
 import Navbar from "@/components/navbar";
 import { MapPin, Plus, X, Pencil, Clock } from "lucide-react";
 
@@ -50,6 +51,19 @@ const DEFAULT_HOURS: Hours = {
 export default function LocationsPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
+  const params = useParams() as { tenant?: string };
+  useEffect(() => {
+    if (status === "unauthenticated") {
+      router.push("/login");
+      return;
+    }
+    if (
+      status === "authenticated" &&
+      (session?.user as any)?.role !== "ADMIN"
+    ) {
+      router.push(params.tenant ? `/${params.tenant}/dashboard` : "/dashboard");
+    }
+  }, [status, session, router, params.tenant]);
   const params = useParams<{ tenant: string }>();
   const [locations, setLocations] = useState<Location[]>([]);
   const [loading, setLoading] = useState(true);

@@ -5,10 +5,29 @@ import { usePathname } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
 import { useEffect, useRef, useState } from "react";
 import {
-  LogOut, Shield, Key, Hash, Menu, X, ChevronDown,
-  LayoutDashboard, Clock, Calendar, CalendarCheck, CalendarDays,
-  Users, MapPin, Plane, ArrowLeftRight, ClipboardList, DollarSign,
-  FileText, User as UserIcon, Settings as SettingsIcon, ClipboardCheck,
+  LogOut,
+  Shield,
+  Key,
+  Hash,
+  Menu,
+  X,
+  ChevronDown,
+  LayoutDashboard,
+  Clock,
+  Calendar,
+  CalendarCheck,
+  CalendarDays,
+  Users,
+  MapPin,
+  Plane,
+  ArrowLeftRight,
+  ClipboardList,
+  DollarSign,
+  FileText,
+  User as UserIcon,
+  Settings as SettingsIcon,
+  ClipboardCheck,
+  Award,
 } from "lucide-react";
 
 /**
@@ -97,6 +116,7 @@ export default function Navbar() {
     { href: tlink("/dashboard"),     label: "Overview",     icon: <LayoutDashboard size={14} />, show: !isSuperAdmin },
     { href: tlink("/clock"),         label: "Clock In",     icon: <Clock size={14} />,           show: isStaff },
     { href: tlink("/my-shifts"),     label: "My Shifts",    icon: <Calendar size={14} />,        show: isStaff },
+    { href: tlink("/my-attendance"), label: "My Attendance",icon: <Award size={14} />,           show: isStaff },
     { href: tlink("/availability"),  label: "Availability", icon: <CalendarCheck size={14} />,   show: isStaff },
     { href: tlink("/my-documents"),  label: "Documents",    icon: <FileText size={14} />,        show: isStaff },
     { href: tlink("/schedule"),      label: "Schedule",     icon: <CalendarDays size={14} />,    show: isAdmin || isManager },
