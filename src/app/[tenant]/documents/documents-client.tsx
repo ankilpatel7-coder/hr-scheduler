@@ -632,6 +632,7 @@ function DocListRow({
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `doc-${doc.id}`,
   });
+  const [menuDir, setMenuDir] = useState<"down" | "up">("down");
 
   return (
     <li
@@ -708,7 +709,12 @@ function DocListRow({
       <div className="relative">
         <button
           type="button"
-          onClick={() => setDocMenuId(docMenuId === doc.id ? null : doc.id)}
+          onClick={(e) => {
+            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+            const spaceBelow = window.innerHeight - rect.bottom;
+            setMenuDir(spaceBelow < 220 ? "up" : "down");
+            setDocMenuId(docMenuId === doc.id ? null : doc.id);
+          }}
           className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100"
           aria-label="Document actions"
         >
@@ -722,7 +728,7 @@ function DocListRow({
               className="fixed inset-0 z-30 cursor-default"
               aria-label="Close menu"
             />
-            <div className="absolute right-0 top-7 z-40 w-48 rounded-lg bg-white shadow-lg ring-1 ring-slate-200 py-1 text-sm">
+            <div className={`absolute right-0 z-40 w-48 rounded-lg bg-white shadow-lg ring-1 ring-slate-200 py-1 text-sm ${menuDir === "up" ? "bottom-7" : "top-7"}`}>
               <a
                 href={doc.fileUrl}
                 target="_blank"
