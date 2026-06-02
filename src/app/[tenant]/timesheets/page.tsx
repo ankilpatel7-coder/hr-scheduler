@@ -608,8 +608,12 @@ function breakSummary(breaks: { breakStart: string; breakEnd: string | null; bre
   for (const b of breaks) {
     const start = new Date(b.breakStart);
     const end = b.breakEnd ? new Date(b.breakEnd) : null;
-    const mins = end ? Math.round((end.getTime() - start.getTime()) / 60000) : null;
-    if (b.breakType !== "SHORT_15" && mins !== null) unpaidMin += mins;
+    // Compute full-precision minutes for the unpaid-break sum (matches the
+    // payroll engine's math at lib/payroll/engine.ts:139). Display still
+    // rounds individual values via the chip below.
+    const minsExact = end ? (end.getTime() - start.getTime()) / 60000 : null;
+    const mins = minsExact !== null ? Math.round(minsExact) : null;
+    if (b.breakType !== "SHORT_15" && minsExact !== null) unpaidMin += minsExact;
     const meta = BREAK_META_TS[b.breakType];
     let tone = meta.color;
     if (mins !== null && meta.target !== null) {
