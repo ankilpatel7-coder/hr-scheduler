@@ -703,7 +703,7 @@ function SegmentRow({
             <>
               {unpaidMin > 0 && (
                 <div className="text-[10px] text-smoke font-mono mt-0.5">
-                  − {unpaidMin}m unpaid
+                  − {Math.round(unpaidMin)}m unpaid
                 </div>
               )}
               <div className="flex justify-end flex-wrap gap-1 mt-1">
