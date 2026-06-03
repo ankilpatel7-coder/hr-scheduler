@@ -114,9 +114,9 @@ export default function Navbar() {
 
   const items: NavItem[] = [
     { href: tlink("/dashboard"),     label: "Overview",     icon: <LayoutDashboard size={14} />, show: !isSuperAdmin },
-    { href: tlink("/clock"),         label: "Clock In",     icon: <Clock size={14} />,           show: isStaff },
-    { href: tlink("/my-shifts"),     label: "My Shifts",    icon: <Calendar size={14} />,        show: isStaff },
-    { href: tlink("/my-attendance"), label: "My Attendance",icon: <Award size={14} />,           show: isStaff },
+    { href: tlink("/clock"),         label: "Clock In",     icon: <Clock size={14} />,           show: isStaff || isManager },
+    { href: tlink("/my-shifts"),     label: "My Shifts",    icon: <Calendar size={14} />,        show: isStaff || isManager },
+    { href: tlink("/my-attendance"), label: "My Attendance",icon: <Award size={14} />,           show: isStaff || isManager },
     { href: tlink("/availability"),  label: "Availability", icon: <CalendarCheck size={14} />,   show: isStaff },
     { href: tlink("/my-documents"),  label: "Documents",    icon: <FileText size={14} />,        show: isStaff },
     { href: tlink("/schedule"),      label: "Schedule",     icon: <CalendarDays size={14} />,    show: isAdmin || isManager },
