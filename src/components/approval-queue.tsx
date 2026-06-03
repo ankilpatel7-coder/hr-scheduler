@@ -7,7 +7,7 @@
  * Actions: approve / reject / undo (per row). Bulk "Approve all visible".
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -55,6 +55,7 @@ const BREAK_META = {
 };
 
 type Employee = { id: string; name: string };
+type Location = { id: string; name: string };
 
 const STATUS_META: Record<Entry["approvalStatus"], { color: string; bg: string; label: string }> = {
   PENDING:  { color: "#d97706", bg: "rgba(245,158,11,0.10)", label: "Pending" },
@@ -74,6 +75,8 @@ export default function ApprovalQueue({
   statusFilter,
   employeeIdFilter,
   employees,
+  locations,
+  locationIdFilter,
   entries,
   totals,
 }: {
@@ -83,11 +86,34 @@ export default function ApprovalQueue({
   statusFilter: "ALL" | "PENDING" | "APPROVED" | "REJECTED";
   employeeIdFilter: string | null;
   employees: Employee[];
+  locations: Location[];
+  locationIdFilter: string | null;
   entries: Entry[];
   totals: { pending: number; approved: number; rejected: number };
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
+
+  // Auto-apply last-picked location (only when no filter yet AND we have
+  // multiple locations). Matches LocationFilter component behavior.
+  useEffect(() => {
+    if (locationIdFilter || locations.length <= 1) return;
+    try {
+      const stored = localStorage.getItem("shiftwork:lastLocationId");
+      if (stored && locations.some((l) => l.id === stored)) {
+        const url = new URL(window.location.href);
+        url.searchParams.set("locationId", stored);
+        window.location.assign(url.toString());
+      }
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Persist on change (whenever URL location changes)
+  useEffect(() => {
+    if (!locationIdFilter) return;
+    try { localStorage.setItem("shiftwork:lastLocationId", locationIdFilter); } catch {}
+  }, [locationIdFilter]);
   const [editingId, setEditingId] = useState<string | null>(null);
 
   async function actOne(entryId: string, action: "approve" | "reject" | "reset") {
@@ -174,6 +200,17 @@ export default function ApprovalQueue({
             <option value="APPROVED">Approved</option>
             <option value="REJECTED">Rejected</option>
             <option value="ALL">All</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-[10px] uppercase tracking-wider text-smoke font-semibold mb-1">
+            <Filter size={11} className="inline mr-1" /> Location
+          </label>
+          <select name="locationId" defaultValue={locationIdFilter ?? ""} className="text-sm rounded border border-ink/10 px-3 py-2 bg-white">
+            <option value="">All locations</option>
+            {locations.map((l) => (
+              <option key={l.id} value={l.id}>{l.name}</option>
+            ))}
           </select>
         </div>
         <div>

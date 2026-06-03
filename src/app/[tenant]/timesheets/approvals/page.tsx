@@ -30,7 +30,7 @@ export default async function ClockApprovalsPage({
   searchParams,
 }: {
   params: { tenant: string };
-  searchParams: { from?: string; to?: string; status?: string; employeeId?: string };
+  searchParams: { from?: string; to?: string; status?: string; employeeId?: string; locationId?: string };
 }) {
   const session = await getServerAuth();
   if (!session) redirect(`/login?from=/${params.tenant}/timesheets/approvals`);
@@ -56,6 +56,7 @@ export default async function ClockApprovalsPage({
   const to = parseDate(searchParams.to, defaultTo);
   const statusFilter = (searchParams.status ?? "PENDING") as "ALL" | "PENDING" | "APPROVED" | "REJECTED";
   const employeeId = searchParams.employeeId || null;
+  const locationId = searchParams.locationId || null;
 
   const where: any = {
     tenantId,
@@ -63,8 +64,14 @@ export default async function ClockApprovalsPage({
   };
   if (statusFilter !== "ALL") where.approvalStatus = statusFilter;
   if (employeeId) where.userId = employeeId;
+  if (locationId) {
+    where.user = {
+      ...(where.user ?? {}),
+      locations: { some: { locationId } },
+    };
+  }
 
-  const [entries, employees] = await Promise.all([
+  const [entries, employees, locations] = await Promise.all([
     prisma.clockEntry.findMany({
       where,
       orderBy: [{ clockIn: "desc" }],
@@ -75,7 +82,16 @@ export default async function ClockApprovalsPage({
       },
     }),
     prisma.user.findMany({
-      where: { tenantId, role: { not: "ADMIN" } },
+      where: {
+        tenantId,
+        role: { not: "ADMIN" },
+        ...(locationId ? { locations: { some: { locationId } } } : {}),
+      },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    }),
+    prisma.location.findMany({
+      where: { tenantId, active: true },
       select: { id: true, name: true },
       orderBy: { name: "asc" },
     }),
@@ -132,6 +148,8 @@ export default async function ClockApprovalsPage({
               breakType: b.breakType as "SHORT_15" | "MEAL_30" | "OTHER",
             })),
           }))}
+          locations={locations}
+          locationIdFilter={locationId}
           totals={{ pending: pendingCount, approved: approvedCount, rejected: rejectedCount }}
         />
       </main>
