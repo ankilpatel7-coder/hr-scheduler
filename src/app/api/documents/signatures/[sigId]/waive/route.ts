@@ -24,7 +24,7 @@ export async function POST(
   req: Request,
   { params }: { params: { sigId: string } },
 ) {
-  const auth = await requireRole(["ADMIN"]);
+  const auth = await requireRole(["ADMIN", "MANAGER"]);
   if ("error" in auth) return auth.error;
   if (auth.isSuperAdmin || !auth.tenantId) {
     return NextResponse.json({ error: "No tenant context" }, { status: 400 });
@@ -66,7 +66,7 @@ export async function DELETE(
   _req: Request,
   { params }: { params: { sigId: string } },
 ) {
-  const auth = await requireRole(["ADMIN"]);
+  const auth = await requireRole(["ADMIN", "MANAGER"]);
   if ("error" in auth) return auth.error;
   if (auth.isSuperAdmin || !auth.tenantId) {
     return NextResponse.json({ error: "No tenant context" }, { status: 400 });

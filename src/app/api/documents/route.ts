@@ -60,7 +60,7 @@ export async function GET(req: Request) {
 // is now optional in the upload form; we add it here.
 
 export async function POST(req: Request) {
-  const auth = await requireRole(["ADMIN"]);
+  const auth = await requireRole(["ADMIN", "MANAGER"]);
   if ("error" in auth) return auth.error;
   if (auth.isSuperAdmin || !auth.tenantId) {
     return NextResponse.json({ error: "No tenant context" }, { status: 400 });
