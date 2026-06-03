@@ -94,10 +94,14 @@ export default function ApprovalQueue({
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
 
-  // Auto-apply last-picked location (only when no filter yet AND we have
-  // multiple locations). Matches LocationFilter component behavior.
+  // Auto-apply last-picked location only on first-ever load. If URL has
+  // `locationId` key at all (including empty value from "All locations"
+  // submit), user has interacted — don't override their choice.
   useEffect(() => {
-    if (locationIdFilter || locations.length <= 1) return;
+    if (locations.length <= 1) return;
+    if (locationIdFilter) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.has("locationId")) return; // user explicitly picked "All"
     try {
       const stored = localStorage.getItem("shiftwork:lastLocationId");
       if (stored && locations.some((l) => l.id === stored)) {
