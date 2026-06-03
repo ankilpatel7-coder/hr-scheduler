@@ -34,6 +34,7 @@ export default function ClockPage() {
   const [loc, setLoc] = useState<LocStatus>({ state: "idle" });
   const [now, setNow] = useState(new Date());
   const [submitWithoutGps, setSubmitWithoutGps] = useState(false);
+  const [readyToClockOut, setReadyToClockOut] = useState(false);
 
   useEffect(() => {
     if (status === "unauthenticated") router.push("/login");
@@ -161,6 +162,7 @@ export default function ClockPage() {
     setSelfie(null);
     setOpen(open ? null : { id: data.entry.id, clockIn: data.entry.clockIn });
     setSubmitWithoutGps(false);
+    setReadyToClockOut(false);
     setTimeout(() => setSuccess(null), 3000);
   }
 
@@ -254,6 +256,45 @@ export default function ClockPage() {
 
         {open && <BreakControls />}
 
+        {open && !readyToClockOut && (
+          <div className="mt-6">
+            <button
+              onClick={() => setReadyToClockOut(true)}
+              className="w-full card p-6 text-left hover:border-rust transition-all group"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-[10px] tracking-[0.3em] uppercase text-smoke mb-2">
+                    When you're done
+                  </div>
+                  <div className="display text-2xl text-ink">Ready to clock out</div>
+                  <div className="text-sm text-smoke mt-1">
+                    We'll snap a quick selfie + confirm your location to finish your shift.
+                  </div>
+                </div>
+                <div className="text-rust group-hover:translate-x-1 transition-transform text-2xl">
+                  →
+                </div>
+              </div>
+            </button>
+          </div>
+        )}
+
+        {(!open || readyToClockOut) && (
+        <>
+        {open && readyToClockOut && (
+          <div className="mt-6 mb-2 flex items-center justify-between">
+            <div className="text-sm text-smoke">
+              Take your clock-out selfie below.
+            </div>
+            <button
+              onClick={() => { setReadyToClockOut(false); setSelfie(null); }}
+              className="text-xs text-rust hover:underline"
+            >
+              ← Back to break controls
+            </button>
+          </div>
+        )}
         <div className="grid md:grid-cols-2 gap-6">
           <div className="card p-6">
             <div className="text-[10px] tracking-[0.3em] uppercase text-smoke mb-3">
@@ -379,6 +420,8 @@ export default function ClockPage() {
             </div>
           </div>
         </div>
+        </>
+        )}
       </main>
     </div>
   );
