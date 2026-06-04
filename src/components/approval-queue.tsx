@@ -68,6 +68,39 @@ function durationHours(a: Date, b: Date | null) {
   return Math.max(0, (b.getTime() - a.getTime()) / 36e5);
 }
 
+// Tenant-timezone-aware formatters. tz defaults to ET so old callers without
+// the prop don't crash; the page passes the tenant's actual tz.
+function tzDayKey(d: Date, tz: string): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(d);
+  return parts; // already yyyy-MM-dd from en-CA
+}
+function tzDayLabel(yyyyMmDd: string, tz: string): string {
+  // Parse yyyy-MM-dd as a date in the tenant's tz by constructing a Date at
+  // noon UTC of that day, then formatting in that tz.
+  const [y, m, d] = yyyyMmDd.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d, 12));
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  }).format(dt);
+}
+function tzTime(d: Date, tz: string): string {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).format(d).replace(/\s/g, "");
+}
+
 export default function ApprovalQueue({
   tenantSlug,
   fromIso,
@@ -77,6 +110,7 @@ export default function ApprovalQueue({
   employees,
   locations,
   locationIdFilter,
+  tenantTimezone,
   entries,
   totals,
 }: {
@@ -88,6 +122,7 @@ export default function ApprovalQueue({
   employees: Employee[];
   locations: Location[];
   locationIdFilter: string | null;
+  tenantTimezone?: string;
   entries: Entry[];
   totals: { pending: number; approved: number; rejected: number };
 }) {
@@ -169,7 +204,7 @@ export default function ApprovalQueue({
   // Group by date (local day of clockIn)
   const groups = new Map<string, Entry[]>();
   for (const e of entries) {
-    const day = format(new Date(e.clockIn), "yyyy-MM-dd");
+    const day = tzDayKey(new Date(e.clockIn), tenantTimezone || "America/New_York");
     const list = groups.get(day) ?? [];
     list.push(e);
     groups.set(day, list);
@@ -274,7 +309,7 @@ export default function ApprovalQueue({
           return (
             <section key={day}>
               <div className="text-[11px] uppercase tracking-wider text-smoke font-semibold mb-2">
-                {format(dayDate, "EEEE, MMMM d, yyyy")} · {dayEntries.length} {dayEntries.length === 1 ? "entry" : "entries"}
+                {tzDayLabel(day, tenantTimezone || "America/New_York")} · {dayEntries.length} {dayEntries.length === 1 ? "entry" : "entries"}
               </div>
               <div className="card divide-y divide-ink/5">
                 {dayEntries.map((e) => {

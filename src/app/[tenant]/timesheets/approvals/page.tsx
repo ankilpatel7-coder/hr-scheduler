@@ -45,7 +45,7 @@ export default async function ClockApprovalsPage({
 
   const tenant = await prisma.tenant.findUnique({
     where: { slug: params.tenant },
-    select: { id: true },
+    select: { id: true, timezone: true },
   });
   if (!tenant || tenant.id !== tenantId) redirect("/login");
 
@@ -150,6 +150,7 @@ export default async function ClockApprovalsPage({
           }))}
           locations={locations}
           locationIdFilter={locationId}
+          tenantTimezone={tenant.timezone}
           totals={{ pending: pendingCount, approved: approvedCount, rejected: rejectedCount }}
         />
       </main>
