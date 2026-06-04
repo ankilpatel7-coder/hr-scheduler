@@ -64,11 +64,10 @@ export default async function ClockApprovalsPage({
   };
   if (statusFilter !== "ALL") where.approvalStatus = statusFilter;
   if (employeeId) where.userId = employeeId;
+  // Always exclude entries from archived/inactive users
+  where.user = { active: true, archivedAt: null };
   if (locationId) {
-    where.user = {
-      ...(where.user ?? {}),
-      locations: { some: { locationId } },
-    };
+    where.user.locations = { some: { locationId } };
   }
 
   const [entries, employees, locations] = await Promise.all([
@@ -85,6 +84,8 @@ export default async function ClockApprovalsPage({
       where: {
         tenantId,
         role: { not: "ADMIN" },
+        active: true,
+        archivedAt: null,
         ...(locationId ? { locations: { some: { locationId } } } : {}),
       },
       select: { id: true, name: true },
