@@ -534,6 +534,13 @@ export default function SchedulePage() {
             <SchedulePdfButton
               weekStartIso={weekStart.toISOString()}
               weekEndIso={addDays(weekStart, 7).toISOString()}
+              tenantSlug={tenantSlugForBudget}
+              locationFilter={locationFilter || undefined}
+              locationName={
+                locationFilter
+                  ? locations.find((l) => l.id === locationFilter)?.name
+                  : undefined
+              }
             />
             <button onClick={publish} disabled={publishing || draftCount === 0} className="btn btn-rust print:hidden" title={draftCount === 0 ? "No drafts to publish" : ""}>
               <Send size={14} />
