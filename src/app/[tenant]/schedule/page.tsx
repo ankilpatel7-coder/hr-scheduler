@@ -445,9 +445,26 @@ export default function SchedulePage() {
   }
   const sectionMap = new Map<string, Employee[]>(); // roleName -> Employee[]
   for (const e of displayedEmployees) {
-    const r = e.jobRole ?? UNSPEC_ROLE;
-    if (!sectionMap.has(r)) sectionMap.set(r, []);
-    sectionMap.get(r)!.push(e);
+    let r: string | null | undefined = e.jobRole;
+    // Smart fallback: if jobRole is empty, use the most common shift role
+    // for this employee in the current week's shifts. So an employee whose
+    // jobRole isn't set but who's scheduled all week as "Budtender" lands
+    // in the Budtender section instead of Unspecified.
+    if (!r || !r.trim()) {
+      const counts = new Map<string, number>();
+      for (const s of shifts) {
+        if (s.employeeId === e.id && s.role && s.role.trim()) {
+          counts.set(s.role, (counts.get(s.role) ?? 0) + 1);
+        }
+      }
+      if (counts.size > 0) {
+        const top = Array.from(counts.entries()).sort((a, b) => b[1] - a[1])[0];
+        r = top[0];
+      }
+    }
+    const finalRole = (r && r.trim()) || UNSPEC_ROLE;
+    if (!sectionMap.has(finalRole)) sectionMap.set(finalRole, []);
+    sectionMap.get(finalRole)!.push(e);
   }
 
   // Sort sections: known roles by sortOrder, then unknown alphabetically, then "Unspecified" last
