@@ -49,6 +49,8 @@ export default function ManualEntryModal({
 
   const [locations, setLocations] = useState<Location[]>([]);
   const [locationId, setLocationId] = useState("");
+  const [filteredEmployees, setFilteredEmployees] = useState<Employee[]>([]);
+  const [loadingEmployees, setLoadingEmployees] = useState(false);
   const [userId, setUserId] = useState("");
   const [clockInDate, setClockInDate] = useState(today);
   const [clockInTime, setClockInTime] = useState("09:00");
@@ -82,12 +84,33 @@ export default function ManualEntryModal({
       .catch(() => {});
   }, []);
 
-  // Employees filtered by selected location
-  const filteredEmployees = locationId
-    ? employees.filter((e) =>
-        e.locations?.some((l) => l.location.id === locationId),
-      )
-    : employees;
+  // Employees filtered by selected location — fetched server-side so we
+  // get only employees actually assigned to this location (the prop from
+  // parent may or may not include nested location data).
+  useEffect(() => {
+    if (!locationId) {
+      setFilteredEmployees([]);
+      return;
+    }
+    let cancelled = false;
+    setLoadingEmployees(true);
+    fetch(`/api/employees?locationId=${encodeURIComponent(locationId)}`)
+      .then((r) => (r.ok ? r.json() : { employees: [] }))
+      .then((d) => {
+        if (cancelled) return;
+        const list = (d.employees ?? []).filter(
+          (e: any) => e.active && !e.archivedAt && e.role !== "ADMIN"
+        );
+        setFilteredEmployees(list);
+        setLoadingEmployees(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setFilteredEmployees([]);
+        setLoadingEmployees(false);
+      });
+    return () => { cancelled = true; };
+  }, [locationId]);
 
   // Reset userId if it's no longer in filtered list
   useEffect(() => {
@@ -231,9 +254,11 @@ export default function ManualEntryModal({
               <option value="">
                 {!locationId
                   ? "Pick a location first…"
-                  : filteredEmployees.length === 0
-                    ? "No employees at this location"
-                    : "Select an employee…"}
+                  : loadingEmployees
+                    ? "Loading employees…"
+                    : filteredEmployees.length === 0
+                      ? "No employees at this location"
+                      : "Select an employee…"}
               </option>
               {filteredEmployees.map((emp) => (
                 <option key={emp.id} value={emp.id}>
