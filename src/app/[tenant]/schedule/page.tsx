@@ -432,7 +432,12 @@ export default function SchedulePage() {
   // if the API forgets to filter them out. Admins manage the schedule;
   // they're not assigned to it.
   const displayedEmployees = (locationFilter
-    ? employees.filter((e) => e.locations.some((l) => l.location.id === locationFilter))
+    ? employees.filter((e) =>
+        // Home base at this location
+        e.locations.some((l) => l.location.id === locationFilter) ||
+        // OR has at least one shift here this week (cross-location coverage)
+        shifts.some((s) => s.employeeId === e.id && s.location?.id === locationFilter)
+      )
     : employees
   ).filter((e) => e.role !== "ADMIN");
 
