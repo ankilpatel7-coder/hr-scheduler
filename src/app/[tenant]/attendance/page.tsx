@@ -43,7 +43,19 @@ export const dynamic = "force-dynamic";
 type Range = "day" | "week" | "month" | "custom";
 
 const LATE_MIN = 10; // minutes
-const MATCH_WINDOW_MS = 2 * 60 * 60 * 1000; // ±2h to match clock entry to shift
+// Matching: a shift is matched to a clock entry if they're on the SAME
+// calendar day in the tenant's timezone. We pick the clock entry whose
+// start is closest to the scheduled start. This is the standard HR
+// practice and handles late clock-ins, manual entries, and any entry
+// whose time is off from the scheduled slot.
+function dayKeyInTz(d: Date, tz: string): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(d);
+}
 
 function resolveRange(
   range: Range,
@@ -214,10 +226,11 @@ export default async function AttendancePage({
     row.shiftsScheduled += 1;
 
     const candidates = ceByUser.get(s.employeeId) ?? [];
+    const shiftDay = dayKeyInTz(s.startTime, tenant.timezone);
     let best: { ce: any; diff: number } | null = null;
     for (const ce of candidates) {
+      if (dayKeyInTz(ce.clockIn, tenant.timezone) !== shiftDay) continue;
       const diff = Math.abs(ce.clockIn.getTime() - s.startTime.getTime());
-      if (diff > MATCH_WINDOW_MS) continue;
       if (!best || diff < best.diff) best = { ce, diff };
     }
 
