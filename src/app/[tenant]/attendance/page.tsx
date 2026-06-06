@@ -155,13 +155,15 @@ export default async function AttendancePage({
             ? { locations: { some: { locationId: searchParams.locationId } } }
             : {}),
         },
-        // Only APPROVED clock entries count toward attendance. PENDING
-        // (not-yet-reviewed) and REJECTED entries are excluded — pending
-        // shows once admin approves, rejected never shows. Stricter audit
-        // trail: admins must review before today's work appears.
-        approvalStatus: "APPROVED",
+        // Match against PENDING + APPROVED — pending clock entries still
+        // count toward shift status (on-time/late/early/missed) so shifts
+        // don't appear "Missed" while waiting for admin approval. REJECTED
+        // entries are excluded entirely. The actualHours sum further down
+        // only includes APPROVED entries so pending work doesn't inflate
+        // totals until reviewed.
+        approvalStatus: { not: "REJECTED" },
       },
-      select: { id: true, userId: true, clockIn: true, clockOut: true },
+      select: { id: true, userId: true, clockIn: true, clockOut: true, approvalStatus: true },
       orderBy: { clockIn: "asc" },
     }),
     prisma.user.findMany({
@@ -253,9 +255,12 @@ export default async function AttendancePage({
     });
   }
 
-  // Sum actual hours from ALL clock entries (matched or not).
+  // Sum actual hours from APPROVED clock entries only. Pending entries
+  // get used for matching above (so the shift shows on-time/late) but
+  // don't inflate hours until admin reviews.
   for (const ce of clockEntries) {
     if (!ce.clockOut) continue;
+    if ((ce as any).approvalStatus !== "APPROVED") continue;
     const row = ensure(ce.userId);
     row.actualHours += (ce.clockOut.getTime() - ce.clockIn.getTime()) / 3_600_000;
   }
