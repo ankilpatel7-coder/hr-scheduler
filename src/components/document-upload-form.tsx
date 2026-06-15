@@ -24,6 +24,10 @@ export default function DocumentUploadForm() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [required, setRequired] = useState(true);
+  // requireSignature=true → existing signing flow. false → personal/view-only
+  // (paystubs, personal HR docs). Personal docs never block clock-in and
+  // are NOT in the employee's "to sign" list.
+  const [requireSignature, setRequireSignature] = useState(true);
 
   // Assignment
   const [mode, setMode] = useState<AssignMode>("all");
@@ -119,6 +123,7 @@ export default function DocumentUploadForm() {
     fd.append("title", title.trim());
     fd.append("description", description.trim());
     fd.append("required", String(required));
+    fd.append("requireSignature", String(requireSignature));
     fd.append("assignMode", mode);
     if (mode === "custom") {
       fd.append("employeeIds", selectedEmpIds.join(","));
@@ -136,6 +141,7 @@ export default function DocumentUploadForm() {
       setTitle("");
       setDescription("");
       setRequired(true);
+      setRequireSignature(true);
       setMode("all");
       setSelectedEmpIds([]);
       setSelectedLocIds([]);
@@ -186,6 +192,48 @@ export default function DocumentUploadForm() {
           accept="application/pdf"
           className="w-full text-xs"
         />
+      </div>
+
+      {/* === Mode: signed vs personal === */}
+      <div>
+        <label className="block text-xs font-medium text-ink mb-2">Mode</label>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+          <button
+            type="button"
+            onClick={() => {
+              setRequireSignature(true);
+              setRequired(true);
+            }}
+            className={`text-left rounded border px-3 py-2 transition ${
+              requireSignature
+                ? "border-rust bg-rust/5 ring-2 ring-rust/30"
+                : "border-ink/10 hover:bg-ink/5"
+            }`}
+          >
+            <div className="font-medium text-ink">Requires signature</div>
+            <div className="text-[11px] text-smoke mt-0.5">
+              Employees must e-sign. Can block clock-in.
+            </div>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setRequireSignature(false);
+              setRequired(false);
+              setMode("custom");
+            }}
+            className={`text-left rounded border px-3 py-2 transition ${
+              !requireSignature
+                ? "border-rust bg-rust/5 ring-2 ring-rust/30"
+                : "border-ink/10 hover:bg-ink/5"
+            }`}
+          >
+            <div className="font-medium text-ink">Personal — view only</div>
+            <div className="text-[11px] text-smoke mt-0.5">
+              No signature. Only the assigned employee can see it (e.g. paystubs).
+            </div>
+          </button>
+        </div>
       </div>
 
       {/* === Assignment === */}
