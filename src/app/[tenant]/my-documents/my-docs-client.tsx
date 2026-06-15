@@ -30,6 +30,7 @@ export type SigRow = {
   fileName: string;
   fileUrl: string;
   required: boolean;
+  requireSignature: boolean;
   version: number;
   status: "PENDING" | "SIGNED" | "WAIVED";
   signedAtISO: string | null;
@@ -53,9 +54,14 @@ export default function MyDocsClient({ rows }: { rows: SigRow[] }) {
   const router = useRouter();
   const [signing, setSigning] = useState<SigRow | null>(null);
 
-  // Group by folder
+  // Split out personal (view-only) docs — they go in a dedicated section
+  // at the top and aren't part of the signing folder groups.
+  const personalRows = rows.filter((r) => r.requireSignature === false);
+  const signingRows = rows.filter((r) => r.requireSignature !== false);
+
+  // Group SIGNING docs by folder
   const groupMap = new Map<string, FolderGroup>();
-  for (const r of rows) {
+  for (const r of signingRows) {
     const key = r.folderId ?? "__unfiled";
     if (!groupMap.has(key)) {
       groupMap.set(key, {

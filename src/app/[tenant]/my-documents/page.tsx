@@ -61,6 +61,7 @@ export default async function MyDocumentsPage({
     fileName: s.document.fileName,
     fileUrl: s.document.fileUrl,
     required: s.document.required,
+    requireSignature: s.document.requireSignature,
     version: s.document.version,
     status: s.status as "PENDING" | "SIGNED" | "WAIVED",
     signedAtISO: s.signedAt ? s.signedAt.toISOString() : null,
