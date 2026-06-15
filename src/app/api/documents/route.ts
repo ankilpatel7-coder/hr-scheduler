@@ -77,6 +77,9 @@ export async function POST(req: Request) {
   const title = String(formData.get("title") ?? "").trim();
   const description = String(formData.get("description") ?? "").trim() || null;
   const required = String(formData.get("required") ?? "true") === "true";
+  // requireSignature defaults to true. When false, the doc is view-only:
+  // no signature workflow, never blocks clock-in. Used for paystubs etc.
+  const requireSignature = String(formData.get("requireSignature") ?? "true") === "true";
   const folderIdRaw = String(formData.get("folderId") ?? "").trim();
   const folderId = folderIdRaw && folderIdRaw !== "null" ? folderIdRaw : null;
 
@@ -126,6 +129,7 @@ export async function POST(req: Request) {
       fileSize: file.size,
       extractedText,
       required,
+      requireSignature,
       folderId,
       uploadedById: auth.userId,
     },

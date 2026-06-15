@@ -26,7 +26,9 @@ export async function GET() {
     where: {
       employeeId: userId,
       status: "PENDING",
-      document: { tenantId, active: true, required: true },
+      // Only block on docs that BOTH require signature AND are marked required.
+      // Personal/paystub docs (requireSignature=false) never block clock-in.
+      document: { tenantId, active: true, required: true, requireSignature: true },
     },
     select: {
       document: { select: { id: true, title: true } },

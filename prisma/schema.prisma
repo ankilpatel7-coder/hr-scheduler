@@ -559,30 +559,33 @@ model CalendarEvent {
 // ============================================================
 
 model Document {
-  id            String              @id @default(cuid())
-  tenantId      String
-  tenant        Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  title         String
-  description   String?             @db.Text
-  fileUrl       String // Vercel Blob URL of the original PDF
-  fileName      String // original filename, for display
-  fileSize      Int // bytes
+  id               String              @id @default(cuid())
+  tenantId         String
+  tenant           Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  title            String
+  description      String?             @db.Text
+  fileUrl          String // Vercel Blob URL of the original PDF
+  fileName         String // original filename, for display
+  fileSize         Int // bytes
   // Extracted plaintext (server-side parsed via pdf-parse on upload).
   // Used as RAG context for the AI Q&A chatbot. Null = not indexed.
-  extractedText String?             @db.Text
-  required      Boolean             @default(true) // gate clock-in if true
-  active        Boolean             @default(true) // archive without delete
-  uploadedById  String
-  uploadedBy    User                @relation("UploadedDocuments", fields: [uploadedById], references: [id])
-  createdAt     DateTime            @default(now())
-  updatedAt     DateTime            @updatedAt
-  signatures    DocumentSignature[]
-  folderId      String?
-  folder        DocumentFolder?     @relation(fields: [folderId], references: [id], onDelete: SetNull)
-  version       Int                 @default(1)
-  replacedById  String?             @unique
-  replacedBy    Document?           @relation("VersionChain", fields: [replacedById], references: [id], onDelete: SetNull)
-  replaces      Document?           @relation("VersionChain")
+  extractedText    String?             @db.Text
+  required         Boolean             @default(true) // gate clock-in if true
+  // When false, doc is view-only — no signature required, never blocks
+  // clock-in. Used for paystubs + other personal employee docs.
+  requireSignature Boolean             @default(true)
+  active           Boolean             @default(true) // archive without delete
+  uploadedById     String
+  uploadedBy       User                @relation("UploadedDocuments", fields: [uploadedById], references: [id])
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  signatures       DocumentSignature[]
+  folderId         String?
+  folder           DocumentFolder?     @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  version          Int                 @default(1)
+  replacedById     String?             @unique
+  replacedBy       Document?           @relation("VersionChain", fields: [replacedById], references: [id], onDelete: SetNull)
+  replaces         Document?           @relation("VersionChain")
 
   @@index([tenantId, active])
   @@index([folderId])
