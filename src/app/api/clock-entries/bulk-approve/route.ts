@@ -56,7 +56,9 @@ export async function POST(req: Request) {
   let userIdFilter: { in: string[] } | undefined;
   if (auth.role === "MANAGER") {
     const scoped = await getScopedEmployeeIds(auth.userId, "MANAGER");
-    const allowed = scoped ?? [];
+    // Separation of duties — strip the manager's own ID from the allowed set
+    // so bulk actions never touch their own entries
+    const allowed = (scoped ?? []).filter((id) => id !== auth.userId);
     const filtered = employeeIds && employeeIds.length > 0
       ? employeeIds.filter((id) => allowed.includes(id))
       : allowed;

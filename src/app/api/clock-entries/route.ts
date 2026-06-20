@@ -34,10 +34,17 @@ export async function PATCH(req: Request) {
   }
   const { id, clockIn, clockOut, editNote } = parsed.data;
 
-  const existing = await prisma.clockEntry.findUnique({ where: { id }, select: { tenantId: true } });
+  const existing = await prisma.clockEntry.findUnique({ where: { id }, select: { tenantId: true, userId: true } });
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
   if (existing.tenantId !== tenantId) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+  // Separation of duties — managers cannot edit their own entries
+  if (auth.role === "MANAGER" && existing.userId === auth.userId) {
+    return NextResponse.json(
+      { error: "Managers cannot edit their own timesheet entries. Ask another admin/manager to make the correction." },
+      { status: 403 },
+    );
   }
 
   const data: any = { editedBy: auth.userId };
@@ -63,10 +70,17 @@ export async function DELETE(req: Request) {
   const id = searchParams.get("id");
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
 
-  const existing = await prisma.clockEntry.findUnique({ where: { id }, select: { tenantId: true } });
+  const existing = await prisma.clockEntry.findUnique({ where: { id }, select: { tenantId: true, userId: true } });
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
   if (existing.tenantId !== tenantId) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+  // Separation of duties — managers cannot delete their own entries
+  if (auth.role === "MANAGER" && existing.userId === auth.userId) {
+    return NextResponse.json(
+      { error: "Managers cannot delete their own timesheet entries." },
+      { status: 403 },
+    );
   }
 
   await prisma.clockEntry.delete({ where: { id } });
@@ -85,6 +99,14 @@ export async function POST(req: Request) {
   const { userId, clockIn, clockOut, editNote } = body;
   if (!userId || !clockIn) {
     return NextResponse.json({ error: "Missing userId or clockIn" }, { status: 400 });
+  }
+  // Separation of duties — managers cannot create manual entries for themselves.
+  // They must clock in/out through the normal Clock page like everyone else.
+  if (auth.role === "MANAGER" && userId === auth.userId) {
+    return NextResponse.json(
+      { error: "Managers cannot create timesheet entries for themselves. Use the Clock page to clock in/out." },
+      { status: 403 },
+    );
   }
 
   // Verify target user is in same tenant

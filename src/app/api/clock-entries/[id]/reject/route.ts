@@ -24,6 +24,15 @@ async function loadAndAuthorize(entryId: string, auth: any) {
     include: { user: { select: { id: true, name: true } } },
   });
   if (!entry) return { error: NextResponse.json({ error: "Not found" }, { status: 404 }) };
+  // Separation of duties — managers can't approve/reject their own entries
+  if (auth.role === "MANAGER" && entry.userId === auth.userId) {
+    return {
+      error: NextResponse.json(
+        { error: "Managers cannot approve or reject their own timesheet entries" },
+        { status: 403 },
+      ),
+    };
+  }
   // Manager scope check
   if (auth.role === "MANAGER") {
     const scoped = await getScopedEmployeeIds(auth.userId, "MANAGER");

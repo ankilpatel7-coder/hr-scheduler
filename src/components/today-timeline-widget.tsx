@@ -4,8 +4,11 @@
  *   Top sub-bar: striped scheduled bar (when supposed to work)
  *   Bottom sub-bar: solid actual worked segments (one per clock entry)
  *
- * Rows are the UNION of (scheduled today) ∪ (clocked in today), so
- * cross-role shifts and off-schedule clock-ins both surface.
+ * Rows are the UNION of (scheduled today at this location) ∪
+ * (clocked in today, in scope for this location). Cross-location workers
+ * scheduled here still appear; people assigned elsewhere and clocked in
+ * elsewhere do not.
+ *
  * Cottage palette throughout — gold for upcoming, moss for live/done,
  * amber for late, rose for no-show.
  */
@@ -86,9 +89,9 @@ export default async function TodayTimelineWidget({
   const dayStart = tzStartOfDay(targetDate, tz);
   const dayEnd = tzEndOfDay(targetDate, tz);
 
+  // Shifts: filter by location directly on shift.locationId.
   // Drop the role filter — managers, leads, and admins also work shifts.
-  // Keep active=true so deactivated people don't appear.
-  const [shifts, dayEntries] = await Promise.all([
+  const [shifts, allDayEntries] = await Promise.all([
     prisma.shift.findMany({
       where: {
         tenantId,
@@ -110,9 +113,28 @@ export default async function TodayTimelineWidget({
     }),
   ]);
 
-  // Group clock entries by user
+  // Shift users (already filtered by location via shift.locationId)
+  const scheduledIds = new Set(
+    shifts.map((s) => s.employee?.id).filter(Boolean) as string[],
+  );
+
+  // Determine which user IDs are in scope for THIS location view.
+  // For location-filtered view: users assigned to this location OR who have a
+  // shift here today (cross-location workers). For tenant-wide view: no limit.
+  let inScopeUserIds: Set<string> | null = null;
+  if (locationId) {
+    const locUsers = await prisma.user.findMany({
+      where: { tenantId, active: true, locations: { some: { locationId } } },
+      select: { id: true },
+    });
+    inScopeUserIds = new Set(locUsers.map((u) => u.id));
+    for (const id of scheduledIds) inScopeUserIds.add(id);
+  }
+
+  // Filter clock entries by scope
   const entriesByUser = new Map<string, Entry[]>();
-  for (const e of dayEntries) {
+  for (const e of allDayEntries) {
+    if (inScopeUserIds && !inScopeUserIds.has(e.userId)) continue;
     const list = entriesByUser.get(e.userId) ?? [];
     list.push({ in: e.clockIn, out: e.clockOut });
     entriesByUser.set(e.userId, list);
@@ -127,8 +149,7 @@ export default async function TodayTimelineWidget({
     shiftsByUser.set(s.employee.id, list);
   }
 
-  // UNION: rows = scheduled ∪ clocked-in
-  const scheduledIds = new Set(shiftsByUser.keys());
+  // UNION: rows = (scheduled here) ∪ (clocked in, in scope)
   const clockedInIds = Array.from(entriesByUser.keys());
   const extraIds = clockedInIds.filter((id) => !scheduledIds.has(id));
   const extras = extraIds.length
@@ -163,7 +184,7 @@ export default async function TodayTimelineWidget({
     return aTime - bTime;
   });
 
-  // Stats — derived from displayed rows (no more mismatch with the list)
+  // Stats — derived from displayed rows
   const liveCount = isViewingToday
     ? rows.filter((r) => r.entries.some((e) => e.out === null)).length
     : 0;
@@ -333,7 +354,6 @@ export default async function TodayTimelineWidget({
               const shift = r.primaryShift;
               const ended = shift ? shift.endTime < now : false;
 
-              // Status + color logic
               let scheduledColor = GOLD;
               let statusLabel: string | null = null;
               if (hasOpen) {
@@ -349,12 +369,10 @@ export default async function TodayTimelineWidget({
                 scheduledColor = AMBER;
                 statusLabel = "Late";
               } else if (!shift && hasAny) {
-                // Clocked in without a scheduled shift
                 scheduledColor = MOSS;
                 statusLabel = hasOpen ? "LIVE" : "Done";
               }
 
-              // Bar geometry
               const shiftStartPct = shift ? pctOfDay(shift.startTime, dayStart) : 0;
               const shiftEndPct = shift ? pctOfDay(shift.endTime, dayStart) : 0;
               const shiftWidthPct = shift ? Math.max(1, shiftEndPct - shiftStartPct) : 0;
