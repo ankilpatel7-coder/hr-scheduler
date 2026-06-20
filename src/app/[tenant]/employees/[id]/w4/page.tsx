@@ -11,7 +11,6 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { getServerAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import Navbar from "@/components/navbar";
 import W4Form from "./w4-form";
 
 export const dynamic = "force-dynamic";
@@ -52,9 +51,7 @@ export default async function W4Page({
   if (!employee || employee.tenantId !== tenantId) notFound();
 
   return (
-    <div className="min-h-screen">
-      <Navbar />
-      <main className="max-w-2xl mx-auto px-6 py-10 space-y-6">
+    <div className="min-h-screen"><main className="max-w-2xl mx-auto px-6 py-10 space-y-6">
         <Link
           href={`/${params.tenant}/employees/${employee.id}`}
           className="text-smoke hover:text-ink text-sm inline-flex items-center gap-1"

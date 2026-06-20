@@ -5,7 +5,6 @@
  */
 
 import { redirect } from "next/navigation";
-import Navbar from "@/components/navbar";
 import { getServerAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import DocumentsClient from "./documents-client";
@@ -87,9 +86,7 @@ export default async function DocumentsAdminPage({
   });
 
   return (
-    <div className="min-h-screen">
-      <Navbar />
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+    <div className="min-h-screen"><main className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
         <DocumentsClient
           tenantSlug={params.tenant}
           initialFolders={folderList}

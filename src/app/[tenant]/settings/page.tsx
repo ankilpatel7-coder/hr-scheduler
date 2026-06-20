@@ -2,7 +2,6 @@
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import Navbar from "@/components/navbar";
 import ClockApprovalPanel from "@/components/clock-approval-panel";
 import TenantPrefsPanel from "@/components/tenant-prefs-panel";
 import {
@@ -29,9 +28,7 @@ export default function SettingsPage() {
   if (status !== "authenticated") return null;
 
   return (
-    <div className="min-h-screen">
-      <Navbar />
-      <main className="max-w-4xl mx-auto px-6 py-10 animate-fade-in">
+    <div className="min-h-screen"><main className="max-w-4xl mx-auto px-6 py-10 animate-fade-in">
         <div className="mb-10 animate-slide-up">
           <div className="label-eyebrow mb-3">Admin · System</div>
           <h1 className="display text-5xl text-ink">Settings</h1>

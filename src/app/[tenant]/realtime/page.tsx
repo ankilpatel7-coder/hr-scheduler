@@ -10,7 +10,6 @@
 import { redirect } from "next/navigation";
 import { getServerAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import Navbar from "@/components/navbar";
 import DateNav from "@/components/date-nav";
 import RealtimeAutoRefresh from "./auto-refresh";
 import PrintButtonClient from "./print-button";
@@ -102,9 +101,7 @@ export default async function RealtimePage({
   const nowPct = isViewingToday ? pctOfDay(now, dayStart) : -1;
 
   return (
-    <div className="min-h-screen">
-      <Navbar />
-      <main className="max-w-[1400px] mx-auto px-6 py-10 space-y-6">
+    <div className="min-h-screen"><main className="max-w-[1400px] mx-auto px-6 py-10 space-y-6">
         <RealtimeAutoRefresh enabled={isViewingToday} />
 
         <div className="flex items-start justify-between gap-4 flex-wrap">

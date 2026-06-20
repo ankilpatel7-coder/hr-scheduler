@@ -15,7 +15,6 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getServerAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import Navbar from "@/components/navbar";
 import { ArrowLeft, List, MapPin, User } from "lucide-react";
 import TimesheetPdfButton from "@/components/timesheet-pdf-button";
 import {
@@ -219,9 +218,7 @@ export default async function TimesheetsByEmployeePage({
   const pdfFilename = `timesheets-${params.tenant}${empPart}-${fromStr}-to-${toStr}.pdf`;
 
   return (
-    <div className="min-h-screen">
-      <Navbar />
-      <main className="max-w-[1400px] mx-auto px-6 py-10 space-y-6">
+    <div className="min-h-screen"><main className="max-w-[1400px] mx-auto px-6 py-10 space-y-6">
         <div className="print:hidden">
           <Link
             href={`/${params.tenant}/timesheets`}

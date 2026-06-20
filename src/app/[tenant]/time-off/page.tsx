@@ -2,7 +2,6 @@
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import Navbar from "@/components/navbar";
 import LocationFilter from "@/components/location-filter";
 import { Plus, X, Check, Ban, Pencil, Trash2 } from "lucide-react";
 import { format } from "date-fns";
@@ -97,9 +96,7 @@ export default function TimeOffPage() {
   }
 
   return (
-    <div className="min-h-screen">
-      <Navbar />
-      <main className="max-w-5xl mx-auto px-6 py-10">
+    <div className="min-h-screen"><main className="max-w-5xl mx-auto px-6 py-10">
         <div className="flex items-baseline justify-between mb-8 flex-wrap gap-4">
           <div>
             <div className="text-[10px] tracking-[0.3em] uppercase text-smoke mb-2">

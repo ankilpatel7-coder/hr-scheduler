@@ -3,7 +3,6 @@ import Link from "next/link";
 import { ArrowLeft, Smartphone } from "lucide-react";
 import { getServerAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import Navbar from "@/components/navbar";
 import PinForm from "./pin-form";
 
 export const dynamic = "force-dynamic";
@@ -21,7 +20,7 @@ export default async function ChangePinPage() {
 
   return (
     <div className="min-h-screen">
-      {!isSuperAdmin && <Navbar />}
+      
       <main className="max-w-md mx-auto px-6 py-10 space-y-5">
         <Link href="/change-password" className="text-smoke hover:text-ink text-sm inline-flex items-center gap-1">
           <ArrowLeft size={14} /> Change password instead

@@ -1,7 +1,5 @@
 import { redirect } from "next/navigation";
 import { getServerAuth } from "@/lib/auth";
-import AdminNav from "@/components/admin-nav";
-
 export const metadata = {
   title: "Shiftwork — Super Admin",
 };
@@ -24,9 +22,7 @@ export default async function AdminLayout({
   }
 
   return (
-    <div className="min-h-screen bg-paper">
-      <AdminNav userName={(session.user as any).name ?? "Admin"} />
-      <main className="max-w-[1200px] mx-auto px-6 py-10">{children}</main>
+    <div className="min-h-screen bg-paper"><main className="max-w-[1200px] mx-auto px-6 py-10">{children}</main>
     </div>
   );
 }

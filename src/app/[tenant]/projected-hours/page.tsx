@@ -17,7 +17,6 @@
 import { redirect } from "next/navigation";
 import { getServerAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import Navbar from "@/components/navbar";
 import { format, startOfWeek, endOfWeek } from "date-fns";
 import { AlertTriangle, Clock, CalendarClock } from "lucide-react";
 
@@ -115,9 +114,7 @@ export default async function ProjectedHoursPage({ params }: { params: { tenant:
   const fmt = (h: number) => h.toFixed(1);
 
   return (
-    <div className="min-h-screen">
-      <Navbar />
-      <main className="max-w-[1100px] mx-auto px-6 py-10 space-y-6">
+    <div className="min-h-screen"><main className="max-w-[1100px] mx-auto px-6 py-10 space-y-6">
         {/* Header */}
         <div>
           <div className="label-eyebrow mb-1">Projected hours</div>

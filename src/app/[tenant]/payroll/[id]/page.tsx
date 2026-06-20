@@ -7,7 +7,6 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getServerAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import Navbar from "@/components/navbar";
 import { ArrowLeft, FileText } from "lucide-react";
 import { format } from "date-fns";
 import PeriodActions from "./period-actions";
@@ -50,9 +49,7 @@ export default async function PeriodDetailPage({
   );
 
   return (
-    <div className="min-h-screen">
-      <Navbar />
-      <main className="max-w-[1200px] mx-auto px-6 py-10 space-y-6">
+    <div className="min-h-screen"><main className="max-w-[1200px] mx-auto px-6 py-10 space-y-6">
         <Link href={`/${params.tenant}/payroll`} className="text-smoke hover:text-ink text-sm inline-flex items-center gap-1">
           <ArrowLeft size={14} /> All periods
         </Link>

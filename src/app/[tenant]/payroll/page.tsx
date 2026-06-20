@@ -7,7 +7,6 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getServerAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import Navbar from "@/components/navbar";
 import { FileText, Calendar } from "lucide-react";
 import { format } from "date-fns";
 import DeletePayPeriodButton from "@/components/delete-pay-period-button";
@@ -35,9 +34,7 @@ export default async function PayrollPage({ params }: { params: { tenant: string
   });
 
   return (
-    <div className="min-h-screen">
-      <Navbar />
-      <main className="max-w-[1200px] mx-auto px-6 py-10 space-y-6">
+    <div className="min-h-screen"><main className="max-w-[1200px] mx-auto px-6 py-10 space-y-6">
         <div className="flex items-baseline justify-between flex-wrap gap-4">
           <div>
             <div className="label-eyebrow mb-1">Payroll</div>

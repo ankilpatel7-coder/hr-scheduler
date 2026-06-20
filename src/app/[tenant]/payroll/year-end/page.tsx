@@ -11,7 +11,6 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getServerAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import Navbar from "@/components/navbar";
 import { ArrowLeft, AlertTriangle, FileText, Calendar } from "lucide-react";
 import { computeW2Data, compute941Data } from "@/lib/payroll/year-end";
 
@@ -85,9 +84,7 @@ export default async function YearEndPage({
   const yearOptions = [currentYear - 2, currentYear - 1, currentYear, currentYear + 1];
 
   return (
-    <div className="min-h-screen">
-      <Navbar />
-      <main className="max-w-6xl mx-auto px-6 py-10">
+    <div className="min-h-screen"><main className="max-w-6xl mx-auto px-6 py-10">
         <Link
           href={`/${params.tenant}/payroll`}
           className="inline-flex items-center gap-1 text-xs text-rust hover:underline mb-3"

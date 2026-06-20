@@ -2,7 +2,6 @@
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import Navbar from "@/components/navbar";
 import { format, isBefore } from "date-fns";
 import { Repeat, X } from "lucide-react";
 
@@ -55,9 +54,7 @@ export default function MyShiftsPage() {
   const past = shifts.filter((s) => isBefore(new Date(s.endTime), now));
 
   return (
-    <div className="min-h-screen">
-      <Navbar />
-      <main className="max-w-4xl mx-auto px-6 py-10">
+    <div className="min-h-screen"><main className="max-w-4xl mx-auto px-6 py-10">
         <div className="mb-10">
           <div className="text-[10px] tracking-[0.3em] uppercase text-smoke mb-2">
             Welcome back

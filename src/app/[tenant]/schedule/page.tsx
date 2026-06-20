@@ -2,7 +2,6 @@
 import { Fragment, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter, useParams } from "next/navigation";
-import Navbar from "@/components/navbar";
 import {
   Plus, Pencil, Trash2, ChevronLeft, ChevronRight, X, Send, Copy, Clipboard,
   Printer, CalendarPlus, AlertTriangle, Settings,
@@ -491,9 +490,7 @@ export default function SchedulePage() {
   const draftCount = shifts.filter((s) => !s.published).length;
 
   return (
-    <div className="min-h-screen">
-      <Navbar />
-      <main className="max-w-[1400px] mx-auto px-6 py-10" id="schedule-printable">
+    <div className="min-h-screen"><main className="max-w-[1400px] mx-auto px-6 py-10" id="schedule-printable">
 
         {/* Print-only header — hidden on screen, visible when printing */}
         <div className="hidden print:block print-only-header">

@@ -3,7 +3,6 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { getServerAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import Navbar from "@/components/navbar";
 import LlcForm from "./llc-form";
 
 export const dynamic = "force-dynamic";
@@ -25,9 +24,7 @@ export default async function LlcSettingsPage({
   if (!location || location.tenantId !== tenantId) notFound();
 
   return (
-    <div className="min-h-screen">
-      <Navbar />
-      <main className="max-w-2xl mx-auto px-6 py-10 space-y-6">
+    <div className="min-h-screen"><main className="max-w-2xl mx-auto px-6 py-10 space-y-6">
         <Link href={`/${params.tenant}/locations`} className="text-smoke hover:text-ink text-sm inline-flex items-center gap-1">
           <ArrowLeft size={14} /> Back to locations
         </Link>

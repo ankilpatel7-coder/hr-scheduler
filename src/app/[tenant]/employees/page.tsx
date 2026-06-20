@@ -3,7 +3,6 @@ import { useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import Navbar from "@/components/navbar";
 import LocationFilter from "@/components/location-filter";
 import { UserPlus, X, Settings2, KeyRound, Copy, Check, Camera, ShieldCheck, Archive, Trash2, Eye, EyeOff } from "lucide-react";
 
@@ -121,9 +120,7 @@ export default function EmployeesPage() {
   }
 
   return (
-    <div className="min-h-screen">
-      <Navbar />
-      <main className="max-w-6xl mx-auto px-6 py-10 animate-fade-in">
+    <div className="min-h-screen"><main className="max-w-6xl mx-auto px-6 py-10 animate-fade-in">
         <div className="flex items-baseline justify-between mb-10 flex-wrap gap-4 animate-slide-up">
           <div>
             <div className="label-eyebrow mb-3">People</div>

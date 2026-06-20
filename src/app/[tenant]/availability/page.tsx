@@ -2,7 +2,6 @@
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import Navbar from "@/components/navbar";
 import { Check } from "lucide-react";
 
 type Entry = {
@@ -97,9 +96,7 @@ export default function AvailabilityPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen">
-        <Navbar />
-        <div className="max-w-3xl mx-auto px-6 py-16 text-center text-smoke">
+      <div className="min-h-screen"><div className="max-w-3xl mx-auto px-6 py-16 text-center text-smoke">
           Loading…
         </div>
       </div>
@@ -107,9 +104,7 @@ export default function AvailabilityPage() {
   }
 
   return (
-    <div className="min-h-screen">
-      <Navbar />
-      <main className="max-w-3xl mx-auto px-6 py-10">
+    <div className="min-h-screen"><main className="max-w-3xl mx-auto px-6 py-10">
         <div className="mb-10">
           <div className="text-[10px] tracking-[0.3em] uppercase text-smoke mb-2">
             Your weekly pattern

@@ -12,7 +12,6 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getServerAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import Navbar from "@/components/navbar";
 import { ArrowLeft } from "lucide-react";
 import { computeW2Data } from "@/lib/payroll/year-end";
 import W2PdfButton from "@/components/w2-pdf-button";
@@ -81,9 +80,7 @@ export default async function W2Page({
   const w2 = await computeW2Data(tenantId, params.employeeId, year);
   if (!w2) {
     return (
-      <div className="min-h-screen">
-        <Navbar />
-        <main className="max-w-3xl mx-auto px-6 py-10">
+      <div className="min-h-screen"><main className="max-w-3xl mx-auto px-6 py-10">
           <Link href={`/${params.tenant}/payroll/year-end?year=${year}`} className="text-xs text-rust hover:underline">
             ← Back to year-end
           </Link>
@@ -106,9 +103,7 @@ export default async function W2Page({
   };
 
   return (
-    <div className="min-h-screen bg-paper">
-      <Navbar />
-      <main className="max-w-4xl mx-auto px-6 py-8">
+    <div className="min-h-screen bg-paper"><main className="max-w-4xl mx-auto px-6 py-8">
         <div className="flex items-center justify-between mb-4 print:hidden">
           <Link
             href={`/${params.tenant}/payroll/year-end?year=${year}`}

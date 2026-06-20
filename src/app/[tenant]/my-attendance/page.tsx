@@ -8,7 +8,6 @@
  */
 
 import { redirect } from "next/navigation";
-import Navbar from "@/components/navbar";
 import { getServerAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import {
@@ -200,9 +199,7 @@ export default async function MyAttendancePage({
   };
 
   return (
-    <div className="min-h-screen">
-      <Navbar />
-      <main className="max-w-3xl mx-auto px-6 py-10">
+    <div className="min-h-screen"><main className="max-w-3xl mx-auto px-6 py-10">
         <MyAttendanceClient
           tenantSlug={params.tenant}
           range={range}

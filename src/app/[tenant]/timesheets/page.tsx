@@ -3,7 +3,6 @@ import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import Navbar from "@/components/navbar";
 import LocationFilter from "@/components/location-filter";
 import EmployeeMultiSelect from "@/components/employee-multi-select";
 import SelfieVerifyModal from "@/components/selfie-verify-modal";
@@ -268,9 +267,7 @@ export default function TimesheetsPage() {
   const totalGroups = groups.length;
 
   return (
-    <div className="min-h-screen">
-      <Navbar />
-      <main className="max-w-7xl mx-auto px-6 py-10 animate-fade-in">
+    <div className="min-h-screen"><main className="max-w-7xl mx-auto px-6 py-10 animate-fade-in">
         <div className="flex items-baseline justify-between mb-8 flex-wrap gap-4 animate-slide-up">
           <div>
             <div className="label-eyebrow mb-3">Hours and pay</div>

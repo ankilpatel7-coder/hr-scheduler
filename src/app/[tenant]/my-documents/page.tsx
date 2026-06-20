@@ -11,7 +11,6 @@
 
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import Navbar from "@/components/navbar";
 import { getServerAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { FileText, ArrowLeft } from "lucide-react";
@@ -74,9 +73,7 @@ export default async function MyDocumentsPage({
   }));
 
   return (
-    <div className="min-h-screen">
-      <Navbar />
-      <main className="max-w-3xl mx-auto px-6 py-10">
+    <div className="min-h-screen"><main className="max-w-3xl mx-auto px-6 py-10">
         <Link
           href={`/${params.tenant}/dashboard`}
           className="inline-flex items-center gap-1 text-xs text-rust hover:underline mb-3"

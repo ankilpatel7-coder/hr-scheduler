@@ -1,11 +1,12 @@
 /**
- * Premium 5-card KPI strip — gradient area sparklines, per-metric icons,
- * animated values, accent color per tile.
+ * KPI strip — Cottage edition.
  *
- *   <KpiStrip tenantId={tenantId} />
+ * Unified single-style cards. Differentiation comes from icon + label, not
+ * from per-card accent colors. Sparkline in harvest gold for normal cards,
+ * amber for cards flagged warn (OT projected > 0). Delta color is strictly
+ * semantic — moss = positive, rose = negative, smoke = neutral.
  *
- * Cards: Active employees · Hours · Labor cost · OT projected · Avg shift.
- * Each gets its own accent color, gradient area chart, and lucide icon.
+ * No more pink, cyan, indigo. No more rainbow top stripes.
  */
 
 import { prisma } from "@/lib/db";
@@ -18,7 +19,13 @@ function durationHours(a: Date, b: Date) {
   return Math.max(0, (b.getTime() - a.getTime()) / 36e5);
 }
 
-export default async function KpiStrip({ tenantId, locationId }: { tenantId: string; locationId?: string }) {
+export default async function KpiStrip({
+  tenantId,
+  locationId,
+}: {
+  tenantId: string;
+  locationId?: string;
+}) {
   const now = new Date();
   const thisWeekStart = startOfWeek(now, { weekStartsOn: 1 });
   const thisWeekEnd = endOfWeek(now, { weekStartsOn: 1 });
@@ -42,7 +49,9 @@ export default async function KpiStrip({ tenantId, locationId }: { tenantId: str
       ...(locationId ? { user: { locations: { some: { locationId } } } } : {}),
     },
     select: {
-      userId: true, clockIn: true, clockOut: true,
+      userId: true,
+      clockIn: true,
+      clockOut: true,
       user: { select: { hourlyWage: true } },
     },
   });
@@ -51,7 +60,9 @@ export default async function KpiStrip({ tenantId, locationId }: { tenantId: str
   for (let i = SPARK_WEEKS - 1; i >= 0; i--) {
     const ws = subWeeks(thisWeekStart, i);
     const we = endOfWeek(ws, { weekStartsOn: 1 });
-    let h = 0, c = 0, sc = 0;
+    let h = 0,
+      c = 0,
+      sc = 0;
     for (const e of allEntries) {
       if (!e.clockOut) continue;
       if (e.clockIn >= ws && e.clockIn <= we) {
@@ -68,7 +79,8 @@ export default async function KpiStrip({ tenantId, locationId }: { tenantId: str
 
   const scheduled = await prisma.shift.findMany({
     where: {
-      tenantId, published: true,
+      tenantId,
+      published: true,
       startTime: { gte: now, lte: thisWeekEnd },
       employee: { role: "EMPLOYEE", active: true },
     },
@@ -83,7 +95,10 @@ export default async function KpiStrip({ tenantId, locationId }: { tenantId: str
   }
   for (const s of scheduled) {
     if (!s.employeeId) continue;
-    projHrs.set(s.employeeId, (projHrs.get(s.employeeId) ?? 0) + durationHours(s.startTime, s.endTime));
+    projHrs.set(
+      s.employeeId,
+      (projHrs.get(s.employeeId) ?? 0) + durationHours(s.startTime, s.endTime),
+    );
   }
   const otProjected = Array.from(projHrs.values()).filter((h) => h >= 40).length;
 
@@ -93,7 +108,10 @@ export default async function KpiStrip({ tenantId, locationId }: { tenantId: str
     for (const e of allEntries) {
       if (!e.clockOut) continue;
       if (e.clockIn >= lastWeekStart && e.clockIn <= lastWeekEnd) {
-        lastWkHrs.set(e.userId, (lastWkHrs.get(e.userId) ?? 0) + durationHours(e.clockIn, e.clockOut));
+        lastWkHrs.set(
+          e.userId,
+          (lastWkHrs.get(e.userId) ?? 0) + durationHours(e.clockIn, e.clockOut),
+        );
       }
     }
     otLastWk = Array.from(lastWkHrs.values()).filter((h) => h >= 40).length;
@@ -121,7 +139,6 @@ export default async function KpiStrip({ tenantId, locationId }: { tenantId: str
         value={activeCount.toString()}
         spark={activeSpark}
         delta={null}
-        accent="indigo"
         icon={<Users size={13} />}
       />
       <KpiCard
@@ -129,7 +146,6 @@ export default async function KpiStrip({ tenantId, locationId }: { tenantId: str
         value={thisWk.hours.toFixed(1)}
         spark={hoursSpark}
         delta={pctDelta(thisWk.hours, lastWk.hours)}
-        accent="cyan"
         icon={<Clock size={13} />}
       />
       <KpiCard
@@ -137,16 +153,18 @@ export default async function KpiStrip({ tenantId, locationId }: { tenantId: str
         value={`$${Math.round(thisWk.cost).toLocaleString()}`}
         spark={costSpark}
         delta={pctDelta(thisWk.cost, lastWk.cost)}
-        accent="emerald"
         icon={<DollarSign size={13} />}
       />
       <KpiCard
         label="OT projected"
         value={otProjected.toString()}
         spark={otSpark}
-        delta={otProjected - otLastWk === 0 ? null : `${otProjected > otLastWk ? "+" : ""}${otProjected - otLastWk}`}
+        delta={
+          otProjected - otLastWk === 0
+            ? null
+            : `${otProjected > otLastWk ? "+" : ""}${otProjected - otLastWk}`
+        }
         warn={otProjected > 0}
-        accent="amber"
         icon={<AlertTriangle size={13} />}
       />
       <KpiCard
@@ -154,7 +172,6 @@ export default async function KpiStrip({ tenantId, locationId }: { tenantId: str
         value={`${avgShift.toFixed(1)}h`}
         spark={avgShiftSpark}
         delta={null}
-        accent="pink"
         icon={<Activity size={13} />}
       />
     </div>
@@ -169,31 +186,31 @@ function pctDelta(current: number, prev: number): string | null {
   return `${sign} ${Math.abs(pct).toFixed(0)}%`;
 }
 
-type Accent = "indigo" | "cyan" | "emerald" | "amber" | "pink";
-
-const ACCENT_COLORS: Record<Accent, { stroke: string; fill: string; glow: string }> = {
-  indigo:  { stroke: "#6366f1", fill: "#818cf8", glow: "rgba(99, 102, 241, 0.18)" },
-  cyan:    { stroke: "#06b6d4", fill: "#22d3ee", glow: "rgba(6, 182, 212, 0.18)" },
-  emerald: { stroke: "#10b981", fill: "#34d399", glow: "rgba(16, 185, 129, 0.18)" },
-  amber:   { stroke: "#f59e0b", fill: "#fbbf24", glow: "rgba(245, 158, 11, 0.18)" },
-  pink:    { stroke: "#ec4899", fill: "#f472b6", glow: "rgba(236, 72, 153, 0.18)" },
-};
-
 function KpiCard({
-  label, value, spark, delta, warn, accent = "indigo", icon,
+  label,
+  value,
+  spark,
+  delta,
+  warn,
+  icon,
 }: {
   label: string;
   value: string;
   spark: number[];
   delta: string | null;
   warn?: boolean;
-  accent?: Accent;
   icon?: React.ReactNode;
 }) {
-  const c = ACCENT_COLORS[warn ? "amber" : accent];
-  const gradId = `kpi-grad-${accent}-${label.replace(/[^a-z]/gi, "")}`;
+  // Cottage palette — one gold accent, with amber for warn cards.
+  // Differentiation comes from icon + label, not from invented colors.
+  const STROKE = warn ? "#BA7517" : "#C99A2C";
+  const ICON_BG = warn ? "rgba(186, 117, 23, 0.10)" : "rgba(201, 154, 44, 0.10)";
+  const ICON_COLOR = warn ? "#BA7517" : "#C99A2C";
+  const VALUE_COLOR = warn ? "#BA7517" : "var(--text-primary)";
 
-  // Build smooth path
+  const gradId = `kpi-grad-${warn ? "warn" : "gold"}-${label.replace(/[^a-z]/gi, "")}`;
+
+  // Sparkline path
   const w = 100;
   const h = 36;
   const pad = 2;
@@ -208,71 +225,74 @@ function KpiCard({
   for (let i = 1; i < pts.length; i++) linePath += ` L ${pts[i].x} ${pts[i].y}`;
   const areaPath = `${linePath} L ${w} ${h} L 0 ${h} Z`;
 
+  // Delta is semantic-only: positive trend = moss green, negative = rose, neutral = smoke
   const deltaColor = delta?.startsWith("▲")
-    ? warn ? "#d97706" : "#059669"
-    : delta?.startsWith("▼") ? "#dc2626" : "#888";
+    ? "var(--accent-moss)"
+    : delta?.startsWith("▼")
+    ? "var(--accent-rose)"
+    : "var(--text-secondary)";
 
   return (
-    <div
-      className={`kpi-tile group ${warn ? "warn" : accent === "cyan" || accent === "emerald" ? "cool" : ""}`}
-      style={{ ["--kpi-glow" as any]: c.glow }}
-    >
-      {/* Header row */}
-      <div className="flex items-center justify-between mb-1.5">
+    <div className="kpi-tile group">
+      <div className="flex items-center justify-between mb-2">
         <div className="text-[10px] uppercase tracking-[0.18em] text-smoke font-semibold truncate flex items-center gap-1.5">
           <span
             className="inline-flex items-center justify-center rounded"
-            style={{ color: c.stroke, width: 18, height: 18, background: c.glow }}
+            style={{
+              color: ICON_COLOR,
+              width: 18,
+              height: 18,
+              background: ICON_BG,
+            }}
           >
             {icon}
           </span>
           {label}
         </div>
         {delta && (
-          <span className="text-[10px] font-mono whitespace-nowrap font-medium" style={{ color: deltaColor }}>
+          <span
+            className="text-[10px] font-mono whitespace-nowrap font-medium"
+            style={{ color: deltaColor }}
+          >
             {delta}
           </span>
         )}
       </div>
 
-      {/* Value */}
       <div
         className="display text-4xl leading-none truncate"
-        style={{ color: warn ? "#d97706" : "var(--text-primary)" }}
+        style={{ color: VALUE_COLOR }}
       >
         {value}
       </div>
 
-      {/* Gradient-filled area sparkline */}
       <svg
         viewBox={`0 0 ${w} ${h}`}
         preserveAspectRatio="none"
-        className="w-full mt-3 transition-all duration-300 group-hover:translate-y-[-1px]"
-        style={{ height: 38 }}
+        className="w-full mt-3"
+        style={{ height: 36 }}
       >
         <defs>
           <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={c.fill} stopOpacity="0.45" />
-            <stop offset="100%" stopColor={c.fill} stopOpacity="0" />
+            <stop offset="0%" stopColor={STROKE} stopOpacity="0.28" />
+            <stop offset="100%" stopColor={STROKE} stopOpacity="0" />
           </linearGradient>
         </defs>
         <path d={areaPath} fill={`url(#${gradId})`} />
         <path
           d={linePath}
           fill="none"
-          stroke={c.stroke}
-          strokeWidth="1.75"
+          stroke={STROKE}
+          strokeWidth="1.5"
           strokeLinecap="round"
           strokeLinejoin="round"
           vectorEffect="non-scaling-stroke"
         />
-        {/* Pulse dot at the latest value */}
         <circle
           cx={pts[pts.length - 1].x}
           cy={pts[pts.length - 1].y}
-          r="2"
-          fill={c.stroke}
-          className="opacity-70 group-hover:opacity-100 transition-opacity"
+          r="1.75"
+          fill={STROKE}
         />
       </svg>
     </div>

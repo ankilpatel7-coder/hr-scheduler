@@ -8,7 +8,6 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getServerAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import Navbar from "@/components/navbar";
 import { ArrowLeft } from "lucide-react";
 import { format } from "date-fns";
 import PdfButton from "./pdf-button";
@@ -108,9 +107,7 @@ export default async function PaystubPage({
   const empInitials = initials(stub.employee.name);
 
   return (
-    <div className="min-h-screen">
-      <Navbar />
-      <main className="max-w-[850px] mx-auto px-6 py-10 space-y-4">
+    <div className="min-h-screen"><main className="max-w-[850px] mx-auto px-6 py-10 space-y-4">
         <div className="flex items-center justify-between print:hidden">
           <Link href={`/${params.tenant}/payroll/${params.id}`} className="text-smoke hover:text-ink text-sm inline-flex items-center gap-1">
             <ArrowLeft size={14} /> Back to period

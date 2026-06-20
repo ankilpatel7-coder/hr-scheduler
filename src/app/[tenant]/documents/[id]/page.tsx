@@ -7,7 +7,6 @@
 
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
-import Navbar from "@/components/navbar";
 import { getServerAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { FileText, ArrowLeft, ExternalLink } from "lucide-react";
@@ -55,9 +54,7 @@ export default async function DocumentDetailPage({
   const tone = pct >= 100 ? "#059669" : pct >= 50 ? "#d97706" : "#dc2626";
 
   return (
-    <div className="min-h-screen">
-      <Navbar />
-      <main className="max-w-4xl mx-auto px-6 py-10">
+    <div className="min-h-screen"><main className="max-w-4xl mx-auto px-6 py-10">
         <Link
           href={`/${params.tenant}/documents`}
           className="inline-flex items-center gap-1 text-xs text-rust hover:underline mb-3"

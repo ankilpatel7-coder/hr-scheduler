@@ -16,7 +16,6 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getServerAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import Navbar from "@/components/navbar";
 import { ArrowLeft } from "lucide-react";
 import { compute941Data } from "@/lib/payroll/year-end";
 import Form941PdfButton from "@/components/form941-pdf-button";
@@ -72,9 +71,7 @@ export default async function Form941Page({
   };
 
   return (
-    <div className="min-h-screen bg-paper">
-      <Navbar />
-      <main className="max-w-4xl mx-auto px-6 py-8">
+    <div className="min-h-screen bg-paper"><main className="max-w-4xl mx-auto px-6 py-8">
         <div className="flex items-center justify-between mb-4 print:hidden">
           <Link
             href={`/${params.tenant}/payroll/year-end?year=${year}`}

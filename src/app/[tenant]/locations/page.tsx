@@ -4,7 +4,6 @@ import { useSession } from "next-auth/react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 // Admin-only page — managers + staff get redirected to dashboard.
-import Navbar from "@/components/navbar";
 import { MapPin, Plus, X, Pencil, Clock } from "lucide-react";
 
 type DayHours = { open?: string; close?: string; closed?: boolean };
@@ -100,9 +99,7 @@ export default function LocationsPage() {
   }
 
   return (
-    <div className="min-h-screen">
-      <Navbar />
-      <main className="max-w-5xl mx-auto px-6 py-10">
+    <div className="min-h-screen"><main className="max-w-5xl mx-auto px-6 py-10">
         <div className="flex items-baseline justify-between mb-10 flex-wrap gap-4">
           <div>
             <div className="text-[10px] tracking-[0.3em] uppercase text-smoke mb-2">

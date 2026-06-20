@@ -2,7 +2,6 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getServerAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import Navbar from "@/components/navbar";
 import TodayTimelineWidget from "@/components/today-timeline-widget";
 import RosterLocationFilter from "@/components/roster-location-filter";
 import OvertimeRiskWidget from "@/components/overtime-risk-widget";
@@ -30,8 +29,6 @@ import AnimatedNumber from "@/components/animated-number";
 
 import PendingDocsBanner from "@/components/pending-docs-banner";
 export const dynamic = "force-dynamic";
-
-
 
 export default async function Dashboard({ searchParams }: { searchParams?: { rosterDate?: string; locationId?: string } }) {
   const session = await getServerAuth();
@@ -145,9 +142,7 @@ export default async function Dashboard({ searchParams }: { searchParams?: { ros
   }
 
   return (
-    <div className="min-h-screen">
-      <Navbar />
-      <main className="max-w-[1500px] mx-auto px-6 py-10 animate-fade-in">
+    <div className="min-h-screen"><main className="max-w-[1500px] mx-auto px-6 py-10 animate-fade-in">
         <PendingDocsBanner />
         <div className="flex justify-end mb-4"><RosterLocationFilter /></div>
         {/* Hero */}

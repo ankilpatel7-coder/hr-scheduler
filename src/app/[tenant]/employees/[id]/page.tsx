@@ -3,7 +3,6 @@ import { useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
-import Navbar from "@/components/navbar";
 import {
   ArrowLeft, Mail, Phone, MapPin, Calendar, Briefcase, DollarSign,
   AlertTriangle, Camera, Edit3, KeyRound, ShieldCheck, Tag, Coins, FileText } from "lucide-react";
@@ -113,9 +112,7 @@ export default function EmployeeProfilePage() {
 
   if (loading || !profile) {
     return (
-      <div className="min-h-screen">
-        <Navbar />
-        <div className="max-w-5xl mx-auto px-6 py-16 text-center text-smoke">
+      <div className="min-h-screen"><div className="max-w-5xl mx-auto px-6 py-16 text-center text-smoke">
           Loading…
         </div>
       </div>
@@ -125,9 +122,7 @@ export default function EmployeeProfilePage() {
   const jobRoleColor = roles.find((r) => r.name === profile.jobRole)?.color;
 
   return (
-    <div className="min-h-screen">
-      <Navbar />
-      <main className="max-w-5xl mx-auto px-6 py-10 animate-fade-in">
+    <div className="min-h-screen"><main className="max-w-5xl mx-auto px-6 py-10 animate-fade-in">
         <Link
           href={isAdmin || role === "MANAGER" ? "/employees" : "/dashboard"}
           className="inline-flex items-center gap-2 text-sm text-smoke hover:text-rust transition-colors mb-8"

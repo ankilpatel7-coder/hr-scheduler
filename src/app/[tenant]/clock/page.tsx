@@ -3,7 +3,6 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
-import Navbar from "@/components/navbar";
 import BreakControls from "@/components/break-controls";
 import ClockCamera from "@/components/clock-camera";
 import PendingDocsBanner from "@/components/pending-docs-banner";
@@ -168,9 +167,7 @@ export default function ClockPage() {
 
   if (status === "loading" || loading) {
     return (
-      <div className="min-h-screen">
-        <Navbar />
-        <div className="max-w-3xl mx-auto px-6 py-16 text-center text-smoke">
+      <div className="min-h-screen"><div className="max-w-3xl mx-auto px-6 py-16 text-center text-smoke">
           Loading…
         </div>
       </div>
@@ -185,9 +182,7 @@ export default function ClockPage() {
   const ss = elapsed % 60;
 
   return (
-    <div className="min-h-screen">
-      <Navbar />
-      <main className="max-w-3xl mx-auto px-6 py-10">
+    <div className="min-h-screen"><main className="max-w-3xl mx-auto px-6 py-10">
         <PendingDocsBanner />
         
         {blockedDocs.length > 0 && (

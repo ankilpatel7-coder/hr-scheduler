@@ -9,8 +9,6 @@ import { redirect } from "next/navigation";
 import { ArrowLeft, MapPin, FileText, Check, AlertCircle } from "lucide-react";
 import { getServerAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import Navbar from "@/components/navbar";
-
 export const dynamic = "force-dynamic";
 
 export default async function LocationsLlcOverview({
@@ -35,9 +33,7 @@ export default async function LocationsLlcOverview({
   });
 
   return (
-    <div className="min-h-screen">
-      <Navbar />
-      <main className="max-w-3xl mx-auto px-6 py-10 space-y-6">
+    <div className="min-h-screen"><main className="max-w-3xl mx-auto px-6 py-10 space-y-6">
         <Link href={`/${params.tenant}/locations`} className="text-smoke hover:text-ink text-sm inline-flex items-center gap-1">
           <ArrowLeft size={14} /> Back to locations
         </Link>
