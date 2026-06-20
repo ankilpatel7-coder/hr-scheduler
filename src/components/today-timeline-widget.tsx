@@ -1,17 +1,18 @@
 /**
  * Compact "Today's Roster" timeline for the dashboard.
  *
- * Each row shows two stacked sub-bars:
- *   - Top: striped scheduled bar (when supposed to work)
- *   - Bottom: solid actual worked segments (one per clock entry)
+ *   Top sub-bar: striped scheduled bar (when supposed to work)
+ *   Bottom sub-bar: solid actual worked segments (one per clock entry)
  *
- * Filters out admins and inactive employees. Accepts an optional `date`
- * (YYYY-MM-DD) — defaults to today in the tenant's timezone.
+ * Rows are the UNION of (scheduled today) ∪ (clocked in today), so
+ * cross-role shifts and off-schedule clock-ins both surface.
+ * Cottage palette throughout — gold for upcoming, moss for live/done,
+ * amber for late, rose for no-show.
  */
 
 import Link from "next/link";
 import { prisma } from "@/lib/db";
-import { parseISO, isValid } from "date-fns";
+import { isValid } from "date-fns";
 import { ArrowRight } from "lucide-react";
 import DateNav from "./date-nav";
 import {
@@ -26,29 +27,42 @@ const DAY_START_HOUR = 6;
 const DAY_END_HOUR = 24;
 const HOURS_SPAN = DAY_END_HOUR - DAY_START_HOUR;
 
+// Cottage palette
+const GOLD = "#C99A2C";
+const GOLD_DARK = "#A87F1E";
+const MOSS = "#3B6D11";
+const MOSS_BRIGHT = "#5A8527";
+const AMBER = "#BA7517";
+const ROSE = "#A32D2D";
+const SMOKE = "#7A7872";
+const INK = "#2C2C2A";
+
 function pctOfDay(d: Date, dayBase: Date): number {
   const elapsedH = (d.getTime() - dayBase.getTime()) / 36e5;
   const fromStart = elapsedH - DAY_START_HOUR;
   return Math.max(0, Math.min(100, (fromStart / HOURS_SPAN) * 100));
 }
 
-/**
- * Parse "YYYY-MM-DD" as noon UTC of that calendar date. Noon UTC sits
- * inside the same calendar day in every US timezone (UTC-5 to UTC-10),
- * so passing this Date into tzStartOfDay correctly yields midnight local
- * on the requested day. Avoids the parseISO(yyyy-mm-dd) gotcha where the
- * result is midnight UTC, which is the previous day in negative-offset tz.
- */
 function parseYmdNoonUtc(ymd: string): Date | null {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd);
   if (!m) return null;
-  const y = Number(m[1]);
-  const mo = Number(m[2]);
-  const d = Number(m[3]);
-  return new Date(Date.UTC(y, mo - 1, d, 12, 0, 0));
+  return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12, 0, 0));
 }
 
 type Entry = { in: Date; out: Date | null };
+type ShiftRow = {
+  id: string;
+  startTime: Date;
+  endTime: Date;
+  employee: { id: string; name: string | null } | null;
+};
+type Row = {
+  userId: string;
+  name: string;
+  shifts: ShiftRow[];
+  entries: Entry[];
+  primaryShift: ShiftRow | null;
+};
 
 export default async function TodayTimelineWidget({
   tenantId,
@@ -65,7 +79,6 @@ export default async function TodayTimelineWidget({
 }) {
   const tz = timezone || DEFAULT_TZ;
   const now = new Date();
-  // Resolve target date in the tenant's tz — default to today
   const parsed = date ? parseYmdNoonUtc(date) : null;
   const targetDate = parsed && isValid(parsed) ? parsed : now;
   const isViewingToday = tzYmd(targetDate, tz) === tzYmd(now, tz);
@@ -73,6 +86,8 @@ export default async function TodayTimelineWidget({
   const dayStart = tzStartOfDay(targetDate, tz);
   const dayEnd = tzEndOfDay(targetDate, tz);
 
+  // Drop the role filter — managers, leads, and admins also work shifts.
+  // Keep active=true so deactivated people don't appear.
   const [shifts, dayEntries] = await Promise.all([
     prisma.shift.findMany({
       where: {
@@ -80,7 +95,7 @@ export default async function TodayTimelineWidget({
         published: true,
         startTime: { gte: dayStart, lte: dayEnd },
         ...(locationId ? { locationId } : {}),
-        employee: { role: "EMPLOYEE", active: true },
+        employee: { active: true },
       },
       include: { employee: { select: { id: true, name: true } } },
       orderBy: { startTime: "asc" },
@@ -95,6 +110,7 @@ export default async function TodayTimelineWidget({
     }),
   ]);
 
+  // Group clock entries by user
   const entriesByUser = new Map<string, Entry[]>();
   for (const e of dayEntries) {
     const list = entriesByUser.get(e.userId) ?? [];
@@ -102,11 +118,63 @@ export default async function TodayTimelineWidget({
     entriesByUser.set(e.userId, list);
   }
 
+  // Group shifts by user
+  const shiftsByUser = new Map<string, ShiftRow[]>();
+  for (const s of shifts) {
+    if (!s.employee) continue;
+    const list = shiftsByUser.get(s.employee.id) ?? [];
+    list.push(s as ShiftRow);
+    shiftsByUser.set(s.employee.id, list);
+  }
+
+  // UNION: rows = scheduled ∪ clocked-in
+  const scheduledIds = new Set(shiftsByUser.keys());
+  const clockedInIds = Array.from(entriesByUser.keys());
+  const extraIds = clockedInIds.filter((id) => !scheduledIds.has(id));
+  const extras = extraIds.length
+    ? await prisma.user.findMany({
+        where: { id: { in: extraIds }, tenantId, active: true },
+        select: { id: true, name: true },
+      })
+    : [];
+
+  const rows: Row[] = [];
+  for (const [userId, userShifts] of shiftsByUser.entries()) {
+    rows.push({
+      userId,
+      name: userShifts[0].employee?.name || "Unnamed",
+      shifts: userShifts,
+      entries: entriesByUser.get(userId) ?? [],
+      primaryShift: userShifts[0],
+    });
+  }
+  for (const u of extras) {
+    rows.push({
+      userId: u.id,
+      name: u.name || "Unnamed",
+      shifts: [],
+      entries: entriesByUser.get(u.id) ?? [],
+      primaryShift: null,
+    });
+  }
+  rows.sort((a, b) => {
+    const aTime = a.primaryShift?.startTime?.getTime() ?? a.entries[0]?.in?.getTime() ?? 0;
+    const bTime = b.primaryShift?.startTime?.getTime() ?? b.entries[0]?.in?.getTime() ?? 0;
+    return aTime - bTime;
+  });
+
+  // Stats — derived from displayed rows (no more mismatch with the list)
   const liveCount = isViewingToday
-    ? Array.from(entriesByUser.values()).filter((es) => es.some((e) => e.out === null)).length
+    ? rows.filter((r) => r.entries.some((e) => e.out === null)).length
     : 0;
-  const endedCount = isViewingToday ? shifts.filter((s) => s.endTime < now).length : 0;
-  const upcomingCount = Math.max(0, shifts.length - liveCount - endedCount);
+  const endedCount = isViewingToday
+    ? rows.filter((r) => {
+        const allDone = r.entries.length > 0 && r.entries.every((e) => e.out !== null);
+        const shiftEnded = !!r.primaryShift && r.primaryShift.endTime < now;
+        return allDone || shiftEnded;
+      }).length
+    : 0;
+  const upcomingCount = Math.max(0, rows.length - liveCount - endedCount);
   const nowPct = isViewingToday ? pctOfDay(now, dayStart) : -1;
 
   const ticks: { hour: number; pct: number; label: string }[] = [];
@@ -145,97 +213,75 @@ export default async function TodayTimelineWidget({
         </div>
       </div>
 
+      {/* Pills */}
       <div className="flex gap-2 mb-5">
-        {/* premium-today-v1 */}
         {isViewingToday && (
-          <span
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold tracking-wide"
-            style={{
-              background: liveCount > 0
-                ? "linear-gradient(135deg, #34d399 0%, #10b981 100%)"
-                : "linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)",
-              color: liveCount > 0 ? "white" : "#94a3b8",
-              boxShadow: liveCount > 0
-                ? "0 2px 8px -2px rgba(16, 185, 129, 0.4), inset 0 1px 0 rgba(255,255,255,0.3)"
-                : "inset 0 1px 0 rgba(255,255,255,0.6)",
-              border: liveCount > 0 ? "none" : "1px solid #e2e8f0",
-            }}
-          >
-            <span
-              className="w-1.5 h-1.5 rounded-full"
-              style={{
-                background: liveCount > 0 ? "white" : "#cbd5e1",
-                boxShadow: liveCount > 0 ? "0 0 6px rgba(255,255,255,0.8)" : "none",
-                animation: liveCount > 0 ? "pulse-glow 1.5s ease-in-out infinite" : "none",
-              }}
-            />
-            {liveCount} LIVE
-          </span>
+          <Pill
+            n={liveCount}
+            label="LIVE"
+            color={MOSS}
+            fillColor={`rgba(59, 109, 17, ${liveCount > 0 ? 0.12 : 0.04})`}
+            borderColor={`rgba(59, 109, 17, ${liveCount > 0 ? 0.35 : 0.18})`}
+            textColor={liveCount > 0 ? MOSS : SMOKE}
+            pulse={liveCount > 0}
+          />
         )}
-        <span
-          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold tracking-wide"
-          style={{
-            background: upcomingCount > 0
-              ? "linear-gradient(135deg, #818cf8 0%, #6366f1 100%)"
-              : "linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)",
-            color: upcomingCount > 0 ? "white" : "#94a3b8",
-            boxShadow: upcomingCount > 0
-              ? "0 2px 8px -2px rgba(99, 102, 241, 0.4), inset 0 1px 0 rgba(255,255,255,0.3)"
-              : "inset 0 1px 0 rgba(255,255,255,0.6)",
-            border: upcomingCount > 0 ? "none" : "1px solid #e2e8f0",
-          }}
-        >
-          {upcomingCount} UPCOMING
-        </span>
-        <span
-          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold tracking-wide"
-          style={{
-            background: "linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)",
-            color: endedCount > 0 ? "#475569" : "#94a3b8",
-            border: "1px solid #e2e8f0",
-            boxShadow: "inset 0 1px 0 rgba(255,255,255,0.6)",
-          }}
-        >
-          {endedCount} ENDED
-        </span>
+        <Pill
+          n={upcomingCount}
+          label="UPCOMING"
+          color={GOLD}
+          fillColor={`rgba(201, 154, 44, ${upcomingCount > 0 ? 0.12 : 0.04})`}
+          borderColor={`rgba(201, 154, 44, ${upcomingCount > 0 ? 0.35 : 0.18})`}
+          textColor={upcomingCount > 0 ? GOLD_DARK : SMOKE}
+        />
+        <Pill
+          n={endedCount}
+          label="ENDED"
+          color={SMOKE}
+          fillColor="rgba(122, 120, 114, 0.06)"
+          borderColor="rgba(122, 120, 114, 0.20)"
+          textColor={SMOKE}
+        />
       </div>
 
+      {/* Legend */}
       <div className="flex gap-3 text-[10px] text-smoke mb-2 ml-[100px]">
         <span className="inline-flex items-center gap-1.5">
           <span
             className="w-3 h-1.5 rounded-sm"
             style={{
               background:
-                "repeating-linear-gradient(45deg, rgba(99,102,241,0.30) 0 4px, rgba(99,102,241,0.10) 4px 8px)",
-              border: "1px solid rgba(99,102,241,0.45)",
+                "repeating-linear-gradient(45deg, rgba(201, 154, 44, 0.28) 0 4px, rgba(201, 154, 44, 0.10) 4px 8px)",
+              border: "1px solid rgba(201, 154, 44, 0.40)",
             }}
           />
           Scheduled
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span className="w-3 h-1.5 rounded-sm" style={{ background: "#10b981" }} />
+          <span className="w-3 h-1.5 rounded-sm" style={{ background: MOSS }} />
           Worked
         </span>
       </div>
 
-      {shifts.length === 0 ? (
+      {rows.length === 0 ? (
         <div className="py-6 text-center text-smoke italic text-sm">
-          No shifts scheduled.
+          No shifts scheduled and no one clocked in.
         </div>
       ) : (
         <div className="flex gap-3">
           <div className="w-[100px] shrink-0">
             <div className="h-5" />
-            {shifts.map((s) => (
+            {rows.map((r) => (
               <div
-                key={s.id}
+                key={r.userId}
                 className="mt-1.5 flex flex-col justify-center min-w-0"
                 style={{ height: 40 }}
               >
-                <div className="text-[12px] text-ink font-medium truncate">{s.employee!.name}</div>
+                <div className="text-[12px] text-ink font-medium truncate">{r.name}</div>
                 <div className="text-[9px] text-smoke font-mono whitespace-nowrap">
-                  {tzFormat(s.startTime, "h:mma", tz).toLowerCase()}–
-                  {tzFormat(s.endTime, "h:mma", tz).toLowerCase()}
+                  {r.primaryShift
+                    ? `${tzFormat(r.primaryShift.startTime, "h:mma", tz).toLowerCase()}–${tzFormat(r.primaryShift.endTime, "h:mma", tz).toLowerCase()}`
+                    : "Unscheduled"}
                 </div>
               </div>
             ))}
@@ -247,7 +293,7 @@ export default async function TodayTimelineWidget({
                 <div
                   key={t.hour}
                   className="absolute top-0.5 -translate-x-1/2 font-semibold"
-                  style={{ left: `${t.pct}%`, fontSize: 10, color: "#64748b" }}
+                  style={{ left: `${t.pct}%`, fontSize: 10, color: SMOKE }}
                 >
                   {t.label}
                 </div>
@@ -260,8 +306,8 @@ export default async function TodayTimelineWidget({
                   <div
                     className="w-2 h-2 rounded-full"
                     style={{
-                      background: "linear-gradient(135deg, #ec4899, #f43f5e)",
-                      boxShadow: "0 0 0 2px white, 0 0 8px rgba(236, 72, 153, 0.5)",
+                      background: GOLD,
+                      boxShadow: `0 0 0 2px white, 0 0 6px rgba(201, 154, 44, 0.45)`,
                     }}
                   />
                 </div>
@@ -274,43 +320,49 @@ export default async function TodayTimelineWidget({
                   left: `${nowPct}%`,
                   top: 18,
                   bottom: 0,
-                  width: 2,
-                  background: "linear-gradient(180deg, rgba(236, 72, 153, 0.6), rgba(244, 63, 94, 0.1))",
-                  boxShadow: "0 0 4px rgba(236, 72, 153, 0.4)",
+                  width: 1,
+                  background: "rgba(201, 154, 44, 0.55)",
                 }}
               />
             )}
 
-            {shifts.map((shift) => {
-              const startPct = pctOfDay(shift.startTime, dayStart);
-              const endPct = pctOfDay(shift.endTime, dayStart);
-              const widthPct = Math.max(1, endPct - startPct);
-
-              const userEntries = entriesByUser.get(shift.employee!.id) ?? [];
+            {rows.map((r) => {
+              const userEntries = r.entries;
               const hasOpen = userEntries.some((e) => e.out === null);
               const hasAny = userEntries.length > 0;
-              const ended = shift.endTime < now;
+              const shift = r.primaryShift;
+              const ended = shift ? shift.endTime < now : false;
 
-              let scheduledColor = "#6366f1";
+              // Status + color logic
+              let scheduledColor = GOLD;
               let statusLabel: string | null = null;
               if (hasOpen) {
-                scheduledColor = "#10b981";
+                scheduledColor = MOSS;
                 statusLabel = "LIVE";
               } else if (hasAny && (ended || !isViewingToday)) {
-                scheduledColor = "#10b981";
+                scheduledColor = MOSS;
                 statusLabel = "Done";
-              } else if (!hasAny && ended && isViewingToday) {
-                scheduledColor = "#dc2626";
+              } else if (!hasAny && shift && ended && isViewingToday) {
+                scheduledColor = ROSE;
                 statusLabel = "No-show";
-              } else if (!hasAny && now >= shift.startTime && isViewingToday) {
-                scheduledColor = "#d97706";
+              } else if (!hasAny && shift && now >= shift.startTime && isViewingToday) {
+                scheduledColor = AMBER;
                 statusLabel = "Late";
+              } else if (!shift && hasAny) {
+                // Clocked in without a scheduled shift
+                scheduledColor = MOSS;
+                statusLabel = hasOpen ? "LIVE" : "Done";
               }
+
+              // Bar geometry
+              const shiftStartPct = shift ? pctOfDay(shift.startTime, dayStart) : 0;
+              const shiftEndPct = shift ? pctOfDay(shift.endTime, dayStart) : 0;
+              const shiftWidthPct = shift ? Math.max(1, shiftEndPct - shiftStartPct) : 0;
 
               return (
                 <div
-                  key={shift.id}
-                  className="relative mt-1.5 rounded-md bg-ink/[0.03] hover:bg-ink/[0.06] transition-colors group/row"
+                  key={r.userId}
+                  className="relative mt-1.5 rounded-md bg-ink/[0.03] hover:bg-ink/[0.05] transition-colors group/row"
                   style={{ height: 40 }}
                 >
                   {ticks.map((t) => (
@@ -321,20 +373,21 @@ export default async function TodayTimelineWidget({
                     />
                   ))}
 
-                  <div
-                    className="absolute"
-                    style={{
-                      left: `${startPct}%`,
-                      width: `${widthPct}%`,
-                      top: 5,
-                      height: 12,
-                      background: `linear-gradient(180deg, ${scheduledColor}28 0%, ${scheduledColor}18 100%), repeating-linear-gradient(135deg, ${scheduledColor}1f 0 6px, transparent 6px 12px)`,
-                      border: `1px solid ${scheduledColor}55`,
-                      borderRadius: 4,
-                      boxShadow: `inset 0 1px 0 ${scheduledColor}22`,
-                    }}
-                    title={`Scheduled ${tzFormat(shift.startTime, "h:mma", tz).toLowerCase()}–${tzFormat(shift.endTime, "h:mma", tz).toLowerCase()}`}
-                  />
+                  {shift && (
+                    <div
+                      className="absolute"
+                      style={{
+                        left: `${shiftStartPct}%`,
+                        width: `${shiftWidthPct}%`,
+                        top: 5,
+                        height: 12,
+                        background: `repeating-linear-gradient(135deg, ${scheduledColor}26 0 6px, ${scheduledColor}10 6px 12px)`,
+                        border: `1px solid ${scheduledColor}55`,
+                        borderRadius: 4,
+                      }}
+                      title={`Scheduled ${tzFormat(shift.startTime, "h:mma", tz).toLowerCase()}–${tzFormat(shift.endTime, "h:mma", tz).toLowerCase()}`}
+                    />
+                  )}
 
                   {userEntries.map((seg, i) => {
                     const segIn = seg.in;
@@ -352,13 +405,11 @@ export default async function TodayTimelineWidget({
                           width: `${segWidthPct}%`,
                           top: 23,
                           height: 12,
-                          background: isOpen
-                              ? "linear-gradient(180deg, #34d399 0%, #10b981 100%)"
-                              : "linear-gradient(180deg, rgba(52,211,153,0.95) 0%, rgba(16,185,129,0.9) 100%)",
+                          background: isOpen ? MOSS_BRIGHT : MOSS,
                           borderRadius: 4,
                           boxShadow: isOpen
-                            ? "0 0 12px rgba(16, 185, 129, 0.5), 0 0 4px rgba(16, 185, 129, 0.8), inset 0 1px 0 rgba(255,255,255,0.3)"
-                            : "0 1px 3px rgba(16, 185, 129, 0.3), inset 0 1px 0 rgba(255,255,255,0.25)",
+                            ? `0 0 0 2px rgba(90, 133, 39, 0.20)`
+                            : "none",
                         }}
                         title={`Worked ${tzFormat(segIn, "h:mma", tz).toLowerCase()}–${seg.out ? tzFormat(seg.out, "h:mma", tz).toLowerCase() : "now"}`}
                       />
@@ -367,10 +418,10 @@ export default async function TodayTimelineWidget({
 
                   {statusLabel && (
                     <div
-                      className="absolute right-1 top-1/2 -translate-y-1/2 text-[8px] uppercase tracking-wider px-1 py-0.5 rounded font-medium pointer-events-none"
+                      className="absolute right-1 top-1/2 -translate-y-1/2 text-[8px] uppercase tracking-wider px-1.5 py-0.5 rounded font-medium pointer-events-none"
                       style={{
                         color: scheduledColor,
-                        background: "rgba(255,255,255,0.92)",
+                        background: "rgba(255, 255, 255, 0.94)",
                         border: `1px solid ${scheduledColor}33`,
                       }}
                     >
@@ -387,12 +438,13 @@ export default async function TodayTimelineWidget({
                 style={{ top: 0, bottom: 0, left: `${nowPct}%`, width: 0 }}
               >
                 <div
-                  className="absolute top-5 bottom-0 w-px"
-                  style={{ background: "#e11d48", left: 0 }}
-                />
-                <div
                   className="absolute -translate-x-1/2 text-[8px] font-mono font-medium px-1.5 py-0.5 rounded"
-                  style={{ top: 0, background: "#e11d48", color: "white", left: 0 }}
+                  style={{
+                    top: 0,
+                    background: GOLD,
+                    color: "#3D2E08",
+                    left: 0,
+                  }}
                 >
                   {tzFormat(now, "h:mma", tz).toLowerCase()}
                 </div>
@@ -405,14 +457,38 @@ export default async function TodayTimelineWidget({
   );
 }
 
-function Stat({ n, label, color }: { n: number; label: string; color: string }) {
+function Pill({
+  n,
+  label,
+  fillColor,
+  borderColor,
+  textColor,
+  pulse,
+}: {
+  n: number;
+  label: string;
+  color: string;
+  fillColor: string;
+  borderColor: string;
+  textColor: string;
+  pulse?: boolean;
+}) {
   return (
     <span
-      className="inline-flex items-center gap-1.5 px-2 py-1 rounded"
-      style={{ background: `${color}14`, color }}
+      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold tracking-wide"
+      style={{
+        background: fillColor,
+        color: textColor,
+        border: `1px solid ${borderColor}`,
+      }}
     >
-      <span className="font-bold text-sm leading-none">{n}</span>
-      <span className="uppercase tracking-wider text-[9px] opacity-80">{label}</span>
+      {pulse && (
+        <span
+          className="w-1.5 h-1.5 rounded-full"
+          style={{ background: textColor, animation: "pulse-glow 1.8s ease-in-out infinite" }}
+        />
+      )}
+      {n} {label}
     </span>
   );
 }
