@@ -33,9 +33,37 @@ export type NavItem = {
 
 // =============================================================
 // Admin & Manager navigation
-// Routes verified against the build's actual page tree.
+// Admins and managers also work shifts, so they get personal items
+// (Clock, My shifts, My attendance, My documents) in a "My work" section.
 // =============================================================
 export const NAV_ITEMS: NavItem[] = [
+  // --- My work (admins/managers also work shifts) ---
+  {
+    label: "Clock",
+    href: (t) => `/${t}/clock`,
+    icon: ShieldCheck,
+    roles: ["ADMIN", "MANAGER"],
+  },
+  {
+    label: "My shifts",
+    href: (t) => `/${t}/my-shifts`,
+    icon: CalendarCheck,
+    roles: ["ADMIN", "MANAGER"],
+  },
+  {
+    label: "My attendance",
+    href: (t) => `/${t}/my-attendance`,
+    icon: UserCheck,
+    roles: ["ADMIN", "MANAGER"],
+  },
+  {
+    label: "My documents",
+    href: (t) => `/${t}/my-documents`,
+    icon: IdCard,
+    roles: ["ADMIN", "MANAGER"],
+  },
+
+  // --- Management ---
   {
     label: "Dashboard",
     href: (t) => `/${t}/dashboard`,

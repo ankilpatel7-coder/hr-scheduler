@@ -14,14 +14,15 @@ import {
 import { NAV_ITEMS, EMPLOYEE_ITEMS, type Role, type NavItem } from "./nav-items";
 
 /**
- * Sectioned sidebar with account dropdown at the bottom.
+ * Sectioned sidebar with account dropdown.
  *
- * Active: thin gold left bar + subtle tinted background + gold icon.
- * Profile chip click → menu opens upward with Profile · Change password ·
- * Change PIN · Sign out (same options the old navbar dropdown had).
+ * Admin/Manager: "My work" section at top (Clock, My shifts, etc.) since
+ * they also work shifts, then management sections below.
+ * Employee: flat list of personal items.
  */
 
 const ADMIN_SECTIONS: { title?: string; labels: string[] }[] = [
+  { title: "My work", labels: ["Clock", "My shifts", "My attendance", "My documents"] },
   { labels: ["Dashboard"] },
   { title: "Scheduling", labels: ["Schedule", "Templates", "Calendar"] },
   { title: "Time", labels: ["Timesheets", "Approvals", "Attendance"] },
