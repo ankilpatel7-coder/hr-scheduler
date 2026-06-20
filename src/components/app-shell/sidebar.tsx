@@ -1,21 +1,31 @@
 "use client";
 
+import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LogOut } from "lucide-react";
+import {
+  LogOut,
+  ChevronUp,
+  ChevronDown,
+  User as UserIcon,
+  Key,
+  Hash,
+} from "lucide-react";
 import { NAV_ITEMS, EMPLOYEE_ITEMS, type Role, type NavItem } from "./nav-items";
 
 /**
- * Sectioned sidebar — admin sees grouped nav, employee sees flat list.
- * Active state: thin gold left bar + subtle tinted background + gold icon.
- * Hover: barely-there tint + text lifts to full opacity.
+ * Sectioned sidebar with account dropdown at the bottom.
+ *
+ * Active: thin gold left bar + subtle tinted background + gold icon.
+ * Profile chip click → menu opens upward with Profile · Change password ·
+ * Change PIN · Sign out (same options the old navbar dropdown had).
  */
 
 const ADMIN_SECTIONS: { title?: string; labels: string[] }[] = [
   { labels: ["Dashboard"] },
-  { title: "Scheduling", labels: ["Schedule", "Templates"] },
+  { title: "Scheduling", labels: ["Schedule", "Templates", "Calendar"] },
   { title: "Time", labels: ["Timesheets", "Approvals", "Attendance"] },
-  { title: "People", labels: ["Employees", "Time off"] },
+  { title: "People", labels: ["Employees", "Time off", "Swaps"] },
   { title: "Documents", labels: ["Documents"] },
   { title: "Finance", labels: ["Payroll"] },
   { title: "Workspace", labels: ["Locations", "Settings"] },
@@ -38,7 +48,6 @@ export default function Sidebar({
   );
   const itemsByLabel = new Map(visible.map((i) => [i.label, i]));
 
-  // For employees: one flat section. For admin/manager: grouped sections.
   const sections: { title?: string; items: NavItem[] }[] =
     userRole === "EMPLOYEE"
       ? [{ items: visible }]
@@ -57,6 +66,28 @@ export default function Sidebar({
       .slice(0, 2)
       .join("")
       .toUpperCase() || "U";
+
+  // Account dropdown
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    function onClick(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setMenuOpen(false);
+    }
+    if (menuOpen) {
+      document.addEventListener("mousedown", onClick);
+      document.addEventListener("keydown", onKey);
+    }
+    return () => {
+      document.removeEventListener("mousedown", onClick);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [menuOpen]);
 
   return (
     <aside className="hidden md:flex md:flex-col w-[224px] shrink-0 bg-forest text-forest-text min-h-screen">
@@ -115,16 +146,21 @@ export default function Sidebar({
         ))}
       </nav>
 
-      {/* Profile */}
-      <div className="px-3 py-3 border-t border-forest-text/10 flex items-center gap-1">
-        <Link
-          href={`/${tenant}/profile`}
-          className="flex items-center gap-2 flex-1 min-w-0 rounded-md px-1.5 py-1 hover:bg-forest-text/[0.04] transition-colors"
+      {/* Account dropdown */}
+      <div
+        ref={menuRef}
+        className="relative px-3 py-3 border-t border-forest-text/10"
+      >
+        <button
+          onClick={() => setMenuOpen(!menuOpen)}
+          className="w-full flex items-center gap-2 rounded-md px-1.5 py-1.5 hover:bg-forest-text/[0.04] transition-colors text-left"
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
         >
           <div className="w-7 h-7 rounded-full bg-rust text-gold-on flex items-center justify-center text-[11px] font-medium shrink-0">
             {initials}
           </div>
-          <div className="leading-tight min-w-0">
+          <div className="leading-tight min-w-0 flex-1">
             <div className="text-[12px] text-forest-text truncate">
               {userName || "Unnamed"}
             </div>
@@ -132,14 +168,57 @@ export default function Sidebar({
               {userRole.toLowerCase()}
             </div>
           </div>
-        </Link>
-        <Link
-          href="/api/auth/signout"
-          className="text-forest-muted hover:text-forest-text p-1.5 rounded hover:bg-forest-text/[0.04] transition-colors"
-          aria-label="Sign out"
-        >
-          <LogOut size={14} />
-        </Link>
+          {menuOpen ? (
+            <ChevronDown size={14} className="text-forest-muted shrink-0" />
+          ) : (
+            <ChevronUp size={14} className="text-forest-muted shrink-0" />
+          )}
+        </button>
+
+        {menuOpen && (
+          <div
+            role="menu"
+            className="absolute left-3 right-3 bottom-full mb-2 bg-paper rounded-md py-1 border border-dust overflow-hidden z-50"
+            style={{
+              boxShadow:
+                "0 4px 6px -1px rgba(60, 40, 20, 0.10), 0 10px 20px -4px rgba(60, 40, 20, 0.12)",
+            }}
+          >
+            <Link
+              href={`/${tenant}/profile`}
+              onClick={() => setMenuOpen(false)}
+              className="flex items-center gap-2.5 px-3 py-2 text-[12px] text-ink hover:bg-bone transition-colors"
+            >
+              <UserIcon size={13} className="text-smoke" />
+              Profile
+            </Link>
+            <Link
+              href="/change-password"
+              onClick={() => setMenuOpen(false)}
+              className="flex items-center gap-2.5 px-3 py-2 text-[12px] text-ink hover:bg-bone transition-colors"
+            >
+              <Key size={13} className="text-smoke" />
+              Change password
+            </Link>
+            <Link
+              href="/change-pin"
+              onClick={() => setMenuOpen(false)}
+              className="flex items-center gap-2.5 px-3 py-2 text-[12px] text-ink hover:bg-bone transition-colors"
+            >
+              <Hash size={13} className="text-smoke" />
+              Change PIN
+            </Link>
+            <div className="my-1 border-t border-dust" />
+            <Link
+              href="/api/auth/signout"
+              onClick={() => setMenuOpen(false)}
+              className="flex items-center gap-2.5 px-3 py-2 text-[12px] text-rose hover:bg-bone transition-colors"
+            >
+              <LogOut size={13} />
+              Sign out
+            </Link>
+          </div>
+        )}
       </div>
     </aside>
   );
