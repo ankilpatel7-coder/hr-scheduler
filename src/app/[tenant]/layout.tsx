@@ -10,6 +10,7 @@
 import { notFound, redirect } from "next/navigation";
 import { getServerAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import AppShell from "@/components/app-shell/app-shell";
 
 export const dynamic = "force-dynamic";
 
@@ -43,5 +44,23 @@ export default async function TenantLayout({
     redirect("/login");
   }
 
-  return <>{children}</>;
+  // Fetch user details for the sidebar
+  const userId = (session.user as any).id as string | undefined;
+  const user = userId
+    ? await prisma.user.findUnique({
+        where: { id: userId },
+        select: { name: true, role: true },
+      })
+    : null;
+
+  return (
+    <AppShell
+      tenant={tenant.slug}
+      businessName={tenant.businessName}
+      userName={user?.name ?? null}
+      userRole={(user?.role as any) ?? "EMPLOYEE"}
+    >
+      {children}
+    </AppShell>
+  );
 }
