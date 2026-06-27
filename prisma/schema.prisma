@@ -315,6 +315,7 @@ model User {
   waivedSignatures       DocumentSignature[]     @relation("WaivedSignatures")
   approvedClockEntries   ClockEntry[]            @relation("ApprovedClockEntries")
   documentFoldersCreated DocumentFolder[]        @relation("DocumentFoldersCreated")
+  shiftsAttendanceSet    Shift[]                 @relation("ShiftAttendanceSetBy")
 
   // Indexes for tenant scoping
   @@index([tenantId, active])
@@ -381,33 +382,41 @@ model EmployeeLocation {
 // ============================================================
 
 model Shift {
-  id                     String    @id @default(cuid())
+  id                     String            @id @default(cuid())
   tenantId               String
-  tenant                 Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant                 Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   // employeeId is nullable to support "house shifts" / open shifts —
   // admins can post a shift before deciding who to assign it to.
   employeeId             String?
-  employee               User?     @relation("EmployeeShifts", fields: [employeeId], references: [id], onDelete: Cascade)
+  employee               User?             @relation("EmployeeShifts", fields: [employeeId], references: [id], onDelete: Cascade)
   managerId              String
-  manager                User      @relation("ManagerShifts", fields: [managerId], references: [id])
+  manager                User              @relation("ManagerShifts", fields: [managerId], references: [id])
   locationId             String?
-  location               Location? @relation(fields: [locationId], references: [id])
+  location               Location?         @relation(fields: [locationId], references: [id])
   startTime              DateTime
   endTime                DateTime
   role                   String? // Free-text role name; matched against ShiftRole.name for color coding. Kept as string for backward compat.
   tagId                  String? // Optional ShiftTag — colored pill on schedule cards (e.g. "Delivery", "Sales").
-  tag                    ShiftTag? @relation(fields: [tagId], references: [id], onDelete: SetNull)
+  tag                    ShiftTag?         @relation(fields: [tagId], references: [id], onDelete: SetNull)
   notes                  String?
-  published              Boolean   @default(false)
+  published              Boolean           @default(false)
   publishedAt            DateTime?
-  reminderSent           Boolean   @default(false)
+  reminderSent           Boolean           @default(false)
   // Attendance ignore — admin can mark a missed shift as "don't count it"
   // (e.g. new hire being onboarded). Filtered out of attendance scoring.
-  attendanceIgnored      Boolean   @default(false)
+  attendanceIgnored      Boolean           @default(false)
   attendanceIgnoredById  String?
   attendanceIgnoredAt    DateTime?
   attendanceIgnoreReason String?
-  createdAt              DateTime  @default(now())
+  // Manager-applied classification — explains computed status (sick call,
+  // approved early departure, etc.). Distinct from attendanceIgnored which
+  // excludes the shift from scoring entirely.
+  attendanceReason       AttendanceReason?
+  attendanceNote         String?
+  attendanceSetById      String?
+  attendanceSetBy        User?             @relation("ShiftAttendanceSetBy", fields: [attendanceSetById], references: [id], onDelete: SetNull)
+  attendanceSetAt        DateTime?
+  createdAt              DateTime          @default(now())
 
   swap ShiftSwap?
 
@@ -885,4 +894,12 @@ model DocumentFolder {
 
   @@index([tenantId])
   @@index([parentId])
+}
+
+enum AttendanceReason {
+  SICK_CALL
+  ABSENT_NO_CALL
+  LEFT_EARLY_APPROVED
+  LATE_EXCUSED
+  OTHER
 }

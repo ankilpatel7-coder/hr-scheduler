@@ -1,25 +1,18 @@
 /**
- * /[tenant]/attendance — admin attendance report v2.
+ * /[tenant]/attendance — admin attendance report v3.
  *
- * Server-side: pull shifts + clock entries for the range, match them, compute
- * per-person scoreboard rows + per-shift detail rows. Pass to the client
- * component which handles charts, sorting, expand/collapse, and date arrows.
+ * Adds:
+ *   - Early-end detection (clocked out >5 min early OR worked short by >=1h)
+ *   - Combined late-and-early-end status
+ *   - Manager-applied attendance reason (sick call, excused, etc.)
+ *   - Excused reasons (SICK_CALL, LATE_EXCUSED, LEFT_EARLY_APPROVED) don't
+ *     penalize the score; ABSENT_NO_CALL still counts as missed.
  *
- * Scoring model (industry-standard "attendance points", inverted to a 0-100
- * reliability score so higher = better):
- *
+ * Scoring (unchanged formula, but excused shifts skip the penalty):
  *   - Start at 100
- *   - Each missed shift:                 -15
- *   - Each shift late by >=10 minutes:    -5
- *   - Each shift early by >=10 minutes:    0 (no penalty, no bonus)
- *   - Each shift within +/-10 minutes:     0 (on time)
- *
- * Grade: A+ (95+), A (90+), B+ (85+), B (80+), C+ (75+), C (70+), D (60+), F.
- *
- * Threshold: shifts with no matching clock-in within ±2h of scheduled start
- * count as MISSED. Otherwise, the difference between actual clock-in and
- * scheduled start is bucketed into Early (>=10 min before), On-time
- * (within ±10 min), or Late (>=10 min after).
+ *   - Each MISSED unexcused shift:    -15
+ *   - Each LATE unexcused shift (>=10 min): -5
+ *   - Early-end: 0 (no penalty in score)
  */
 
 import { redirect } from "next/navigation";
@@ -32,7 +25,6 @@ import {
   endOfMonth,
   startOfDay,
   endOfDay,
-  addDays,
   format,
 } from "date-fns";
 import AttendanceClient, { type Row, type Shift } from "./attendance-client";
@@ -41,12 +33,11 @@ export const dynamic = "force-dynamic";
 
 type Range = "day" | "week" | "month" | "custom";
 
-const LATE_MIN = 10; // minutes
-// Matching: a shift is matched to a clock entry if they're on the SAME
-// calendar day in the tenant's timezone. We pick the clock entry whose
-// start is closest to the scheduled start. This is the standard HR
-// practice and handles late clock-ins, manual entries, and any entry
-// whose time is off from the scheduled slot.
+const LATE_SCORE_MIN = 10;       // late threshold for SCORING penalty
+const LATE_DISPLAY_MIN = 5;      // late threshold for displayed status
+const EARLY_END_DISPLAY_MIN = 5; // clocked out X min before scheduled end
+const EARLY_END_HOURS_SHORT = 1; // OR total worked short by 1+ hour
+
 function dayKeyInTz(d: Date, tz: string): string {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: tz,
@@ -78,7 +69,6 @@ function resolveRange(
 }
 
 function fmtTimeInTz(d: Date, tz: string): string {
-  // "9:45am" / "1:45pm" — lowercase, no space, in the tenant's timezone.
   return new Intl.DateTimeFormat("en-US", {
     timeZone: tz,
     hour: "numeric",
@@ -101,6 +91,9 @@ function letterGrade(score: number): string {
   return "F";
 }
 
+// Excused reasons skip the score penalty. ABSENT_NO_CALL is NOT excused.
+const EXCUSED = new Set(["SICK_CALL", "LATE_EXCUSED", "LEFT_EARLY_APPROVED"]);
+
 export default async function AttendancePage({
   params,
   searchParams,
@@ -111,6 +104,7 @@ export default async function AttendancePage({
   const session = await getServerAuth();
   if (!session) redirect(`/login?from=/${params.tenant}/attendance`);
   const role = (session.user as any).role;
+  const userId = (session.user as any).id as string;
   const tenantId = (session.user as any).tenantId as string | null;
   if (!tenantId) redirect("/login");
   if (role !== "ADMIN" && role !== "MANAGER")
@@ -133,16 +127,9 @@ export default async function AttendancePage({
         published: true,
         employeeId: { not: null },
         startTime: { gte: from, lte: to },
-        // Exclude admin-ignored shifts (new hire onboarding, etc.)
         attendanceIgnored: false,
         ...(searchParams?.locationId ? { locationId: searchParams.locationId } : {}),
-        // Only count shifts that have actually ended. Future and in-progress
-        // shifts can't be evaluated yet, and including them makes new hires
-        // (or anyone with upcoming shifts) appear "missed" before their
-        // first actual workday.
         endTime: { lte: new Date() },
-        // Exclude shifts whose assigned employee is inactive/archived so
-        // stale shifts from ex-employees don't pollute attendance reports.
         employee: { active: true, archivedAt: null },
       },
       select: {
@@ -150,6 +137,10 @@ export default async function AttendancePage({
         employeeId: true,
         startTime: true,
         endTime: true,
+        attendanceReason: true,
+        attendanceNote: true,
+        attendanceSetAt: true,
+        attendanceSetBy: { select: { id: true, name: true } },
       },
       orderBy: { startTime: "asc" },
     }),
@@ -157,8 +148,6 @@ export default async function AttendancePage({
       where: {
         tenantId,
         clockIn: { gte: from, lte: to },
-        // Exclude clock entries from archived/inactive users so they don't
-        // appear as "Unknown 0/0" on the leaderboard.
         user: {
           active: true,
           archivedAt: null,
@@ -166,12 +155,6 @@ export default async function AttendancePage({
             ? { locations: { some: { locationId: searchParams.locationId } } }
             : {}),
         },
-        // Match against PENDING + APPROVED — pending clock entries still
-        // count toward shift status (on-time/late/early/missed) so shifts
-        // don't appear "Missed" while waiting for admin approval. REJECTED
-        // entries are excluded entirely. The actualHours sum further down
-        // only includes APPROVED entries so pending work doesn't inflate
-        // totals until reviewed.
         approvalStatus: { not: "REJECTED" },
       },
       select: { id: true, userId: true, clockIn: true, clockOut: true, approvalStatus: true },
@@ -199,6 +182,8 @@ export default async function AttendancePage({
         missedCount: 0,
         lateCount: 0,
         earlyCount: 0,
+        earlyEndCount: 0,
+        excusedCount: 0,
         totalLateMinutes: 0,
         totalEarlyMinutes: 0,
         score: 100,
@@ -226,50 +211,92 @@ export default async function AttendancePage({
 
     const candidates = ceByUser.get(s.employeeId) ?? [];
     const shiftDay = dayKeyInTz(s.startTime, tenant.timezone);
-    let best: { ce: any; diff: number } | null = null;
+    let best: { ce: typeof clockEntries[0]; diff: number } | null = null;
     for (const ce of candidates) {
       if (dayKeyInTz(ce.clockIn, tenant.timezone) !== shiftDay) continue;
       const diff = Math.abs(ce.clockIn.getTime() - s.startTime.getTime());
       if (!best || diff < best.diff) best = { ce, diff };
     }
 
+    const reason = s.attendanceReason ?? null;
+    const excused = reason !== null && EXCUSED.has(reason);
+
     let status: Shift["status"];
     let deltaMin = 0;
+    let earlyEndMin = 0;
+    let actualClockOut: string | null = null;
+    let actualHoursWorked = 0;
+
     if (!best) {
-      row.missedCount += 1;
+      // No clock-in at all → MISSED
+      // ABSENT_NO_CALL counts toward missed; SICK_CALL/etc. doesn't
+      if (!excused) row.missedCount += 1;
       status = "missed";
     } else {
       row.shiftsMatched += 1;
-      deltaMin =
-        (best.ce.clockIn.getTime() - s.startTime.getTime()) / 60_000;
-      if (deltaMin <= -LATE_MIN) {
-        row.earlyCount += 1;
-        row.totalEarlyMinutes += -deltaMin;
-        status = "early";
-      } else if (deltaMin >= LATE_MIN) {
+      deltaMin = (best.ce.clockIn.getTime() - s.startTime.getTime()) / 60_000;
+
+      // Compute early-end / hours worked
+      if (best.ce.clockOut) {
+        actualClockOut = fmtTimeInTz(best.ce.clockOut, tenant.timezone);
+        actualHoursWorked =
+          (best.ce.clockOut.getTime() - best.ce.clockIn.getTime()) / 3_600_000;
+        earlyEndMin =
+          (s.endTime.getTime() - best.ce.clockOut.getTime()) / 60_000;
+      }
+
+      const isLateDisplay = deltaMin >= LATE_DISPLAY_MIN;
+      const isLateScore = deltaMin >= LATE_SCORE_MIN;
+      const isEarlyIn = deltaMin <= -LATE_DISPLAY_MIN;
+      const isEarlyEnd =
+        best.ce.clockOut !== null &&
+        (earlyEndMin >= EARLY_END_DISPLAY_MIN ||
+          (schedHrs - actualHoursWorked) >= EARLY_END_HOURS_SHORT);
+
+      if (isLateScore && !excused) {
         row.lateCount += 1;
         row.totalLateMinutes += deltaMin;
-        status = "late";
-      } else {
-        status = "on-time";
       }
+      if (isEarlyIn) {
+        row.earlyCount += 1;
+        row.totalEarlyMinutes += -deltaMin;
+      }
+      if (isEarlyEnd) {
+        row.earlyEndCount += 1;
+      }
+
+      // Choose displayed status — combined cases get a compound label
+      if (isLateDisplay && isEarlyEnd) status = "late-and-early-end";
+      else if (isLateDisplay) status = "late";
+      else if (isEarlyEnd) status = "early-end";
+      else if (isEarlyIn) status = "early";
+      else status = "on-time";
     }
+
+    if (excused) row.excusedCount += 1;
 
     row.shifts.push({
       shiftId: s.id,
       id: s.id,
+      employeeId: s.employeeId,
       dateIso: s.startTime.toISOString(),
       scheduledStart: fmtTimeInTz(s.startTime, tenant.timezone),
       scheduledEnd: fmtTimeInTz(s.endTime, tenant.timezone),
+      scheduledHours: Number(schedHrs.toFixed(2)),
       actualClockIn: best ? fmtTimeInTz(best.ce.clockIn, tenant.timezone) : null,
+      actualClockOut,
+      actualHoursWorked: Number(actualHoursWorked.toFixed(2)),
       status,
       deltaMin: best ? Math.round(deltaMin) : null,
+      earlyEndMin: best && best.ce.clockOut ? Math.round(earlyEndMin) : null,
+      attendanceReason: reason,
+      attendanceNote: s.attendanceNote ?? null,
+      attendanceSetByName: s.attendanceSetBy?.name ?? null,
+      attendanceSetAtIso: s.attendanceSetAt?.toISOString() ?? null,
     });
   }
 
-  // Sum actual hours from APPROVED clock entries only. Pending entries
-  // get used for matching above (so the shift shows on-time/late) but
-  // don't inflate hours until admin reviews.
+  // Sum actual hours from APPROVED clock entries only.
   for (const ce of clockEntries) {
     if (!ce.clockOut) continue;
     if ((ce as any).approvalStatus !== "APPROVED") continue;
@@ -292,7 +319,6 @@ export default async function AttendancePage({
     return a.name.localeCompare(b.name);
   });
 
-  // Date for the date picker URL state.
   const anchorYmd = format(anchor, "yyyy-MM-dd");
 
   return (
@@ -305,6 +331,8 @@ export default async function AttendancePage({
           customTo={searchParams?.to ?? null}
           locationId={searchParams?.locationId ?? null}
           viewerIsAdmin={role === "ADMIN"}
+          viewerUserId={userId}
+          viewerRole={role}
           rows={list}
         />
       </main>
