@@ -148,12 +148,12 @@ export default async function AttendancePage({
       where: {
         tenantId,
         clockIn: { gte: from, lte: to },
-        user: {
+// Don't filter by user.locations — Cross-location workers (e.g. assigned
+        // to Ferguson, scheduled at Elizabethtown) need their entries to match
+        // their shifts here. Phantom "Unknown" rows are prevented further down.
+                user: {
           active: true,
           archivedAt: null,
-          ...(searchParams?.locationId
-            ? { locations: { some: { locationId: searchParams.locationId } } }
-            : {}),
         },
         approvalStatus: { not: "REJECTED" },
       },
@@ -297,10 +297,13 @@ export default async function AttendancePage({
   }
 
   // Sum actual hours from APPROVED clock entries only.
+  // Only count for users who already have a row (i.e. have shifts in this
+  // view). Prevents clock-entry-only users from appearing as "Unknown 0/0".
   for (const ce of clockEntries) {
     if (!ce.clockOut) continue;
     if ((ce as any).approvalStatus !== "APPROVED") continue;
-    const row = ensure(ce.userId);
+    if (!rows.has(ce.userId)) continue;
+    const row = rows.get(ce.userId)!;
     row.actualHours += (ce.clockOut.getTime() - ce.clockIn.getTime()) / 3_600_000;
   }
 
