@@ -167,6 +167,12 @@ export const EMPLOYEE_ITEMS: NavItem[] = [
     roles: ["EMPLOYEE"],
   },
   {
+    label: "Calendar",
+    href: (t) => `/${t}/calendar`,
+    icon: CalendarRange,
+    roles: ["EMPLOYEE"],
+  },
+  {
     label: "My shifts",
     href: (t) => `/${t}/my-shifts`,
     icon: CalendarCheck,
