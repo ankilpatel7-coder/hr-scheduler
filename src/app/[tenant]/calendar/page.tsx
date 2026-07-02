@@ -1,32 +1,34 @@
 /**
- * /[tenant]/calendar — list + manage company events.
+ * /[tenant]/calendar — company events + monthly grid.
+ *
+ * Accessible to ALL roles (employees view, admins/managers manage).
+ * Shows a monthly grid with events, plus a list below with details.
  */
 
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getServerAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { Calendar, ArrowLeft } from "lucide-react";
+import { Calendar as CalendarIcon } from "lucide-react";
 import { format } from "date-fns";
-import CalendarEventsManager from "@/components/calendar-events-manager";
+import CalendarView from "./calendar-view";
 
 export const dynamic = "force-dynamic";
 
 export default async function CalendarPage({
   params,
+  searchParams,
 }: {
   params: { tenant: string };
+  searchParams?: { month?: string };
 }) {
   const session = await getServerAuth();
   if (!session) redirect(`/login?from=/${params.tenant}/calendar`);
-  const role = (session.user as any).role;
+  const role = (session.user as any).role as "ADMIN" | "MANAGER" | "LEAD" | "EMPLOYEE";
   const tenantId = (session.user as any).tenantId as string | null;
   const isSuperAdmin = (session.user as any).superAdmin === true;
   if (isSuperAdmin) redirect("/superadmin");
   if (!tenantId) redirect("/login");
-  if (role !== "ADMIN" && role !== "MANAGER") {
-    redirect(`/${params.tenant}/dashboard`);
-  }
 
   const tenant = await prisma.tenant.findUnique({
     where: { slug: params.tenant },
@@ -34,41 +36,62 @@ export default async function CalendarPage({
   });
   if (!tenant || tenant.id !== tenantId) redirect("/login");
 
+  // Which month are we viewing?
+  const now = new Date();
+  const monthStr = searchParams?.month;
+  let anchor = now;
+  if (monthStr && /^\d{4}-\d{2}$/.test(monthStr)) {
+    const [y, m] = monthStr.split("-").map(Number);
+    anchor = new Date(Date.UTC(y, m - 1, 1, 12));
+  }
+
+  // Fetch events that overlap the visible month window (+2 weeks buffer for grid edges)
+  const monthStart = new Date(Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth(), 1));
+  const monthEnd = new Date(Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth() + 1, 0));
+  const gridFrom = new Date(monthStart);
+  gridFrom.setUTCDate(gridFrom.getUTCDate() - 14);
+  const gridTo = new Date(monthEnd);
+  gridTo.setUTCDate(gridTo.getUTCDate() + 14);
+
   const events = await prisma.calendarEvent.findMany({
-    where: { tenantId },
+    where: {
+      tenantId,
+      startDate: { lte: gridTo },
+      endDate: { gte: gridFrom },
+    },
     orderBy: { startDate: "asc" },
     include: { createdBy: { select: { id: true, name: true } } },
   });
 
+  const canManage = role === "ADMIN" || role === "MANAGER";
+
   return (
-    <div className="min-h-screen"><main className="max-w-3xl mx-auto px-6 py-10">
-        <Link
-          href={`/${params.tenant}/schedule`}
-          className="inline-flex items-center gap-1 text-xs text-rust hover:underline mb-3"
-        >
-          <ArrowLeft size={12} />
-          Back to schedule
-        </Link>
+    <div className="min-h-screen">
+      <main className="max-w-6xl mx-auto px-6 py-10">
         <div className="flex items-center gap-2 mb-2">
-          <Calendar size={20} className="text-rust" />
-          <h1 className="display text-3xl text-ink">Calendar events</h1>
+          <CalendarIcon size={20} className="text-rust" />
+          <h1 className="display text-3xl text-ink">Calendar</h1>
         </div>
         <p className="text-sm text-smoke mb-6">
-          Company-wide events shown on the schedule: paid holidays, all-hands
-          meetings, shop-closed days. Shifts overlapping a <strong>CLOSED</strong> event
-          get flagged as conflicts.
+          Company events, holidays, meetings. Click any event for details.
         </p>
 
-        <CalendarEventsManager
-          initial={events.map((e) => ({
+        <CalendarView
+          tenantSlug={params.tenant}
+          canManage={canManage}
+          monthAnchorIso={anchor.toISOString()}
+          events={events.map((e) => ({
             id: e.id,
             title: e.title,
             description: e.description,
-            type: e.type as "HOLIDAY" | "MEETING" | "CLOSED" | "OTHER",
+            type: e.type,
             startDate: format(e.startDate, "yyyy-MM-dd"),
             endDate: format(e.endDate, "yyyy-MM-dd"),
             color: e.color,
-            createdByName: e.createdBy.name,
+            attachmentUrl: e.attachmentUrl,
+            attachmentName: e.attachmentName,
+            attachmentSize: e.attachmentSize,
+            createdByName: e.createdBy.name ?? "—",
           }))}
         />
       </main>

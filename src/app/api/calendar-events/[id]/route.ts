@@ -1,74 +1,31 @@
 /**
- * Single calendar event ops.
+ * Single calendar event API.
  *
- * PATCH /api/calendar-events/[id]    Update (admin/manager, tenant-scoped)
- * DELETE /api/calendar-events/[id]   Delete (admin/manager, tenant-scoped)
+ * GET    /api/calendar-events/[id]  — any authenticated tenant user
+ * DELETE /api/calendar-events/[id]  — admin/manager only
  */
 
 import { NextResponse } from "next/server";
-import { z } from "zod";
+import { del } from "@vercel/blob";
 import { prisma } from "@/lib/db";
 import { requireRole } from "@/lib/guards";
 
-const patchSchema = z.object({
-  title: z.string().min(1).max(100).trim().optional(),
-  description: z.string().nullable().optional(),
-  type: z.enum(["HOLIDAY", "MEETING", "CLOSED", "OTHER"]).optional(),
-  startDate: z.string().optional(),
-  endDate: z.string().optional(),
-  color: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().optional(),
-});
-
-export async function PATCH(
-  req: Request,
+export async function GET(
+  _req: Request,
   { params }: { params: { id: string } },
 ) {
-  const auth = await requireRole(["ADMIN", "MANAGER"]);
+  const auth = await requireRole(["ADMIN", "MANAGER", "LEAD", "EMPLOYEE"]);
   if ("error" in auth) return auth.error;
   if (auth.isSuperAdmin || !auth.tenantId) {
     return NextResponse.json({ error: "No tenant context" }, { status: 400 });
   }
 
-  const existing = await prisma.calendarEvent.findUnique({
-    where: { id: params.id },
-    select: { tenantId: true },
+  const event = await prisma.calendarEvent.findFirst({
+    where: { id: params.id, tenantId: auth.tenantId },
+    include: { createdBy: { select: { id: true, name: true } } },
   });
-  if (!existing || existing.tenantId !== auth.tenantId) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
+  if (!event) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  const body = await req.json();
-  const parsed = patchSchema.safeParse(body);
-  if (!parsed.success) {
-    const first = parsed.error.issues[0];
-    const field = first.path.length > 0 ? first.path.join(".") : "input";
-    return NextResponse.json(
-      { error: `Invalid ${field}: ${first.message}`, issues: parsed.error.issues },
-      { status: 400 },
-    );
-  }
-  const data = parsed.data;
-
-  const updates: any = {};
-  if (data.title !== undefined) updates.title = data.title;
-  if (data.description !== undefined) updates.description = data.description;
-  if (data.type !== undefined) updates.type = data.type;
-  if (data.startDate !== undefined) updates.startDate = new Date(data.startDate);
-  if (data.endDate !== undefined) updates.endDate = new Date(data.endDate);
-  if (data.color !== undefined) updates.color = data.color;
-
-  if (
-    updates.startDate &&
-    updates.endDate &&
-    updates.endDate < updates.startDate
-  ) {
-    return NextResponse.json({ error: "End must be on or after start" }, { status: 400 });
-  }
-
-  const event = await prisma.calendarEvent.update({
-    where: { id: params.id },
-    data: updates,
-  });
   return NextResponse.json({ event });
 }
 
@@ -82,14 +39,21 @@ export async function DELETE(
     return NextResponse.json({ error: "No tenant context" }, { status: 400 });
   }
 
-  const existing = await prisma.calendarEvent.findUnique({
-    where: { id: params.id },
-    select: { tenantId: true },
+  const event = await prisma.calendarEvent.findFirst({
+    where: { id: params.id, tenantId: auth.tenantId },
+    select: { id: true, attachmentUrl: true },
   });
-  if (!existing || existing.tenantId !== auth.tenantId) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (!event) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+  // Best-effort blob cleanup
+  if (event.attachmentUrl) {
+    try {
+      await del(event.attachmentUrl);
+    } catch {
+      // Non-fatal — the DB row deletion is the source of truth
+    }
   }
 
-  await prisma.calendarEvent.delete({ where: { id: params.id } });
+  await prisma.calendarEvent.delete({ where: { id: event.id } });
   return NextResponse.json({ ok: true });
 }

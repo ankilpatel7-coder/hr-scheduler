@@ -69,6 +69,7 @@ enum CalendarEventType {
   MEETING // all-hands meeting, training, etc.
   CLOSED // shop closed — shifts overlapping get a warning
   OTHER
+  EVENT
 }
 
 enum DocumentSignatureStatus {
@@ -540,22 +541,27 @@ model LaborBudget {
 // ============================================================
 
 model CalendarEvent {
-  id          String            @id @default(cuid())
-  tenantId    String
-  tenant      Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  title       String
-  description String?           @db.Text
-  type        CalendarEventType @default(OTHER)
+  id             String            @id @default(cuid())
+  tenantId       String
+  tenant         Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  title          String
+  description    String?           @db.Text
+  type           CalendarEventType @default(OTHER)
   // Inclusive date range. For a single day, startDate == endDate.
   // Times normalized to midnight UTC of the date.
-  startDate   DateTime
-  endDate     DateTime
+  startDate      DateTime
+  endDate        DateTime
   // Optional hex color override. If null, derive from type at render time.
-  color       String?
-  createdById String
-  createdBy   User              @relation("CreatedEvents", fields: [createdById], references: [id])
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
+  color          String?
+  // Optional PDF attachment (Vercel Blob URL) — director/CEO can attach
+  // event details, flyers, safety plans, etc. for employees to download.
+  attachmentUrl  String?
+  attachmentName String?
+  attachmentSize Int?
+  createdById    String
+  createdBy      User              @relation("CreatedEvents", fields: [createdById], references: [id])
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
 
   @@index([tenantId, startDate])
   @@index([tenantId, type])
