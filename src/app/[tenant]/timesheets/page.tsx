@@ -19,6 +19,7 @@ import {
   MapPin,
   AlertTriangle, LayoutGrid, ClipboardCheck } from "lucide-react";
 import ManualEntryModal from "@/components/manual-entry-modal";
+import EditEntryModal from "@/components/edit-entry-modal";
 import { format, startOfWeek, endOfWeek, subDays } from "date-fns";
 
 type GeoSide = {
@@ -39,7 +40,7 @@ type Entry = {
   userId: string;
   clockIn: string;
   clockOut: string | null;
-  breaks?: { breakStart: string; breakEnd: string | null; breakType: "SHORT_15" | "MEAL_30" | "OTHER" }[];
+  breaks?: { id?: string; breakStart: string; breakEnd: string | null; breakType: "SHORT_15" | "MEAL_30" | "OTHER" }[];
   selfieIn: string | null;
   selfieOut: string | null;
   latIn: number | null;
@@ -464,7 +465,16 @@ export default function TimesheetsPage() {
       )}
       {editing && (
         <EditEntryModal
-          entry={editing}
+          entryId={editing.id}
+          displayName={editing.user.name}
+          clockIn={editing.clockIn}
+          clockOut={editing.clockOut}
+          breaks={(editing.breaks ?? []).map((b: any) => ({
+            id: b.id,
+            breakStart: b.breakStart,
+            breakEnd: b.breakEnd,
+            breakType: b.breakType,
+          }))}
           onClose={() => setEditing(null)}
           onSaved={() => {
             setEditing(null);
@@ -866,94 +876,6 @@ function SummaryCard({
       <div className="display text-3xl text-ink tabular-nums">
         {value}
         {unit && <span className="text-smoke text-base ml-1 font-sans">{unit}</span>}
-      </div>
-    </div>
-  );
-}
-
-function EditEntryModal({
-  entry,
-  onClose,
-  onSaved,
-}: {
-  entry: Entry;
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const [clockIn, setClockIn] = useState(
-    format(new Date(entry.clockIn), "yyyy-MM-dd'T'HH:mm")
-  );
-  const [clockOut, setClockOut] = useState(
-    entry.clockOut ? format(new Date(entry.clockOut), "yyyy-MM-dd'T'HH:mm") : ""
-  );
-  const [note, setNote] = useState("");
-  const [saving, setSaving] = useState(false);
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setSaving(true);
-    await fetch("/api/clock-entries", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        id: entry.id,
-        clockIn: new Date(clockIn).toISOString(),
-        clockOut: clockOut ? new Date(clockOut).toISOString() : null,
-        editNote: note,
-      }),
-    });
-    setSaving(false);
-    onSaved();
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 bg-ink/40 flex items-center justify-center p-6">
-      <div className="card w-full max-w-md p-6 relative">
-        <button onClick={onClose} className="absolute top-4 right-4 btn btn-ghost !p-1.5">
-          <X size={16} />
-        </button>
-        <div className="mb-6">
-          <div className="label-eyebrow mb-1">Adjust entry</div>
-          <h2 className="display text-2xl text-ink">{entry.user.name}</h2>
-        </div>
-        <form onSubmit={submit} className="space-y-3">
-          <div>
-            <label>Clock in</label>
-            <input
-              type="datetime-local"
-              value={clockIn}
-              onChange={(e) => setClockIn(e.target.value)}
-              required
-            />
-          </div>
-          <div>
-            <label>Clock out</label>
-            <input
-              type="datetime-local"
-              value={clockOut}
-              onChange={(e) => setClockOut(e.target.value)}
-            />
-            <div className="text-xs text-smoke mt-1">
-              Leave blank if employee is still clocked in.
-            </div>
-          </div>
-          <div>
-            <label>Reason for adjustment</label>
-            <textarea
-              rows={2}
-              required
-              placeholder="e.g. Forgot to clock out — verified shift end with manager"
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-            />
-          </div>
-          <div className="text-xs text-amber bg-amber/10 px-3 py-2 rounded border border-amber/30">
-            ⚠️ This will be marked as an edited entry on payroll exports.
-          </div>
-          <button disabled={saving} className="btn btn-primary w-full">
-            {saving ? "Saving…" : "Save adjustment"}
-          </button>
-        </form>
       </div>
     </div>
   );
