@@ -273,22 +273,21 @@ export default function TimesheetsPage() {
           <div>
             <div className="label-eyebrow mb-3">Hours and pay</div>
             <h1 className="display text-5xl text-ink">Timesheets</h1>
-            <div className="mt-1 flex items-center gap-3 text-xs">
-              <span className="text-smoke">View:</span>
-              <span className="font-medium text-ink">Chronological</span>
-              <span className="text-dust">·</span>
+            <div className="mt-3 flex items-center gap-2 flex-wrap">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-rust text-gold-on">
+                Chronological
+              </span>
               <Link
                 href={`/${tenantSlugForViewToggle}/timesheets/by-employee`}
-                className="text-rust hover:underline inline-flex items-center gap-1"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border border-dust bg-paper text-ink hover:bg-steel transition-colors"
               >
-                <LayoutGrid size={11} /> By employee
+                <LayoutGrid size={12} /> By employee
               </Link>
-              <span className="text-dust">·</span>
               <Link
                 href={`/${tenantSlugForViewToggle}/timesheets/approvals`}
-                className="text-rust hover:underline inline-flex items-center gap-1"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border border-dust bg-paper text-ink hover:bg-steel transition-colors"
               >
-                <ClipboardCheck size={11} /> Approvals
+                <ClipboardCheck size={12} /> Approvals
               </Link>
             </div>
           </div>

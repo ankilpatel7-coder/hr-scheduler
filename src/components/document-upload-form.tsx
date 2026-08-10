@@ -43,7 +43,7 @@ export default function DocumentUploadForm() {
   useEffect(() => {
     let cancelled = false;
     Promise.all([
-      fetch("/api/employees", { cache: "no-store" }).then((r) => r.ok ? r.json() : { employees: [] }),
+      fetch("/api/employees?activeOnly=true", { cache: "no-store" }).then((r) => r.ok ? r.json() : { employees: [] }),
       fetch("/api/locations", { cache: "no-store" }).then((r) => r.ok ? r.json() : { locations: [] }),
     ]).then(([eRes, lRes]) => {
       if (cancelled) return;

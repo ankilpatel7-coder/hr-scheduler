@@ -28,16 +28,28 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const locationFilter = searchParams.get("locationId");
   const includeArchived = searchParams.get("includeArchived") === "true";
+  // Callers that must never show deactivated staff (e.g. document assignment)
+  // pass ?activeOnly=true.
+  const activeOnly = searchParams.get("activeOnly") === "true";
 
   const scopedIds = await getScopedEmployeeIds(auth.userId, auth.role);
 
   let where: any = { tenantId }; // CRITICAL: tenant filter
   if (scopedIds) where.id = { in: scopedIds };
   if (locationFilter) {
-    where.locations = { some: { locationId: locationFilter } };
+    // Include staff assigned to this location OR not assigned anywhere yet.
+    // Without the second clause, a newly created employee with no location
+    // is invisible on the employees page.
+    where.OR = [
+      { locations: { some: { locationId: locationFilter } } },
+      { locations: { none: {} } },
+    ];
   }
   if (!includeArchived) {
     where.archivedAt = null;
+  }
+  if (activeOnly) {
+    where.active = true;
   }
 
   const employees = await prisma.user.findMany({
