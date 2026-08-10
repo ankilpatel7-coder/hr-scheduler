@@ -159,6 +159,26 @@ export default function TimesheetsPage() {
     });
   }
 
+  // apply-url-params-v1
+  // Seed filters from the query string on first mount so deep links from the
+  // approval queue (?from=&to=&employeeIds=) land on the right rows. Runs in
+  // an effect rather than a useState initializer so server and client render
+  // the same markup. With no params present, nothing changes.
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search);
+    const qFrom = sp.get("from");
+    const qTo = sp.get("to");
+    const qEmployees = sp.get("employeeIds");
+    const qLocation = sp.get("locationId");
+    if (qFrom) setFrom(qFrom);
+    if (qTo) setTo(qTo);
+    if (qEmployees) {
+      setSelectedEmployeeIds(qEmployees.split(",").filter(Boolean));
+    }
+    if (qLocation) setLocationFilter(qLocation);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     if (status === "unauthenticated") router.push("/login");
   }, [status, router]);
