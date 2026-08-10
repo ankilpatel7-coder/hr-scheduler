@@ -10,7 +10,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Plus, Paperclip, X, ChevronLeft, ChevronRight, Trash2, Upload } from "lucide-react";
+import { Plus, Paperclip, X, ChevronLeft, ChevronRight, Trash2, Upload, Pencil } from "lucide-react";
 import {
   addDays,
   addMonths,
@@ -69,6 +69,7 @@ export default function CalendarView({
   const router = useRouter();
   const anchor = useMemo(() => new Date(monthAnchorIso), [monthAnchorIso]);
   const [showForm, setShowForm] = useState(false);
+  const [editingEvent, setEditingEvent] = useState<Event | null>(null);
 
   // Build the 6-week grid centered on the anchor month
   const gridStart = startOfWeek(startOfMonth(anchor), { weekStartsOn: 0 });
@@ -276,13 +277,22 @@ export default function CalendarView({
                       )}
                     </div>
                     {canManage && (
-                      <button
-                        onClick={() => onDelete(e.id)}
-                        className="text-[11px] text-smoke hover:text-rose inline-flex items-center gap-1"
-                        title="Delete event"
-                      >
-                        <Trash2 size={12} />
-                      </button>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          onClick={() => setEditingEvent(e)}
+                          className="text-[11px] text-smoke hover:text-rust inline-flex items-center gap-1"
+                          title="Edit event"
+                        >
+                          <Pencil size={12} />
+                        </button>
+                        <button
+                          onClick={() => onDelete(e.id)}
+                          className="text-[11px] text-smoke hover:text-rose inline-flex items-center gap-1"
+                          title="Delete event"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
                     )}
                   </li>
                 );
@@ -293,11 +303,16 @@ export default function CalendarView({
       )}
 
       {/* Create modal */}
-      {showForm && canManage && (
+      {(showForm || editingEvent) && canManage && (
         <EventFormModal
-          onClose={() => setShowForm(false)}
+          event={editingEvent}
+          onClose={() => {
+            setShowForm(false);
+            setEditingEvent(null);
+          }}
           onSaved={() => {
             setShowForm(false);
+            setEditingEvent(null);
             router.refresh();
           }}
         />
@@ -310,18 +325,26 @@ export default function CalendarView({
 // Create form modal
 // =============================================================
 function EventFormModal({
+  event,
   onClose,
   onSaved,
 }: {
+  event?: Event | null;
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [type, setType] = useState<EventType>("EVENT");
-  const [startDate, setStartDate] = useState(format(new Date(), "yyyy-MM-dd"));
-  const [endDate, setEndDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const isEdit = Boolean(event);
+  const [title, setTitle] = useState(event?.title ?? "");
+  const [description, setDescription] = useState(event?.description ?? "");
+  const [type, setType] = useState<EventType>(event?.type ?? "EVENT");
+  const [startDate, setStartDate] = useState(
+    event?.startDate ?? format(new Date(), "yyyy-MM-dd"),
+  );
+  const [endDate, setEndDate] = useState(
+    event?.endDate ?? format(new Date(), "yyyy-MM-dd"),
+  );
   const [file, setFile] = useState<File | null>(null);
+  const [removeAttachment, setRemoveAttachment] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -346,11 +369,15 @@ function EventFormModal({
       fd.append("startDate", startDate);
       fd.append("endDate", endDate);
       if (file) fd.append("file", file);
+      if (isEdit && removeAttachment) fd.append("removeAttachment", "true");
 
-      const r = await fetch("/api/calendar-events", {
-        method: "POST",
-        body: fd,
-      });
+      const r = await fetch(
+        isEdit ? `/api/calendar-events/${event!.id}` : "/api/calendar-events",
+        {
+          method: isEdit ? "PATCH" : "POST",
+          body: fd,
+        },
+      );
       if (!r.ok) {
         const j = await r.json().catch(() => ({}));
         setError(j.error || "Save failed");
@@ -377,7 +404,9 @@ function EventFormModal({
         }}
       >
         <div className="flex items-center justify-between px-5 py-3 border-b border-dust">
-          <div className="text-sm font-medium text-ink">New event</div>
+          <div className="text-sm font-medium text-ink">
+            {isEdit ? "Edit event" : "New event"}
+          </div>
           <button onClick={onClose} className="text-smoke hover:text-ink">
             <X size={18} />
           </button>
@@ -451,6 +480,38 @@ function EventFormModal({
               )}
             </div>
             <div className="text-[10px] text-smoke mt-1">Max 15 MB. PDF only.</div>
+            {isEdit && event?.attachmentName && !file && (
+              <div className="mt-2 flex items-center gap-2 text-[11px]">
+                {removeAttachment ? (
+                  <>
+                    <span className="text-rose line-through truncate">
+                      {event.attachmentName}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setRemoveAttachment(false)}
+                      className="text-smoke hover:text-ink underline"
+                    >
+                      Keep
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <Paperclip size={11} className="text-smoke" />
+                    <span className="text-smoke truncate flex-1">
+                      {event.attachmentName}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setRemoveAttachment(true)}
+                      className="text-rose hover:underline"
+                    >
+                      Remove
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
           </div>
 
           {error && (
@@ -464,7 +525,7 @@ function EventFormModal({
               Cancel
             </button>
             <button type="submit" className="btn btn-primary" disabled={busy}>
-              {busy ? "Saving…" : "Create event"}
+              {busy ? "Saving…" : isEdit ? "Save changes" : "Create event"}
             </button>
           </div>
         </form>
