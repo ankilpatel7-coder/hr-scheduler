@@ -10,7 +10,7 @@ import LaborWowChart from "@/components/labor-wow-chart";
 import TopHoursLeaderboard from "@/components/top-hours-leaderboard";
 import CoverageForecast from "@/components/coverage-forecast";
 import { fmtDate, fmtTime, durationHours } from "@/lib/utils";
-import { isStaff } from "@/lib/guards";
+import { isStaff, getScopedEmployeeIds } from "@/lib/guards";
 import {
 
   Clock,
@@ -49,6 +49,15 @@ export default async function Dashboard({ searchParams }: { searchParams?: { ros
   const weekStart = new Date(startOfDay.getTime() - ((startOfDay.getDay() + 6) % 7) * 86_400_000);
   const weekEnd = new Date(weekStart.getTime() + dayMs);
 
+  // Manager scoping. getScopedEmployeeIds returns null for ADMIN (see
+  // everything in the tenant) or the list of user ids a MANAGER oversees.
+  // Every count below applies BOTH tenantId and this scope so the dashboard
+  // numbers match what the detail pages actually show.
+  const scopedIds = await getScopedEmployeeIds(userId, role);
+  const scopeByUserId = scopedIds ? { userId: { in: scopedIds } } : {};
+  const scopeByEmployeeId = scopedIds ? { employeeId: { in: scopedIds } } : {};
+  const scopeById = scopedIds ? { id: { in: scopedIds } } : {};
+
   const openEntry =
     isStaff(role)
       ? await prisma.clockEntry.findFirst({ where: { userId, clockOut: null } })
@@ -81,24 +90,34 @@ export default async function Dashboard({ searchParams }: { searchParams?: { ros
 
   const totalEmployees =
     !isStaff(role)
-      ? await prisma.user.count({ where: { active: true } })
+      ? await prisma.user.count({
+          where: { tenantId, active: true, archivedAt: null, ...scopeById },
+        })
       : 0;
 
   const todayShifts =
     !isStaff(role)
       ? await prisma.shift.count({
-          where: { startTime: { gte: startOfDay, lt: endOfDay } },
+          where: {
+            tenantId,
+            startTime: { gte: startOfDay, lt: endOfDay },
+            ...scopeByEmployeeId,
+          },
         })
       : 0;
 
   const currentlyClockedIn =
     !isStaff(role)
-      ? await prisma.clockEntry.count({ where: { tenantId, clockOut: null } })
+      ? await prisma.clockEntry.count({
+          where: { tenantId, clockOut: null, ...scopeByUserId },
+        })
       : 0;
 
   const pendingTimeOff =
     !isStaff(role)
-      ? await prisma.timeOffRequest.count({ where: { tenantId, status: "PENDING" } })
+      ? await prisma.timeOffRequest.count({
+          where: { tenantId, status: "PENDING", ...scopeByUserId },
+        })
       : 0;
 
   const pendingSwaps =
@@ -109,7 +128,12 @@ export default async function Dashboard({ searchParams }: { searchParams?: { ros
   const draftShifts =
     !isStaff(role)
       ? await prisma.shift.count({
-          where: { published: false, startTime: { gte: startOfDay } },
+          where: {
+            tenantId,
+            published: false,
+            startTime: { gte: startOfDay },
+            ...scopeByEmployeeId,
+          },
         })
       : 0;
 
@@ -118,11 +142,20 @@ export default async function Dashboard({ searchParams }: { searchParams?: { ros
   let weekLaborCost = 0;
   if (!isStaff(role)) {
     const entries = await prisma.clockEntry.findMany({
-      where: { tenantId, clockIn: { gte: weekStart, lt: weekEnd } },
+      where: {
+        tenantId,
+        clockIn: { gte: weekStart, lt: weekEnd },
+        ...scopeByUserId,
+      },
       include: { user: { select: { hourlyWage: true } } },
     });
     const scheduled = await prisma.shift.findMany({
-      where: { tenantId, startTime: { gte: now, lt: weekEnd }, published: true },
+      where: {
+        tenantId,
+        startTime: { gte: now, lt: weekEnd },
+        published: true,
+        ...scopeByEmployeeId,
+      },
       include: { employee: { select: { hourlyWage: true } } },
     });
     const tot = new Map<string, number>();
