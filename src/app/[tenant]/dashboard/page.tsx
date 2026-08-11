@@ -205,6 +205,8 @@ export default async function Dashboard({ searchParams }: { searchParams?: { ros
               tenantId={tenantId}
               tenantSlug={tenantSlug}
               timezone={tenantTimezone}
+              viewerId={userId}
+              viewerRole={role}
               week={searchParams?.week}
               locationId={searchParams?.locationId}
             />

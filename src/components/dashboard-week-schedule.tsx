@@ -5,13 +5,15 @@
  * ?week=YYYY-MM-DD search param, so this can never interfere with the real
  * /schedule page's drag-and-drop editing.
  *
- * Shown to every role when the tenant enables showScheduleOnDashboard, so
- * staff can see team coverage without opening the scheduler.
+ * ACCESS SCOPING (important): a viewer only sees shifts at locations they are
+ * assigned to, plus their own shifts anywhere (so a cross-location assignment
+ * still shows up on their dashboard). Admins see everything, optionally
+ * narrowed by the dashboard's location filter.
  */
 
 import Link from "next/link";
 import { prisma } from "@/lib/db";
-import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
 const DAY_MS = 86_400_000;
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -65,12 +67,16 @@ export default async function DashboardWeekSchedule({
   tenantId,
   tenantSlug,
   timezone,
+  viewerId,
+  viewerRole,
   week,
   locationId,
 }: {
   tenantId: string;
   tenantSlug: string;
   timezone: string;
+  viewerId: string;
+  viewerRole: string;
   week?: string;
   locationId?: string;
 }) {
@@ -78,14 +84,37 @@ export default async function DashboardWeekSchedule({
   const start = parseWeekParam(week);
   const end = new Date(start.getTime() + 7 * DAY_MS);
 
+  // ---- Access scoping -------------------------------------------------
+  // Admins see the whole tenant (respecting the dashboard location filter).
+  // Everyone else is limited to locations they're assigned to, plus their
+  // own shifts wherever those happen to be.
+  const isAdmin = viewerRole === "ADMIN";
+  let locationWhere: any = locationId ? { locationId } : {};
+
+  if (!isAdmin) {
+    const myLocations = await prisma.employeeLocation.findMany({
+      where: { userId: viewerId },
+      select: { locationId: true },
+    });
+    const allowedIds = myLocations.map((l) => l.locationId);
+
+    locationWhere = {
+      OR: [
+        ...(allowedIds.length > 0 ? [{ locationId: { in: allowedIds } }] : []),
+        { employeeId: viewerId },
+      ],
+    };
+  }
+  // ---------------------------------------------------------------------
+
   const [shifts, roles] = await Promise.all([
     prisma.shift.findMany({
       where: {
         tenantId,
         published: true,
         startTime: { gte: start, lt: end },
-        ...(locationId ? { locationId } : {}),
         employee: { active: true, archivedAt: null },
+        ...locationWhere,
       },
       select: {
         id: true,
@@ -136,12 +165,22 @@ export default async function DashboardWeekSchedule({
 
   const totalShifts = shifts.length;
 
+  // Show which locations are represented, so it's clear the view is scoped.
+  const locationNames = Array.from(
+    new Set(shifts.map((s) => s.location?.name).filter(Boolean) as string[]),
+  );
+
   return (
     <div className="card p-5">
       <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
         <div>
           <div className="label-eyebrow">Team schedule</div>
           <h2 className="display text-2xl text-ink mt-0.5">{rangeLabel}</h2>
+          {locationNames.length > 0 && (
+            <div className="text-[11px] text-smoke mt-0.5">
+              {locationNames.join(" · ")}
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <span className="text-[11px] text-smoke">
@@ -216,6 +255,7 @@ export default async function DashboardWeekSchedule({
                       const color = s.role
                         ? colorByRole.get(s.role) ?? FALLBACK
                         : FALLBACK;
+                      const isMine = s.employee?.id === viewerId;
                       return (
                         <div
                           key={s.id}
@@ -223,6 +263,7 @@ export default async function DashboardWeekSchedule({
                           style={{
                             background: `${color}14`,
                             borderLeft: `2px solid ${color}`,
+                            outline: isMine ? `1px solid ${color}66` : undefined,
                           }}
                           title={`${s.employee?.name ?? "Unassigned"} · ${fmtTime(
                             s.startTime,
@@ -231,7 +272,11 @@ export default async function DashboardWeekSchedule({
                             s.location ? ` · ${s.location.name}` : ""
                           }`}
                         >
-                          <div className="font-medium text-ink truncate">
+                          <div
+                            className={`truncate ${
+                              isMine ? "font-semibold text-ink" : "font-medium text-ink"
+                            }`}
+                          >
                             {s.employee?.name?.split(" ")[0] ?? "Open"}
                           </div>
                           <div className="text-smoke font-mono text-[9px]">
