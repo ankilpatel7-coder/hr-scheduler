@@ -7,6 +7,7 @@ import {
   ArrowLeft, Mail, Phone, MapPin, Calendar, Briefcase, DollarSign,
   AlertTriangle, Camera, Edit3, KeyRound, ShieldCheck, Tag, Coins, FileText } from "lucide-react";
 import { format } from "date-fns";
+import ResetPinButton from "@/components/reset-pin-button";
 
 type Profile = {
   id: string;
@@ -186,6 +187,12 @@ export default function EmployeeProfilePage() {
                 <button onClick={() => setEditing(true)} className="btn btn-secondary">
                   <Edit3 size={14} /> Edit
                 </button>
+              )}
+              {canEditAll && (
+                <ResetPinButton
+                  employeeId={profile.id}
+                  employeeName={profile.name || profile.email}
+                />
               )}
             </div>
           </div>
