@@ -6,6 +6,7 @@ import TodayTimelineWidget from "@/components/today-timeline-widget";
 import RosterLocationFilter from "@/components/roster-location-filter";
 import OvertimeRiskWidget from "@/components/overtime-risk-widget";
 import KpiStrip from "@/components/kpi-strip";
+import DashboardWeekSchedule from "@/components/dashboard-week-schedule";
 import LaborWowChart from "@/components/labor-wow-chart";
 import TopHoursLeaderboard from "@/components/top-hours-leaderboard";
 import CoverageForecast from "@/components/coverage-forecast";
@@ -30,14 +31,14 @@ import AnimatedNumber from "@/components/animated-number";
 import PendingDocsBanner from "@/components/pending-docs-banner";
 export const dynamic = "force-dynamic";
 
-export default async function Dashboard({ searchParams }: { searchParams?: { rosterDate?: string; locationId?: string } }) {
+export default async function Dashboard({ searchParams }: { searchParams?: { rosterDate?: string; locationId?: string; week?: string } }) {
   const session = await getServerAuth();
   if (!session) redirect("/login");
   const role = (session.user as any).role;
   const userId = (session.user as any).id;
   const tenantId = (session.user as any).tenantId as string | null;
   if (!tenantId) redirect("/superadmin"); // narrows tenantId to string + sends super admins to their console
-  const tenantInfo = tenantId ? await prisma.tenant.findUnique({ where: { id: tenantId }, select: { slug: true, timezone: true } }) : null;
+  const tenantInfo = tenantId ? await prisma.tenant.findUnique({ where: { id: tenantId }, select: { slug: true, timezone: true, showScheduleOnDashboard: true } }) : null;
   const tenantSlug = tenantInfo?.slug ?? "";
   const tenantTimezone = tenantInfo?.timezone ?? "America/New_York";
 
@@ -197,6 +198,18 @@ export default async function Dashboard({ searchParams }: { searchParams?: { ros
               : "Real-time operations across your team. Drill into any panel."}
           </p>
         </div>
+
+        {tenantInfo?.showScheduleOnDashboard && (
+          <div className="mb-6">
+            <DashboardWeekSchedule
+              tenantId={tenantId}
+              tenantSlug={tenantSlug}
+              timezone={tenantTimezone}
+              week={searchParams?.week}
+              locationId={searchParams?.locationId}
+            />
+          </div>
+        )}
 
         {isStaff(role) ? (
           <div className="grid md:grid-cols-2 gap-6 stagger">

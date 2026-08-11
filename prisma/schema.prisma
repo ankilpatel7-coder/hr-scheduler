@@ -170,12 +170,15 @@ model Tenant {
   // Operations config (v12.6)
   // If false, clock entries auto-approve (APPROVED on create) and skip the
   // admin approval queue. Useful for small/trusted teams.
-  requireClockApproval Boolean @default(true)
+  requireClockApproval    Boolean @default(true)
   // When false (default), House Shifts UI on schedule is hidden. Admins
   // can flip this on under Settings if they want unassigned/open shifts.
-  enableHouseShifts    Boolean @default(false)
+  enableHouseShifts       Boolean @default(false)
   // When true (default), employees must take a selfie when starting a break.
-  requireBreakSelfie   Boolean @default(true)
+  requireBreakSelfie      Boolean @default(true)
+  // When true, the dashboard shows a read-only weekly schedule grid to
+  // everyone (including employees) so the team can see coverage at a glance.
+  showScheduleOnDashboard Boolean @default(false)
 
   active    Boolean  @default(true)
   createdAt DateTime @default(now())

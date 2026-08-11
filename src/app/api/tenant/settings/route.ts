@@ -17,6 +17,7 @@ const patchSchema = z.object({
   requireClockApproval: z.boolean().optional(),
   enableHouseShifts: z.boolean().optional(),
   requireBreakSelfie: z.boolean().optional(),
+  showScheduleOnDashboard: z.boolean().optional(),
 });
 
 export async function GET() {
@@ -32,6 +33,7 @@ export async function GET() {
       requireClockApproval: true,
       enableHouseShifts: true,
       requireBreakSelfie: true,
+      showScheduleOnDashboard: true,
       businessName: true,
     },
   });
