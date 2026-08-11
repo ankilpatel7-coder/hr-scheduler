@@ -12,6 +12,7 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/db";
 import { getServerAuth } from "@/lib/auth";
+import { findPinOwner, pinOwnerLabel } from "@/lib/pin";
 
 const WEAK_PINS = new Set([
   "0000","1111","2222","3333","4444","5555","6666","7777","8888","9999",
@@ -38,7 +39,10 @@ export async function POST(req: Request) {
   if (!valid.ok) return NextResponse.json({ error: valid.reason }, { status: 400 });
 
   const userId = (session.user as any).id;
-  const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, pinHash: true } });
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, pinHash: true, tenantId: true },
+  });
   if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
   // If user already has a PIN, require currentPin to match (unless they're explicitly resetting to a new one)
@@ -47,6 +51,22 @@ export async function POST(req: Request) {
     const ok = await bcrypt.compare(currentPin, user.pinHash);
     if (!ok) return NextResponse.json({ error: "Current PIN is incorrect." }, { status: 400 });
     if (currentPin === newPin) return NextResponse.json({ error: "New PIN must differ from current." }, { status: 400 });
+  }
+
+  // Uniqueness within the tenant. Kiosk login resolves a user by PIN alone,
+  // so a duplicate silently locks out BOTH people (auth.ts rejects ambiguous
+  // matches). Block it at write time instead.
+  if (user.tenantId) {
+    const owner = await findPinOwner(user.tenantId, newPin, userId);
+    if (owner) {
+      return NextResponse.json(
+        {
+          error:
+            "That PIN is already used by another team member. Please choose a different one.",
+        },
+        { status: 409 },
+      );
+    }
   }
 
   const pinHash = await bcrypt.hash(newPin, 10);

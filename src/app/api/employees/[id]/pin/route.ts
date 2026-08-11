@@ -12,15 +12,7 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/db";
 import { requireRole, getScopedEmployeeIds } from "@/lib/guards";
-
-function generateTempPin(): string {
-  // Random 4-digit PIN avoiding common weak ones
-  const weak = new Set(["0000","1111","2222","3333","4444","5555","6666","7777","8888","9999","1234","4321"]);
-  while (true) {
-    const pin = String(Math.floor(Math.random() * 10000)).padStart(4, "0");
-    if (!weak.has(pin)) return pin;
-  }
-}
+import { generateUniquePin } from "@/lib/pin";
 
 export async function POST(_req: Request, { params }: { params: { id: string } }) {
   const auth = await requireRole(["ADMIN", "MANAGER"]);
@@ -49,7 +41,17 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     }
   }
 
-  const tempPin = generateTempPin();
+  // Guaranteed not to collide with another active employee in this tenant —
+  // a duplicate would break kiosk login for both of them.
+  let tempPin: string;
+  try {
+    tempPin = await generateUniquePin(tenantId);
+  } catch {
+    return NextResponse.json(
+      { error: "Could not generate an unused PIN. Please try again." },
+      { status: 500 },
+    );
+  }
   const pinHash = await bcrypt.hash(tempPin, 10);
   await prisma.user.update({
     where: { id: target.id },
