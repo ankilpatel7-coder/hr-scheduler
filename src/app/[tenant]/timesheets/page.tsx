@@ -17,7 +17,7 @@ import {
   Plus,
   Camera,
   MapPin,
-  AlertTriangle, LayoutGrid, ClipboardCheck } from "lucide-react";
+  AlertTriangle, LayoutGrid, ClipboardCheck, History } from "lucide-react";
 import ManualEntryModal from "@/components/manual-entry-modal";
 import EditEntryModal from "@/components/edit-entry-modal";
 import { format, startOfWeek, endOfWeek, subDays } from "date-fns";
@@ -308,6 +308,12 @@ export default function TimesheetsPage() {
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border border-dust bg-paper text-ink hover:bg-steel transition-colors"
               >
                 <ClipboardCheck size={12} /> Approvals
+              </Link>
+              <Link
+                href={`/${tenantSlugForViewToggle}/timesheets/adjustments`}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border border-dust bg-paper text-ink hover:bg-steel transition-colors"
+              >
+                <History size={12} /> Activity log
               </Link>
             </div>
           </div>

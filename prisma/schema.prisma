@@ -660,6 +660,9 @@ model ClockEntry {
   addressOut String?   @db.Text
   editedBy   String?
   editNote   String?
+  // When the adjustment was made. Nullable: rows edited before this column
+  // existed have a note and an author but no timestamp.
+  editedAt   DateTime?
   createdAt  DateTime  @default(now())
 
   // Daily approval workflow (v12.6) — admins/managers must approve clock

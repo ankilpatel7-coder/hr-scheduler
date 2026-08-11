@@ -47,7 +47,7 @@ export async function PATCH(req: Request) {
     );
   }
 
-  const data: any = { editedBy: auth.userId };
+  const data: any = { editedBy: auth.userId, editedAt: new Date() };
   if (clockIn) data.clockIn = new Date(clockIn);
   if (clockOut !== undefined) {
     data.clockOut = clockOut ? new Date(clockOut) : null;
@@ -125,6 +125,7 @@ export async function POST(req: Request) {
       clockIn: new Date(clockIn),
       clockOut: clockOut ? new Date(clockOut) : null,
       editedBy: auth.userId,
+      editedAt: new Date(),
       editNote: editNote ?? "Created by manager",
       approvalStatus: "APPROVED",
       approvedById: auth.userId,
