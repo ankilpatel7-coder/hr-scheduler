@@ -301,6 +301,56 @@ export async function DELETE(req: Request) {
     if (denied) return denied;
   }
 
-  await prisma.shift.delete({ where: { id } });
-  return NextResponse.json({ ok: true });
+  // Archive before removing so an admin can restore from the recycle bin.
+  // Names are denormalised so the archive still reads correctly if the
+  // employee or location is later renamed or archived.
+  const [employee, location] = await Promise.all([
+    existing.employeeId
+      ? prisma.user.findUnique({
+          where: { id: existing.employeeId },
+          select: { name: true, email: true },
+        })
+      : Promise.resolve(null),
+    existing.locationId
+      ? prisma.location.findUnique({
+          where: { id: existing.locationId },
+          select: { name: true },
+        })
+      : Promise.resolve(null),
+  ]);
+  const actor = await prisma.user.findUnique({
+    where: { id: auth.userId },
+    select: { name: true, email: true },
+  });
+
+  const { searchParams: delParams } = new URL(req.url);
+  const deleteReason = delParams.get("reason");
+
+  await prisma.$transaction([
+    prisma.deletedShift.create({
+      data: {
+        id: existing.id,
+        tenantId: existing.tenantId,
+        employeeId: existing.employeeId,
+        employeeName: employee?.name ?? employee?.email ?? null,
+        managerId: existing.managerId,
+        locationId: existing.locationId,
+        locationName: location?.name ?? null,
+        startTime: existing.startTime,
+        endTime: existing.endTime,
+        role: existing.role,
+        tagId: existing.tagId,
+        notes: existing.notes,
+        published: existing.published,
+        publishedAt: existing.publishedAt,
+        originalCreatedAt: existing.createdAt,
+        deletedById: auth.userId,
+        deletedByName: actor?.name ?? actor?.email ?? null,
+        deleteReason: deleteReason || null,
+      },
+    }),
+    prisma.shift.delete({ where: { id } }),
+  ]);
+
+  return NextResponse.json({ ok: true, archived: true });
 }

@@ -198,6 +198,7 @@ model Tenant {
   calendarEvents    CalendarEvent[]
   documents         Document[]
   documentFolders   DocumentFolder[]
+  deletedShifts     DeletedShift[]
 
   @@index([slug])
   @@index([active])
@@ -914,4 +915,40 @@ enum AttendanceReason {
   LEFT_EARLY_APPROVED
   LATE_EXCUSED
   OTHER
+}
+
+// ============================================================
+// DeletedShift — archive of removed shifts, restorable for 30 days.
+// Rows live HERE, not in Shift, so no read query needs a deleted filter.
+// ============================================================
+
+model DeletedShift {
+  // Same id the Shift had, so restore recreates it exactly.
+  id       String @id
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Snapshot of the shift as it was
+  employeeId   String?
+  employeeName String?
+  managerId    String
+  locationId   String?
+  locationName String?
+  startTime    DateTime
+  endTime      DateTime
+  role         String?
+  tagId        String?
+  notes        String?
+  published    Boolean
+  publishedAt  DateTime?
+
+  originalCreatedAt DateTime
+
+  // Who removed it and why
+  deletedById   String
+  deletedByName String?
+  deletedAt     DateTime @default(now())
+  deleteReason  String?
+
+  @@index([tenantId, deletedAt])
 }
