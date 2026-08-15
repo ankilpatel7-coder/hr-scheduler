@@ -520,6 +520,13 @@ export default function SchedulePage() {
             <button className="btn btn-secondary !p-2" onClick={() => setWeekStart(addDays(weekStart, -7))}><ChevronLeft size={16} /></button>
             <button className="btn btn-secondary" onClick={() => setWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }))}>Today</button>
             <button className="btn btn-secondary !p-2" onClick={() => setWeekStart(addDays(weekStart, 7))}><ChevronRight size={16} /></button>
+            <a
+              href={`/${typeof window !== "undefined" ? window.location.pathname.split("/")[1] : ""}/schedule/recycle-bin`}
+              className="btn btn-secondary print:hidden"
+              title="Restore recently deleted shifts (admin only)"
+            >
+              <Trash2 size={14} /> Deleted
+            </a>
             <button onClick={() => setShowCopyWeek(true)} className="btn btn-secondary print:hidden" title="Copy last week's schedule into this week">
               <CalendarPlus size={14} /> Copy last week
             </button>

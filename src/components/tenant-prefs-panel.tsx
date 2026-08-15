@@ -8,11 +8,12 @@
  */
 
 import { useEffect, useState } from "react";
-import { Building2, Camera, Loader2, Check, AlertCircle } from "lucide-react";
+import { Building2, Camera, Loader2, Check, AlertCircle, CalendarDays } from "lucide-react";
 
 export default function TenantPrefsPanel() {
   const [enableHouseShifts, setEnableHouseShifts] = useState(false);
   const [requireBreakSelfie, setRequireBreakSelfie] = useState(true);
+  const [showScheduleOnDashboard, setShowScheduleOnDashboard] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -25,6 +26,7 @@ export default function TenantPrefsPanel() {
         if (j?.tenant) {
           setEnableHouseShifts(!!j.tenant.enableHouseShifts);
           setRequireBreakSelfie(j.tenant.requireBreakSelfie ?? true);
+          setShowScheduleOnDashboard(!!j.tenant.showScheduleOnDashboard);
         }
         setLoading(false);
       })
@@ -89,6 +91,18 @@ export default function TenantPrefsPanel() {
             onChange={(v) => {
               setRequireBreakSelfie(v);
               save("requireBreakSelfie", v);
+            }}
+          />
+
+          <Toggle
+            label="Show weekly schedule on dashboard"
+            description="Everyone — including employees — sees a read-only week grid on their dashboard. Each person only sees locations they're assigned to."
+            icon={<CalendarDays size={14} />}
+            checked={showScheduleOnDashboard}
+            disabled={saving}
+            onChange={(v) => {
+              setShowScheduleOnDashboard(v);
+              save("showScheduleOnDashboard", v);
             }}
           />
 
