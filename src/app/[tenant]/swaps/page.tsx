@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import LocationFilter from "@/components/location-filter";
+import Pagination from "@/components/pagination";
 import { format } from "date-fns";
 import { Check, Ban, Hand } from "lucide-react";
 
@@ -28,6 +29,8 @@ export default function SwapsPage() {
   const [swaps, setSwaps] = useState<Swap[]>([]);
   const [loading, setLoading] = useState(true);
   const [locationFilter, setLocationFilter] = useState("");
+  const [closedPage, setClosedPage] = useState(1);
+  const CLOSED_PAGE_SIZE = 10;
 
   useEffect(() => {
     if (status === "unauthenticated") router.push("/login");
@@ -135,7 +138,19 @@ export default function SwapsPage() {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {closed.slice(0, 10).map((s) => (
+                  <Pagination
+                    page={closedPage}
+                    pageSize={CLOSED_PAGE_SIZE}
+                    total={closed.length}
+                    onPageChange={setClosedPage}
+                    label="resolved"
+                  />
+                  {closed
+                    .slice(
+                      (closedPage - 1) * CLOSED_PAGE_SIZE,
+                      closedPage * CLOSED_PAGE_SIZE,
+                    )
+                    .map((s) => (
                     <SwapCard
                       key={s.id}
                       swap={s}

@@ -17,6 +17,7 @@ import { getServerAuth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getScopedEmployeeIds } from "@/lib/guards";
 import { ArrowLeft, History, Pencil, CheckCircle2, XCircle } from "lucide-react";
+import Pagination from "@/components/pagination";
 
 export const dynamic = "force-dynamic";
 
@@ -53,7 +54,7 @@ export default async function AdjustmentsPage({
   searchParams,
 }: {
   params: { tenant: string };
-  searchParams?: { days?: string };
+  searchParams?: { days?: string; page?: string };
 }) {
   const session = await getServerAuth();
   if (!session) redirect(`/login?from=/${params.tenant}/timesheets/adjustments`);
@@ -81,16 +82,24 @@ export default async function AdjustmentsPage({
   const scopedIds = await getScopedEmployeeIds(userId, role);
   const scope = scopedIds ? { userId: { in: scopedIds } } : {};
 
+  const PAGE_SIZE = 25;
+  const pageRaw = Number(searchParams?.page ?? 1);
+  const page = Number.isFinite(pageRaw) && pageRaw > 0 ? Math.floor(pageRaw) : 1;
+
+  const logWhere = {
+    tenantId,
+    clockIn: { gte: since },
+    ...scope,
+    OR: [
+      { editNote: { not: null } },
+      { approvalStatus: { not: "PENDING" as const } },
+    ],
+  };
+
+  const totalEntries = await prisma.clockEntry.count({ where: logWhere });
+
   const entries = await prisma.clockEntry.findMany({
-    where: {
-      tenantId,
-      clockIn: { gte: since },
-      ...scope,
-      OR: [
-        { editNote: { not: null } },
-        { approvalStatus: { not: "PENDING" } },
-      ],
-    },
+    where: logWhere,
     select: {
       id: true,
       userId: true,
@@ -106,7 +115,8 @@ export default async function AdjustmentsPage({
       approvedBy: { select: { id: true, name: true } },
     },
     orderBy: [{ clockIn: "desc" }],
-    take: 400,
+    skip: (page - 1) * PAGE_SIZE,
+    take: PAGE_SIZE,
   });
 
   // editedBy is a bare user id (no relation on the model), so resolve names
@@ -152,7 +162,7 @@ export default async function AdjustmentsPage({
           {[7, 30, 90, 365].map((d) => (
             <Link
               key={d}
-              href={`/${params.tenant}/timesheets/adjustments?days=${d}`}
+              href={`/${params.tenant}/timesheets/adjustments?days=${d}&page=1`}
               className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-colors ${
                 days === d
                   ? "bg-rust text-gold-on border-transparent"
@@ -182,6 +192,16 @@ export default async function AdjustmentsPage({
             </div>
           </div>
         </div>
+
+        <Pagination
+          page={page}
+          pageSize={PAGE_SIZE}
+          total={totalEntries}
+          hrefFor={(p) =>
+            `/${params.tenant}/timesheets/adjustments?days=${days}&page=${p}`
+          }
+          label="events"
+        />
 
         {entries.length === 0 ? (
           <div className="card p-8 text-center text-sm text-smoke italic">

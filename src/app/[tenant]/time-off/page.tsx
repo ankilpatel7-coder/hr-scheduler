@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import LocationFilter from "@/components/location-filter";
+import Pagination from "@/components/pagination";
 import { Plus, X, Check, Ban, Pencil, Trash2 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -38,6 +39,8 @@ export default function TimeOffPage() {
   const [editing, setEditing] = useState<Req | null>(null);
   const [scope, setScope] = useState<"mine" | "all">("all");
   const [locationFilter, setLocationFilter] = useState("");
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 25;
 
   useEffect(() => {
     if (status === "unauthenticated") router.push("/login");
@@ -137,7 +140,16 @@ export default function TimeOffPage() {
           </div>
         ) : (
           <div className="space-y-3">
-            {requests.map((r) => (
+            <Pagination
+              page={page}
+              pageSize={PAGE_SIZE}
+              total={requests.length}
+              onPageChange={setPage}
+              label="requests"
+            />
+            {requests
+              .slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+              .map((r) => (
               <div key={r.id} className="card p-5">
                 <div className="flex items-start justify-between gap-4 flex-wrap">
                   <div className="flex-1 min-w-[200px]">
