@@ -4,10 +4,12 @@
  * Shared pagination control.
  *
  * Two modes:
- *   - client: pass onPageChange, used by pages that already hold the full
- *     list in state (time off, swaps)
- *   - server: pass hrefFor, renders Links so the page survives refresh and
- *     can be shared (activity log)
+ *   - client pages: pass onPageChange (they already hold the list in state)
+ *   - server pages: pass baseHref, e.g. "/acme/timesheets/adjustments?days=30"
+ *     and this renders Links with &page=N appended
+ *
+ * baseHref is a STRING, not a function, on purpose: a Server Component
+ * cannot pass a function prop to a Client Component — Next throws at render.
  *
  * Renders nothing when everything fits on one page.
  */
@@ -20,14 +22,14 @@ export default function Pagination({
   pageSize,
   total,
   onPageChange,
-  hrefFor,
+  baseHref,
   label = "records",
 }: {
   page: number;
   pageSize: number;
   total: number;
   onPageChange?: (page: number) => void;
-  hrefFor?: (page: number) => string;
+  baseHref?: string;
   label?: string;
 }) {
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -37,6 +39,12 @@ export default function Pagination({
   const last = Math.min(page * pageSize, total);
   const canPrev = page > 1;
   const canNext = page < totalPages;
+
+  function hrefFor(p: number): string {
+    if (!baseHref) return "#";
+    const joiner = baseHref.includes("?") ? "&" : "?";
+    return `${baseHref}${joiner}page=${p}`;
+  }
 
   const btn =
     "inline-flex items-center justify-center w-7 h-7 rounded-md border border-dust bg-paper text-ink hover:bg-steel transition-colors";
@@ -50,7 +58,7 @@ export default function Pagination({
       </div>
       <div className="flex items-center gap-1.5">
         {canPrev ? (
-          hrefFor ? (
+          baseHref ? (
             <Link href={hrefFor(page - 1)} className={btn} aria-label="Previous page">
               <ChevronLeft size={14} />
             </Link>
@@ -75,7 +83,7 @@ export default function Pagination({
         </span>
 
         {canNext ? (
-          hrefFor ? (
+          baseHref ? (
             <Link href={hrefFor(page + 1)} className={btn} aria-label="Next page">
               <ChevronRight size={14} />
             </Link>

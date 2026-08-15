@@ -197,9 +197,7 @@ export default async function AdjustmentsPage({
           page={page}
           pageSize={PAGE_SIZE}
           total={totalEntries}
-          hrefFor={(p) =>
-            `/${params.tenant}/timesheets/adjustments?days=${days}&page=${p}`
-          }
+          baseHref={`/${params.tenant}/timesheets/adjustments?days=${days}`}
           label="events"
         />
 
