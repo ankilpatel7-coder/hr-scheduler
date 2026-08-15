@@ -148,6 +148,9 @@ export default function TimesheetsPage() {
   const [locationFilter, setLocationFilter] = useState("");
   const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<string[]>([]);
   const [outsideOnly, setOutsideOnly] = useState(false);
+  // When true, show entries of every approval status (pending / rejected too).
+  // Off by default so the payroll-facing view stays approved-hours-only.
+  const [includeAll, setIncludeAll] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   function toggleGroup(key: string) {
@@ -176,6 +179,7 @@ export default function TimesheetsPage() {
       setSelectedEmployeeIds(qEmployees.split(",").filter(Boolean));
     }
     if (qLocation) setLocationFilter(qLocation);
+    if (sp.get("includeAll") === "true") setIncludeAll(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -193,7 +197,8 @@ export default function TimesheetsPage() {
     const toIso = new Date(to + "T23:59:59").toISOString();
     const locParam = locationFilter ? `&locationId=${locationFilter}` : "";
     const empParam = selectedEmployeeIds.length > 0 ? `&employeeIds=${selectedEmployeeIds.join(",")}` : "";
-    const res = await fetch(`/api/timesheets?from=${fromIso}&to=${toIso}${locParam}${empParam}`);
+    const allParam = includeAll ? "&includeAll=true" : "";
+    const res = await fetch(`/api/timesheets?from=${fromIso}&to=${toIso}${locParam}${empParam}${allParam}`);
     if (res.ok) {
       const d = await res.json();
       setEntries(d.entries);
@@ -215,7 +220,7 @@ export default function TimesheetsPage() {
   useEffect(() => {
     if (session) load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session, from, to, locationFilter, selectedEmployeeIds]);
+  }, [session, from, to, locationFilter, selectedEmployeeIds, includeAll]);
 
   function setQuickRange(kind: "this-week" | "last-week" | "last-14") {
     if (kind === "this-week") {

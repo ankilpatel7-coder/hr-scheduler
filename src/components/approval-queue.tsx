@@ -425,7 +425,7 @@ export default function ApprovalQueue({
                           </button>
                         )}
                         <Link
-                          href={`/${tenantSlug}/timesheets?from=${day}&to=${day}&employeeIds=${e.userId}`}
+                          href={`/${tenantSlug}/timesheets?from=${day}&to=${day}&employeeIds=${e.userId}&includeAll=true`}
                           className="text-[11px] text-rust hover:underline"
                           title="Open in timesheets"
                         >
