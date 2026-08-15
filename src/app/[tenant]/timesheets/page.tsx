@@ -320,6 +320,13 @@ export default function TimesheetsPage() {
               >
                 <History size={12} /> Activity log
               </Link>
+              <Link
+                href={`/${tenantSlugForViewToggle}/timesheets/deleted`}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border border-dust bg-paper text-ink hover:bg-steel transition-colors"
+                title="Restore deleted timesheet entries (admin only)"
+              >
+                <Trash2 size={12} /> Deleted
+              </Link>
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
