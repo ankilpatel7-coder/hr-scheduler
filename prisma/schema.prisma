@@ -184,21 +184,22 @@ model Tenant {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users             User[]
-  locations         Location[]
-  shifts            Shift[]
-  clockEntries      ClockEntry[]
-  timeOff           TimeOffRequest[]
-  swaps             ShiftSwap[]
-  payPeriods        PayPeriod[]
-  roles             ShiftRole[]
-  shiftTags         ShiftTag[]
-  scheduleTemplates ScheduleTemplate[]
-  laborBudget       LaborBudget?
-  calendarEvents    CalendarEvent[]
-  documents         Document[]
-  documentFolders   DocumentFolder[]
-  deletedShifts     DeletedShift[]
+  users               User[]
+  locations           Location[]
+  shifts              Shift[]
+  clockEntries        ClockEntry[]
+  timeOff             TimeOffRequest[]
+  swaps               ShiftSwap[]
+  payPeriods          PayPeriod[]
+  roles               ShiftRole[]
+  shiftTags           ShiftTag[]
+  scheduleTemplates   ScheduleTemplate[]
+  laborBudget         LaborBudget?
+  calendarEvents      CalendarEvent[]
+  documents           Document[]
+  documentFolders     DocumentFolder[]
+  deletedShifts       DeletedShift[]
+  deletedClockEntries DeletedClockEntry[]
 
   @@index([slug])
   @@index([active])
@@ -951,4 +952,37 @@ model DeletedShift {
   deleteReason  String?
 
   @@index([tenantId, deletedAt])
+}
+
+// ============================================================
+// DeletedClockEntry — archive of removed timesheet punches.
+// Rows live HERE, not in ClockEntry, so no read query needs a filter.
+// The snapshot column carries the full row + breaks for a faithful restore.
+// ============================================================
+
+model DeletedClockEntry {
+  id       String @id
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  userId   String
+  userName String?
+
+  clockIn        DateTime
+  clockOut       DateTime?
+  approvalStatus String
+  breakCount     Int       @default(0)
+
+  // Complete row (all scalars) plus a breaks array.
+  snapshot Json
+
+  originalCreatedAt DateTime
+
+  deletedById   String
+  deletedByName String?
+  deletedAt     DateTime @default(now())
+  deleteReason  String?
+
+  @@index([tenantId, deletedAt])
+  @@index([userId, clockIn])
 }

@@ -83,8 +83,48 @@ export async function DELETE(req: Request) {
     );
   }
 
-  await prisma.clockEntry.delete({ where: { id } });
-  return NextResponse.json({ ok: true });
+  // Archive the full row (plus breaks) so an admin can restore it.
+  const full = await prisma.clockEntry.findUnique({
+    where: { id },
+    include: { breaks: true },
+  });
+  if (!full) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+  const [owner, actor] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: full.userId },
+      select: { name: true, email: true },
+    }),
+    prisma.user.findUnique({
+      where: { id: auth.userId },
+      select: { name: true, email: true },
+    }),
+  ]);
+
+  const deleteReason = searchParams.get("reason");
+
+  await prisma.$transaction([
+    prisma.deletedClockEntry.create({
+      data: {
+        id: full.id,
+        tenantId: full.tenantId,
+        userId: full.userId,
+        userName: owner?.name ?? owner?.email ?? null,
+        clockIn: full.clockIn,
+        clockOut: full.clockOut,
+        approvalStatus: String(full.approvalStatus),
+        breakCount: full.breaks.length,
+        snapshot: JSON.parse(JSON.stringify(full)),
+        originalCreatedAt: full.createdAt,
+        deletedById: auth.userId,
+        deletedByName: actor?.name ?? actor?.email ?? null,
+        deleteReason: deleteReason || null,
+      },
+    }),
+    prisma.clockEntry.delete({ where: { id } }),
+  ]);
+
+  return NextResponse.json({ ok: true, archived: true });
 }
 
 export async function POST(req: Request) {
