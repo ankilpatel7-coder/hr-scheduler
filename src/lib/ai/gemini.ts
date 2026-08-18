@@ -29,8 +29,8 @@ function client(): Groq {
 // Both tiers point at the same Llama 3.3 70B for now — Groq's free tier
 // doesn't have a meaningful "pro" alternative. If we ever pay for Groq's
 // 405B endpoint or swap providers, "pro" can route there.
-const MODEL_FLASH = "llama-3.3-70b-versatile";
-const MODEL_PRO = "llama-3.3-70b-versatile";
+const MODEL_FLASH = "openai/gpt-oss-120b";
+const MODEL_PRO = "openai/gpt-oss-120b";
 
 /**
  * Returns the Groq model id for the requested tier. Exported only because

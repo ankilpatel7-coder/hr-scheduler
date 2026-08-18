@@ -27,7 +27,7 @@ const bodySchema = z.object({
   question: z.string().min(3).max(500),
 });
 
-// Groq llama-3.3-70b-versatile free tier: 12K tokens/min.
+// Groq openai/gpt-oss-120b free tier: 12K tokens/min.
 // We budget ~10K input tokens => ~40K chars; reserve room for system
 // prompt, question, and response, so cap retrieved context at 30K chars.
 const MAX_CONTEXT_CHARS = 30_000;
