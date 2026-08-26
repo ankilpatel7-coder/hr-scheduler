@@ -179,6 +179,12 @@ export const EMPLOYEE_ITEMS: NavItem[] = [
     roles: ["EMPLOYEE"],
   },
   {
+    label: "My timesheet",
+    href: (t) => `/${t}/my-timesheet`,
+    icon: Clock,
+    roles: ["EMPLOYEE"],
+  },
+  {
     label: "Clock",
     href: (t) => `/${t}/clock`,
     icon: ShieldCheck,

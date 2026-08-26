@@ -22,7 +22,7 @@ import MyAttendanceClient, { type MyRow, type MyShift } from "./my-attendance-cl
 
 export const dynamic = "force-dynamic";
 
-type Range = "14d" | "30d" | "90d" | "custom";
+type Range = "14d" | "30d" | "60d" | "90d" | "custom";
 const LATE_MIN = 10;
 const MATCH_WINDOW_MS = 2 * 60 * 60 * 1000;
 
@@ -58,7 +58,10 @@ function resolveRange(
   if (range === "custom" && from && to) {
     return { from: startOfDay(new Date(from)), to: endOfDay(new Date(to)) };
   }
-  const days = range === "14d" ? 14 : range === "30d" ? 30 : 90;
+  // Parse the leading number out of the range key so any Nd value works and
+  // an unknown value falls back to 14 rather than silently returning 90.
+  const parsed = parseInt(String(range), 10);
+  const days = Number.isFinite(parsed) && parsed > 0 ? parsed : 14;
   return { from: startOfDay(subDays(today, days)), to: today };
 }
 

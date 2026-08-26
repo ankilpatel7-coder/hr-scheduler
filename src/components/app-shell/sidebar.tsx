@@ -22,7 +22,7 @@ import { NAV_ITEMS, EMPLOYEE_ITEMS, type Role, type NavItem } from "./nav-items"
  */
 
 const ADMIN_SECTIONS: { title?: string; labels: string[] }[] = [
-  { title: "My work", labels: ["Clock", "My shifts", "My attendance", "My documents"] },
+  { title: "My work", labels: ["Clock", "My shifts", "My timesheet", "My attendance", "My documents"] },
   { labels: ["Dashboard"] },
   { title: "Scheduling", labels: ["Schedule", "Templates", "Calendar"] },
   { title: "Time", labels: ["Timesheets", "Approvals", "Attendance"] },
