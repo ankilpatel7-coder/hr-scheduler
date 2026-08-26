@@ -52,7 +52,7 @@ export type MyRow = {
   shifts: MyShift[];
 };
 
-type Range = "14d" | "30d" | "90d" | "custom";
+type Range = "14d" | "30d" | "60d" | "90d" | "custom";
 
 const STATUS_META: Record<
   MyShift["status"],
